@@ -18,6 +18,19 @@ namespace AIBridge.Editor
         private const string PACKAGE_NAME = "cn.lys.aibridge";
         private const string CLAUDE_MD_FILE = "CLAUDE.md";
         private const string AIBRIDGE_SECTION_MARKER = "## AIBridge Unity Integration";
+        
+        // Fixed CLI path in AIBridgeCache directory
+        private const string CLI_CACHE_FOLDER = "AIBridgeCache/CLI";
+        private const string CLI_EXE_NAME = "AIBridgeCLI.exe";
+        private static readonly string[] CLI_FILES = new[]
+        {
+            "AIBridgeCLI.exe",
+            "AIBridgeCLI.dll",
+            "AIBridgeCLI.deps.json",
+            "AIBridgeCLI.runtimeconfig.json",
+            "AIBridgeCLI.pdb",
+            "Newtonsoft.Json.dll"
+        };
 
         static SkillInstaller()
         {
@@ -33,10 +46,12 @@ namespace AIBridge.Editor
             try
             {
                 var projectRoot = GetProjectRoot();
+                
+                // Step 1: Copy CLI to AIBridgeCache/CLI (fixed location)
+                CopyCliToCacheIfNeeded(projectRoot);
+                
                 var targetDir = Path.Combine(projectRoot, ".claude", "skills", SKILL_FOLDER_NAME);
                 var targetFile = Path.Combine(targetDir, SKILL_FILE_NAME);
-
-                bool skillInstalled = false;
 
                 // Check if skill file already exists
                 if (File.Exists(targetFile))
@@ -52,7 +67,6 @@ namespace AIBridge.Editor
                         {
                             CopySkillFile(sourceFile, targetDir, targetFile);
                             AIBridgeLogger.LogInfo($"[SkillInstaller] Updated skill documentation: {targetFile}");
-                            skillInstalled = true;
                         }
                     }
                 }
@@ -68,7 +82,6 @@ namespace AIBridge.Editor
 
                     CopySkillFile(sourcePath, targetDir, targetFile);
                     AIBridgeLogger.LogInfo($"[SkillInstaller] Installed skill documentation to: {targetFile}");
-                    skillInstalled = true;
                 }
 
                 // Update CLAUDE.md with skill index
@@ -78,6 +91,105 @@ namespace AIBridge.Editor
             {
                 AIBridgeLogger.LogError($"[SkillInstaller] Failed to install skill documentation: {ex.Message}");
             }
+        }
+        
+        /// <summary>
+        /// Copy CLI files to AIBridgeCache/CLI directory.
+        /// This provides a fixed, stable path for AI assistants to use.
+        /// </summary>
+        private static void CopyCliToCacheIfNeeded(string projectRoot)
+        {
+            var targetCliDir = Path.Combine(projectRoot, CLI_CACHE_FOLDER);
+            var targetCliExe = Path.Combine(targetCliDir, CLI_EXE_NAME);
+            
+            // Find source CLI directory
+            var sourceCliDir = GetSourceCliDirectory();
+            if (string.IsNullOrEmpty(sourceCliDir))
+            {
+                AIBridgeLogger.LogWarning("[SkillInstaller] Source CLI directory not found");
+                return;
+            }
+            
+            var sourceCliExe = Path.Combine(sourceCliDir, CLI_EXE_NAME);
+            if (!File.Exists(sourceCliExe))
+            {
+                AIBridgeLogger.LogWarning($"[SkillInstaller] Source CLI executable not found: {sourceCliExe}");
+                return;
+            }
+            
+            // Check if we need to copy (target doesn't exist or source is newer)
+            bool needsCopy = !File.Exists(targetCliExe);
+            if (!needsCopy)
+            {
+                var sourceTime = File.GetLastWriteTimeUtc(sourceCliExe);
+                var targetTime = File.GetLastWriteTimeUtc(targetCliExe);
+                needsCopy = sourceTime > targetTime;
+            }
+            
+            if (!needsCopy)
+            {
+                return;
+            }
+            
+            // Create target directory
+            if (!Directory.Exists(targetCliDir))
+            {
+                Directory.CreateDirectory(targetCliDir);
+            }
+            
+            // Copy all CLI files
+            int copiedCount = 0;
+            foreach (var fileName in CLI_FILES)
+            {
+                var sourceFile = Path.Combine(sourceCliDir, fileName);
+                var targetFile = Path.Combine(targetCliDir, fileName);
+                
+                if (File.Exists(sourceFile))
+                {
+                    try
+                    {
+                        File.Copy(sourceFile, targetFile, true);
+                        copiedCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        AIBridgeLogger.LogWarning($"[SkillInstaller] Failed to copy {fileName}: {ex.Message}");
+                    }
+                }
+            }
+            
+            if (copiedCount > 0)
+            {
+                AIBridgeLogger.LogInfo($"[SkillInstaller] Copied {copiedCount} CLI files to: {targetCliDir}");
+            }
+        }
+        
+        /// <summary>
+        /// Get the source CLI directory from the package.
+        /// </summary>
+        private static string GetSourceCliDirectory()
+        {
+            var projectRoot = GetProjectRoot();
+            
+            // Method 1: Direct package path (for local/embedded packages)
+            var directPath = Path.Combine(projectRoot, "Packages", PACKAGE_NAME, "Tools~", "CLI");
+            if (Directory.Exists(directPath))
+            {
+                return directPath;
+            }
+            
+            // Method 2: Use PackageInfo for resolved path (for git/registry packages)
+            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath($"Packages/{PACKAGE_NAME}");
+            if (packageInfo != null)
+            {
+                var resolvedPath = Path.Combine(packageInfo.resolvedPath, "Tools~", "CLI");
+                if (Directory.Exists(resolvedPath))
+                {
+                    return resolvedPath;
+                }
+            }
+            
+            return null;
         }
 
         /// <summary>
@@ -122,7 +234,8 @@ namespace AIBridge.Editor
         /// </summary>
         private static string GetAIBridgeSkillIndex()
         {
-            var cliPath = GetActualCliPath() ?? $"Packages/{PACKAGE_NAME}/Tools~/CLI/AIBridgeCLI.exe";
+            // Use fixed CLI path in AIBridgeCache directory
+            var cliPath = CLI_CACHE_FOLDER + "/" + CLI_EXE_NAME;
             var q = "\""; // Quote character for bash commands
 
             return $@"{AIBRIDGE_SECTION_MARKER}
@@ -168,48 +281,6 @@ AIBridgeCLI.exe transform set_position --path {q}Player{q} --x 0 --y 1 --z 0
         }
 
         /// <summary>
-        /// Get the actual CLI executable path relative to project root.
-        /// This handles both local packages and UPM cache packages.
-        /// </summary>
-        private static string GetActualCliPath()
-        {
-            var projectRoot = GetProjectRoot();
-
-            // Method 1: Direct package path (for local/embedded packages)
-            var directPath = Path.Combine("Packages", PACKAGE_NAME, "Tools~", "CLI", "AIBridgeCLI.exe");
-            if (File.Exists(Path.Combine(projectRoot, directPath)))
-            {
-                return directPath.Replace(Path.DirectorySeparatorChar, '/');
-            }
-
-            // Method 2: Use PackageInfo for resolved path (for git/registry packages in Library/PackageCache)
-            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath($"Packages/{PACKAGE_NAME}");
-            if (packageInfo != null)
-            {
-                var resolvedCliPath = Path.Combine(packageInfo.resolvedPath, "Tools~", "CLI", "AIBridgeCLI.exe");
-                if (File.Exists(resolvedCliPath))
-                {
-                    // Make it relative to project root
-                    return GetRelativePath(projectRoot, resolvedCliPath);
-                }
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// Get relative path from base directory to target path.
-        /// Returns path with forward slashes for consistency in markdown files.
-        /// </summary>
-        private static string GetRelativePath(string basePath, string targetPath)
-        {
-            var baseUri = new Uri(basePath.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar);
-            var targetUri = new Uri(targetPath);
-            var relativeUri = baseUri.MakeRelativeUri(targetUri);
-            return Uri.UnescapeDataString(relativeUri.ToString());
-        }
-
-        /// <summary>
         /// Get the source skill file path from the package
         /// </summary>
         private static string GetSourceSkillPath()
@@ -240,7 +311,7 @@ AIBridgeCLI.exe transform set_position --path {q}Player{q} --x 0 --y 1 --z 0
 
         /// <summary>
         /// Copy skill file to target location with CLI path replacement.
-        /// This ensures the CLI path in SKILL.md matches the actual package location.
+        /// This ensures the CLI path in SKILL.md uses the fixed AIBridgeCache/CLI location.
         /// </summary>
         private static void CopySkillFile(string sourcePath, string targetDir, string targetFile)
         {
@@ -253,16 +324,13 @@ AIBridgeCLI.exe transform set_position --path {q}Player{q} --x 0 --y 1 --z 0
             // Read source content
             var content = File.ReadAllText(sourcePath, System.Text.Encoding.UTF8);
 
-            // Get actual CLI path and replace the hardcoded path if different
-            var actualCliPath = GetActualCliPath();
-            if (!string.IsNullOrEmpty(actualCliPath))
+            // Replace hardcoded path with fixed CLI cache path
+            var hardcodedPath = $"Packages/{PACKAGE_NAME}/Tools~/CLI/AIBridgeCLI.exe";
+            var fixedCliPath = CLI_CACHE_FOLDER + "/" + CLI_EXE_NAME;
+            if (content.Contains(hardcodedPath))
             {
-                var hardcodedPath = $"Packages/{PACKAGE_NAME}/Tools~/CLI/AIBridgeCLI.exe";
-                if (actualCliPath != hardcodedPath)
-                {
-                    content = content.Replace(hardcodedPath, actualCliPath);
-                    AIBridgeLogger.LogInfo($"[SkillInstaller] Replaced CLI path: {hardcodedPath} -> {actualCliPath}");
-                }
+                content = content.Replace(hardcodedPath, fixedCliPath);
+                AIBridgeLogger.LogInfo($"[SkillInstaller] Replaced CLI path: {hardcodedPath} -> {fixedCliPath}");
             }
 
             // Write to target with UTF-8 encoding
@@ -278,6 +346,10 @@ AIBridgeCLI.exe transform set_position --path {q}Player{q} --x 0 --y 1 --z 0
             try
             {
                 var projectRoot = GetProjectRoot();
+                
+                // Copy CLI to cache directory first
+                CopyCliToCacheIfNeeded(projectRoot);
+                
                 var targetDir = Path.Combine(projectRoot, ".claude", "skills", SKILL_FOLDER_NAME);
                 var targetFile = Path.Combine(targetDir, SKILL_FILE_NAME);
 
@@ -293,7 +365,7 @@ AIBridgeCLI.exe transform set_position --path {q}Player{q} --x 0 --y 1 --z 0
                 // Also update CLAUDE.md
                 UpdateClaudeMdIfNeeded(projectRoot);
 
-                EditorUtility.DisplayDialog("AIBridge", $"Skill documentation installed to:\n{targetFile}\n\nCLAUDE.md has been updated with skill index.", "OK");
+                EditorUtility.DisplayDialog("AIBridge", $"Skill documentation installed to:\n{targetFile}\n\nCLI copied to: {CLI_CACHE_FOLDER}\n\nCLAUDE.md has been updated with skill index.", "OK");
             }
             catch (Exception ex)
             {

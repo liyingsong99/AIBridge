@@ -29,8 +29,10 @@ Activate this skill when you need to:
 ### CLI Location
 
 ```
-Packages/cn.lys.aibridge/Tools~/CLI/AIBridgeCLI.exe
+AIBridgeCache/CLI/AIBridgeCLI.exe
 ```
+
+> **Note**: The CLI is automatically copied to `AIBridgeCache/CLI/` when the package is installed. This provides a stable, fixed path regardless of how the package was installed (local, git, or registry).
 
 ### Cache Directory
 
