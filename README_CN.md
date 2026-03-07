@@ -105,7 +105,7 @@ cn.lys.aibridge/
 
 ### 编辑器模式
 
-AI Bridge 在 Unity Editor 打开时自动启动。命令从 `Tools~/Exchange/commands/` 目录处理。
+AI Bridge 在 Unity Editor 打开时自动启动。命令从 `AIBridgeCache/commands/` 目录处理。
 
 #### 菜单项
 - `AIBridge/Process Commands Now` - 立即处理待处理的命令
@@ -209,7 +209,7 @@ AIBridgeRuntime.Instance.RegisterHandler(new MyCustomHandler());
 
 ## 命令协议
 
-命令是放置在 `Tools~/Exchange/commands/` 中的 JSON 文件：
+命令是放置在 `AIBridgeCache/commands/` 中的 JSON 文件：
 
 ```json
 {
@@ -223,7 +223,7 @@ AIBridgeRuntime.Instance.RegisterHandler(new MyCustomHandler());
 }
 ```
 
-结果返回在 `Tools~/Exchange/results/` 中：
+结果返回在 `AIBridgeCache/results/` 中：
 
 ```json
 {

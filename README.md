@@ -104,7 +104,7 @@ cn.lys.aibridge/
 
 ### Editor Mode
 
-AI Bridge automatically starts when Unity Editor opens. Commands are processed from `Tools~/Exchange/commands/`.
+AI Bridge automatically starts when Unity Editor opens. Commands are processed from `AIBridgeCache/commands/`.
 
 #### Menu Items
 - `AIBridge/Process Commands Now` - Process pending commands immediately
@@ -208,7 +208,7 @@ AIBridgeRuntime.Instance.RegisterHandler(new MyCustomHandler());
 
 ## Command Protocol
 
-Commands are JSON files placed in `Tools~/Exchange/commands/`:
+Commands are JSON files placed in `AIBridgeCache/commands/`:
 
 ```json
 {
@@ -222,7 +222,7 @@ Commands are JSON files placed in `Tools~/Exchange/commands/`:
 }
 ```
 
-Results are returned in `Tools~/Exchange/results/`:
+Results are returned in `AIBridgeCache/results/`:
 
 ```json
 {
