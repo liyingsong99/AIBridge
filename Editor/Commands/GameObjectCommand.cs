@@ -135,9 +135,14 @@ namespace AIBridge.Editor
             }
             else
             {
-                var allObjects = UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+                GameObject[] allObjects;
+#if UNITY_2020_3_OR_NEWER
+                allObjects = UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+#else
+                allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
+#endif
 
-                foreach (var obj in allObjects)
+                foreach (GameObject obj in allObjects)
                 {
                     if (results.Count >= maxResults) break;
 
