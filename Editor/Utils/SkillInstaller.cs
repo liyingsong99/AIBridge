@@ -249,7 +249,7 @@ namespace AIBridge.Editor
 
         /// <summary>
         /// Copy skill file to target location with CLI path replacement.
-        /// This ensures the CLI path in SKILL.md uses the fixed AIBridgeCache/CLI location.
+        /// This ensures the CLI path in SKILL.md uses the fixed ./AIBridgeCache/CLI location for AI-facing docs.
         /// </summary>
         private static void CopySkillFile(string sourcePath, string targetDir, string targetFile)
         {
@@ -261,7 +261,7 @@ namespace AIBridge.Editor
             var content = File.ReadAllText(sourcePath, System.Text.Encoding.UTF8);
             var cliExeName = GetCliExecutableName();
             var hardcodedPath = $"Packages/{PACKAGE_NAME}/Tools~/CLI/AIBridgeCLI.exe";
-            var fixedCliPath = CLI_CACHE_FOLDER + "/" + cliExeName;
+            var fixedCliPath = "./" + CLI_CACHE_FOLDER + "/" + cliExeName;
             if (content.Contains(hardcodedPath))
             {
                 content = content.Replace(hardcodedPath, fixedCliPath);
@@ -346,7 +346,7 @@ namespace AIBridge.Editor
             var cliExeName = GetCliExecutableName();
             return new Dictionary<string, string>
             {
-                { "CLI_PATH", CLI_CACHE_FOLDER + "/" + cliExeName },
+                { "CLI_PATH", "./" + CLI_CACHE_FOLDER + "/" + cliExeName },
                 { "CLI_EXE_NAME", cliExeName },
                 { "CLI_CACHE_DIR", CLI_CACHE_FOLDER },
                 { "SKILL_DOC_PATH", target.SupportsSkillDirectory ? "/" + target.GetSkillFileRelativePath() : "/.claude/skills/aibridge/SKILL.md" },
