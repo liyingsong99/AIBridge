@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Newtonsoft.Json;
+using AIBridge.Internal.Json;
 using UnityEngine;
 
 namespace AIBridge.Runtime
@@ -204,7 +204,8 @@ namespace AIBridge.Runtime
                 try
                 {
                     var json = File.ReadAllText(file);
-                    var cmd = JsonConvert.DeserializeObject<AIBridgeRuntimeCommand>(json);
+                    var commandData = AIBridgeJson.DeserializeObject(json);
+                    var cmd = AIBridgeRuntimeCommand.FromDictionary(commandData);
 
                     if (cmd != null)
                     {
@@ -284,11 +285,7 @@ namespace AIBridge.Runtime
             {
                 var fileName = $"{result.CommandId}.json";
                 var filePath = Path.Combine(_resultsPath, fileName);
-                var json = JsonConvert.SerializeObject(result, Formatting.Indented, new JsonSerializerSettings
-                {
-                    NullValueHandling = NullValueHandling.Ignore,
-                    ReferenceLoopHandling = ReferenceLoopHandling.Ignore
-                });
+                var json = AIBridgeJson.Serialize(result, pretty: true);
                 File.WriteAllText(filePath, json);
                 LogDebug($"Wrote result: {fileName}");
             }

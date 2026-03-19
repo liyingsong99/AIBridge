@@ -44,6 +44,27 @@ namespace AIBridge.Runtime
         /// </summary>
         public long Timestamp;
 
+        public static AIBridgeRuntimeCommand FromDictionary(Dictionary<string, object> data)
+        {
+            if (data == null)
+            {
+                return null;
+            }
+
+            var command = new AIBridgeRuntimeCommand
+            {
+                Id = GetString(data, "Id") ?? GetString(data, "id"),
+                Action = GetString(data, "Action") ?? GetString(data, "action"),
+                PanelName = GetString(data, "PanelName") ?? GetString(data, "panelName"),
+                EventName = GetString(data, "EventName") ?? GetString(data, "eventName"),
+                ViewName = GetString(data, "ViewName") ?? GetString(data, "viewName"),
+                Params = GetDictionary(data, "Params") ?? GetDictionary(data, "params"),
+                Timestamp = GetLong(data, "Timestamp") ?? GetLong(data, "timestamp") ?? 0L
+            };
+
+            return command;
+        }
+
         /// <summary>
         /// Get parameter value with type conversion
         /// </summary>
@@ -67,6 +88,51 @@ namespace AIBridge.Runtime
             {
                 return defaultValue;
             }
+        }
+
+        private static string GetString(Dictionary<string, object> data, string key)
+        {
+            if (!data.TryGetValue(key, out var value) || value == null)
+            {
+                return null;
+            }
+
+            return value.ToString();
+        }
+
+        private static Dictionary<string, object> GetDictionary(Dictionary<string, object> data, string key)
+        {
+            if (!data.TryGetValue(key, out var value))
+            {
+                return null;
+            }
+
+            return value as Dictionary<string, object>;
+        }
+
+        private static long? GetLong(Dictionary<string, object> data, string key)
+        {
+            if (!data.TryGetValue(key, out var value) || value == null)
+            {
+                return null;
+            }
+
+            if (value is long longValue)
+            {
+                return longValue;
+            }
+
+            if (value is double doubleValue)
+            {
+                return (long)doubleValue;
+            }
+
+            if (long.TryParse(value.ToString(), out var parsed))
+            {
+                return parsed;
+            }
+
+            return null;
         }
     }
 
