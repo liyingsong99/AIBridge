@@ -72,6 +72,11 @@ namespace AIBridge.Editor
             var filter = request.GetParam("filter", "");
             var searchInFolders = request.GetParam<string>("searchInFolders", null);
             var maxResults = request.GetParam("maxResults", 100);
+            var format = GetAssetResponseFormat(request);
+            if (format == null)
+            {
+                return CommandResult.Failure(request.id, "Invalid 'format' parameter. Supported values: full, paths");
+            }
 
             string[] guids;
             if (!string.IsNullOrEmpty(searchInFolders))
@@ -84,8 +89,24 @@ namespace AIBridge.Editor
                 guids = AssetDatabase.FindAssets(filter);
             }
 
-            var results = new List<AssetInfo>();
             var count = Math.Min(guids.Length, maxResults);
+            if (format == "paths")
+            {
+                var paths = new List<string>(count);
+                for (var i = 0; i < count; i++)
+                {
+                    paths.Add(AssetDatabase.GUIDToAssetPath(guids[i]));
+                }
+
+                return CommandResult.Success(request.id, new
+                {
+                    assets = paths,
+                    totalFound = guids.Length,
+                    returned = count
+                });
+            }
+
+            var results = new List<AssetInfo>();
 
             for (var i = 0; i < count; i++)
             {
@@ -118,6 +139,11 @@ namespace AIBridge.Editor
             var keyword = request.GetParam<string>("keyword", null);
             var searchInFolders = request.GetParam<string>("searchInFolders", null);
             var maxResults = request.GetParam("maxResults", 100);
+            var format = GetAssetResponseFormat(request);
+            if (format == null)
+            {
+                return CommandResult.Failure(request.id, "Invalid 'format' parameter. Supported values: full, paths");
+            }
 
             // Determine the filter to use
             string filter;
@@ -159,8 +185,26 @@ namespace AIBridge.Editor
                 guids = AssetDatabase.FindAssets(filter);
             }
 
-            var results = new List<SearchAssetInfo>();
             var count = Math.Min(guids.Length, maxResults);
+            if (format == "paths")
+            {
+                var paths = new List<string>(count);
+                for (var i = 0; i < count; i++)
+                {
+                    paths.Add(AssetDatabase.GUIDToAssetPath(guids[i]));
+                }
+
+                return CommandResult.Success(request.id, new
+                {
+                    assets = paths,
+                    mode = mode,
+                    filter = filter,
+                    totalFound = guids.Length,
+                    returned = count
+                });
+            }
+
+            var results = new List<SearchAssetInfo>();
 
             for (var i = 0; i < count; i++)
             {
@@ -352,6 +396,29 @@ namespace AIBridge.Editor
                 truncated = truncated,
                 content = builder.ToString()
             });
+        }
+
+        private static string GetAssetResponseFormat(CommandRequest request)
+        {
+            var format = request.GetParam("format", "full");
+
+            if (string.IsNullOrWhiteSpace(format))
+            {
+                return "full";
+            }
+
+            format = format.Trim();
+            if (string.Equals(format, "full", StringComparison.OrdinalIgnoreCase))
+            {
+                return "full";
+            }
+
+            if (string.Equals(format, "paths", StringComparison.OrdinalIgnoreCase))
+            {
+                return "paths";
+            }
+
+            return null;
         }
 
         [Serializable]

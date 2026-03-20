@@ -20,6 +20,7 @@ namespace AIBridgeCLI.Commands
             ["find"] = new List<ParameterInfo>
             {
                 new ParameterInfo("filter", "Search filter (e.g., 't:Prefab', 't:Texture2D')", true),
+                new ParameterInfo("format", "Response format: full (default) or paths for Unity asset paths only", false, "full"),
                 new ParameterInfo("searchInFolders", "Folders to search in (comma-separated)", false),
                 new ParameterInfo("maxResults", "Maximum number of results", false, "100")
             },
@@ -28,6 +29,7 @@ namespace AIBridgeCLI.Commands
                 new ParameterInfo("mode", "Search mode: all, prefab, scene, script, texture, material, audio, animation, shader, font, model, so", false, "all"),
                 new ParameterInfo("filter", "Custom Unity filter (overrides mode)", false),
                 new ParameterInfo("keyword", "Search keyword (appended to filter)", false),
+                new ParameterInfo("format", "Response format: full (default) or paths for Unity asset paths only", false, "full"),
                 new ParameterInfo("searchInFolders", "Folders to search in (comma-separated)", false),
                 new ParameterInfo("maxResults", "Maximum number of results", false, "100")
             },
