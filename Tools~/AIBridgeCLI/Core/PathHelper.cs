@@ -86,6 +86,14 @@ namespace AIBridgeCLI.Core
         }
 
         /// <summary>
+        /// Get the flow runs directory path.
+        /// </summary>
+        public static string GetFlowRunsDirectory()
+        {
+            return Path.Combine(GetExchangeDirectory(), "flow-runs");
+        }
+
+        /// <summary>
         /// Ensure all required directories exist
         /// </summary>
         public static void EnsureDirectoriesExist()
@@ -101,6 +109,12 @@ namespace AIBridgeCLI.Core
             if (!Directory.Exists(resultsDir))
             {
                 Directory.CreateDirectory(resultsDir);
+            }
+
+            var flowRunsDir = GetFlowRunsDirectory();
+            if (!Directory.Exists(flowRunsDir))
+            {
+                Directory.CreateDirectory(flowRunsDir);
             }
         }
 

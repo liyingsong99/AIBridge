@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using AIBridgeCLI.Commands;
 using AIBridgeCLI.Core;
@@ -51,6 +52,12 @@ namespace AIBridgeCLI
             if (parsed.CommandType != null && parsed.CommandType.Equals("multi", StringComparison.OrdinalIgnoreCase))
             {
                 return HandleMultiCommand(parsed, stdin, timeout, noWait, outputMode);
+            }
+
+            // Handle flow command (CLI-managed workflow runner)
+            if (parsed.CommandType != null && parsed.CommandType.Equals("flow", StringComparison.OrdinalIgnoreCase))
+            {
+                return HandleFlowCommand(parsed, stdin, timeout, noWait, outputMode);
             }
 
             // Handle help
@@ -390,6 +397,120 @@ Options:
   --raw              Output raw JSON
   --quiet            Quiet mode
   --no-wait          Don't wait for result
+";
+        }
+
+        static int HandleFlowCommand(ParsedArgs parsed, bool stdin, int timeout, bool noWait, OutputMode outputMode)
+        {
+            if (noWait)
+            {
+                OutputFormatter.PrintError("flow command does not support --no-wait in the MVP.");
+                return 1;
+            }
+
+            var action = string.IsNullOrEmpty(parsed.Action) ? "run" : parsed.Action;
+            var runner = new FlowRunner(timeout, outputMode);
+
+            switch (action.ToLowerInvariant())
+            {
+                case "run":
+                {
+                    var filePath = ResolveFlowInputPath(parsed, stdin);
+                    if (string.IsNullOrWhiteSpace(filePath))
+                    {
+                        Console.WriteLine(GetFlowCommandHelp());
+                        return 0;
+                    }
+
+                    var result = runner.Run(filePath);
+                    OutputFormatter.PrintResult(result, outputMode);
+                    return result.success ? 0 : 1;
+                }
+                case "status":
+                {
+                    CommandResult result;
+                    if (parsed.Options.TryGetValue("run-id", out var runId) && !string.IsNullOrWhiteSpace(runId))
+                    {
+                        result = runner.GetStatus(runId);
+                    }
+                    else
+                    {
+                        result = runner.GetLastStatus();
+                    }
+
+                    OutputFormatter.PrintResult(result, outputMode);
+                    return result.success ? 0 : 1;
+                }
+                case "help":
+                    Console.WriteLine(GetFlowCommandHelp());
+                    return 0;
+                default:
+                    OutputFormatter.PrintError($"Unknown flow action: {action}");
+                    Console.WriteLine();
+                    Console.WriteLine(GetFlowCommandHelp());
+                    return 1;
+            }
+        }
+
+        static string ResolveFlowInputPath(ParsedArgs parsed, bool stdin)
+        {
+            if (parsed.Options.TryGetValue("file", out var filePath) && !string.IsNullOrWhiteSpace(filePath))
+            {
+                return filePath;
+            }
+
+            if (stdin)
+            {
+                var tempFile = Path.GetTempFileName() + ".flow.txt";
+                File.WriteAllText(tempFile, Console.In.ReadToEnd());
+                return tempFile;
+            }
+
+            return null;
+        }
+
+        static string GetFlowCommandHelp()
+        {
+            return @"AIBridgeCLI flow - Run or inspect a .flow.txt workflow
+
+Usage:
+  AIBridgeCLI flow run --file <path> [--timeout <ms>] [--raw]
+  AIBridgeCLI flow status [--run-id <id>] [--raw]
+  cat script.flow.txt | AIBridgeCLI flow run --stdin [--raw]
+
+Supported MVP statements:
+  FLOW <name>
+  VAR <name> = <value>
+  STEP <id> UNITY <command> [args]
+  STEP <id> JOB <jobType> [args]
+  WAIT <id> UNITY <command>
+    UNTIL <expr>
+    FAIL_IF <expr>
+    POLL <ms>
+    TIMEOUT <ms>
+  WAIT <id> JOB <jobType>
+    UNTIL <expr>
+    FAIL_IF <expr>
+    POLL <ms>
+    TIMEOUT <ms>
+  ASSERT last.success == true|false
+  VERIFY FILE_EXISTS <path>
+  VERIFY DIR_EXISTS <path>
+  END
+
+Notes:
+  - MVP is sequential only
+  - Supported JOB types in MVP: compile.unity, version.bump, android.preflight, build.android, ios.preflight, build.ios, scene.bulk_create
+  - Only Unity-backed STEP commands are supported in MVP
+  - STEP failures are terminal; ASSERT last.success == false is not supported
+  - android.preflight completes immediately and validates a snapshot of current Android build preconditions
+  - ios.preflight completes immediately and validates a snapshot of current iOS export preconditions
+  - build.android requires Unity's active build target to already be Android
+  - build.ios requires Unity's active build target to already be iOS and exports an Xcode project directory into a missing or empty folder
+  - version.bump completes immediately and sets bundleVersion and optional Android bundleVersionCode
+  - scene.bulk_create completes immediately from a manifest and usually uses ASSERT rather than WAIT
+  - Persisted workflow jobs are inspectable in the MVP, not resumable
+  - Run state is persisted under AIBridgeCache/flow-runs/
 ";
         }
 

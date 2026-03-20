@@ -15,21 +15,26 @@ namespace AIBridge.Editor
         public string DisplayName { get; set; }
         public bool SupportsSkillDirectory { get; set; }
         public string RootRuleFileName { get; set; }
-        public string SkillDirectoryRelativePath { get; set; }
-        public string SkillFileName { get; set; }
+        public string SkillRootRelativePath { get; set; }
+        public string PrimarySkillId { get; set; }
         public string RootRuleTemplateRelativePath { get; set; }
         public MissingRootRuleStrategy MissingRootRuleStrategy { get; set; }
         public string TemplateId { get; set; }
         public string RuleTarget { get; set; }
 
-        public string GetSkillFileRelativePath()
+        public string GetPrimarySkillFileRelativePath()
         {
-            if (!SupportsSkillDirectory || string.IsNullOrEmpty(SkillDirectoryRelativePath) || string.IsNullOrEmpty(SkillFileName))
+            return GetSkillFileRelativePath(PrimarySkillId);
+        }
+
+        public string GetSkillFileRelativePath(string skillId)
+        {
+            if (!SupportsSkillDirectory || string.IsNullOrEmpty(SkillRootRelativePath) || string.IsNullOrEmpty(skillId))
             {
                 return null;
             }
 
-            return SkillDirectoryRelativePath.TrimEnd('/', '\\') + "/" + SkillFileName;
+            return SkillRootRelativePath.TrimEnd('/', '\\') + "/" + skillId + "/SKILL.md";
         }
     }
 }

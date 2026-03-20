@@ -1,20 +1,24 @@
 ---
 templateId: unity-integration
 assistant: claude
-version: 1
+version: 2
 target: root-rule
 ---
 ## AIBridge Unity Integration
 
 Use `{{CLI_PATH}}` to interact with Unity Editor through AIBridge.
 
-**Skill**: `aibridge`
+**Primary Skill**: `{{PRIMARY_SKILL_ID}}`
+
+**Available Skills**:
+{{AVAILABLE_SKILLS_MARKDOWN}}
 
 **When to Use**:
 - Read Unity console errors and warnings
 - Trigger compile checks and inspect results
 - Create or modify GameObjects, Components, Scenes, and Prefabs
 - Search assets and capture screenshots or GIFs from Play Mode
+- Generate `.flow.txt` automation scripts with the specialized flow skills when you need repeatable scene/test/build workflows
 
 **Search Priority**:
 - For Unity project files/assets/resources/scripts/configs, prefer AIBridge over generic filesystem search
@@ -41,4 +45,4 @@ Use `{{CLI_PATH}}` to interact with Unity Editor through AIBridge.
 {{CLI_PATH}} asset read_text --assetPath "Assets/Scripts/Player.cs" --startLine 1 --maxLines 120 --raw
 ```
 
-**Skill Documentation**: [AIBridge Skill]({{SKILL_DOC_PATH}})
+**Primary Skill Documentation**: [AIBridge Skill]({{PRIMARY_SKILL_DOC_PATH}})

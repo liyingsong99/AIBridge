@@ -87,10 +87,12 @@ namespace AIBridgeCLI.Commands
             sb.AppendLine("Commands:");
 
             var maxLen = _commands.Keys.Max(k => k.Length);
-            maxLen = Math.Max(maxLen, "focus".Length); // Include focus command
+            maxLen = Math.Max(maxLen, "focus".Length);
+            maxLen = Math.Max(maxLen, "flow".Length);
 
             // Add focus command (CLI-only)
             sb.AppendLine($"  {"focus".PadRight(maxLen + 2)} Bring Unity Editor window to foreground (CLI-only, no Unity needed)");
+            sb.AppendLine($"  {"flow".PadRight(maxLen + 2)} Run or inspect a .flow.txt workflow (CLI-managed)");
 
             foreach (var cmd in _commands.Values.OrderBy(c => c.Type))
             {

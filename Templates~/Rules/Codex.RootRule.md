@@ -1,12 +1,17 @@
 ---
 templateId: unity-project-rules
 assistant: codex
-version: 1
+version: 2
 target: root-rule
 ---
 ## AIBridge Rules
 
 Use `{{CLI_PATH}}` for Unity Editor automation in this project.
+
+Primary reference skill: `{{PRIMARY_SKILL_ID}}`
+
+Available installed skills:
+{{AVAILABLE_SKILLS_MARKDOWN}}
 
 For Unity-project lookup, prefer AIBridge over generic filesystem search whenever possible.
 
@@ -30,4 +35,4 @@ For Unity-project lookup, prefer AIBridge over generic filesystem search wheneve
 {{CLI_PATH}} asset read_text --assetPath "Assets/Scripts/Player.cs" --startLine 1 --maxLines 120 --raw
 ```
 
-Reference: `{{SKILL_DOC_PATH}}`
+If Claude Code is also used in this project, the installed AIBridge skills are exposed under `.claude/skills/` for Claude-native discovery.

@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "skills": [
+    {
+      "id": "aibridge",
+      "displayName": "AIBridge",
+      "source": "Skills~/aibridge/SKILL.md",
+      "summary": "Core Unity Editor automation, CLI usage, and search priority rules.",
+      "entry": true,
+      "installByDefault": true
+    },
+    {
+      "id": "aibridge-flow-author",
+      "displayName": "AIBridge Flow Author",
+      "source": "Skills~/aibridge-flow-author/SKILL.md",
+      "summary": "Write deterministic .flow.txt automation scripts and follow DSL safety rules.",
+      "installByDefault": true
+    },
+    {
+      "id": "aibridge-flow-scene",
+      "displayName": "AIBridge Flow Scene",
+      "source": "Skills~/aibridge-flow-scene/SKILL.md",
+      "summary": "Create repeatable scene setup and manifest-driven scene.bulk_create flows.",
+      "installByDefault": true
+    },
+    {
+      "id": "aibridge-flow-test",
+      "displayName": "AIBridge Flow Test",
+      "source": "Skills~/aibridge-flow-test/SKILL.md",
+      "summary": "Author PlayMode and editor automation test flows with verification steps.",
+      "installByDefault": true
+    },
+    {
+      "id": "aibridge-flow-build",
+      "displayName": "AIBridge Flow Build",
+      "source": "Skills~/aibridge-flow-build/SKILL.md",
+      "summary": "Author version.bump, platform preflight, and platform build flows with artifact checks and WAIT polling.",
+      "installByDefault": true
+    }
+  ]
+}

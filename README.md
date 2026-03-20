@@ -69,6 +69,12 @@ AI Bridge enables AI coding assistants (like Claude, GPT, etc.) to communicate w
 cn.lys.aibridge/
 ├── package.json
 ├── README.md
+├── Skills~/                       # Packaged Claude skill templates and manifest
+│   ├── manifest.json
+│   └── ...
+├── Templates~/                    # Root rule templates for supported assistants
+│   └── Rules/
+│       └── ...
 ├── Editor/
 │   ├── cn.lys.aibridge.Editor.asmdef
 │   ├── Core/
@@ -99,6 +105,8 @@ cn.lys.aibridge/
         ├── results/                 # Result files returned here
         └── screenshots/             # Screenshots saved here
 ```
+
+When the package is installed, AIBridge copies the CLI to `AIBridgeCache/CLI/` and installs the packaged Claude skills into `.claude/skills/` so Claude Code can discover them using its native project skill path.
 
 ## Usage
 
@@ -147,6 +155,12 @@ The CLI tool is copied to `./AIBridgeCache/CLI/AIBridgeCLI.exe`. Run the example
 
 # Record GIF with delayed start
 ./AIBridgeCache/CLI/AIBridgeCLI.exe screenshot gif --frameCount 60 --fps 20 --startDelay 0.5
+
+# Run a flow file
+./AIBridgeCache/CLI/AIBridgeCLI.exe flow run --file "Flows/android_package.flow.txt" --raw
+
+# Inspect the latest flow run
+./AIBridgeCache/CLI/AIBridgeCLI.exe flow status --raw
 ```
 
 ### Available Commands
@@ -167,6 +181,82 @@ The CLI tool is copied to `./AIBridgeCache/CLI/AIBridgeCLI.exe`. Run the example
 | `batch` | Execute multiple commands |
 | `screenshot` | Capture screenshots and GIF recordings |
 | `focus` | Bring Unity Editor to foreground (CLI-only) |
+| `flow` | Run or inspect `.flow.txt` workflows (CLI-managed) |
+
+### Flow Workflows
+
+The CLI also supports `.flow.txt` workflows for repeatable automation sequences.
+
+Current MVP flow/job surface:
+- `STEP ... UNITY ...`
+- `STEP ... JOB compile.unity`
+- `STEP ... JOB version.bump`
+- `STEP ... JOB android.preflight`
+- `STEP ... JOB build.android`
+- `STEP ... JOB ios.preflight`
+- `STEP ... JOB build.ios`
+- `STEP ... JOB scene.bulk_create`
+- `WAIT ... UNITY ...`
+- `WAIT ... JOB ...`
+
+Current build-chain example:
+
+```txt
+FLOW android_package
+
+VAR output_apk = "Builds/Android/app.apk"
+VAR version_name = "1.2.3"
+VAR version_code = 123
+
+STEP bump_version JOB version.bump --bundleVersion "${version_name}" --androidVersionCode ${version_code}
+ASSERT last.success == true
+
+STEP preflight JOB android.preflight --outputPath "${output_apk}"
+ASSERT last.success == true
+
+STEP build_apk JOB build.android --outputPath "${output_apk}"
+WAIT build_done JOB build.android
+  UNTIL $.data.status == "success"
+  FAIL_IF $.data.status == "failed"
+  POLL 2000
+  TIMEOUT 1800000
+
+VERIFY FILE_EXISTS "${output_apk}"
+END
+```
+
+Notes:
+- `android.preflight` checks a point-in-time snapshot of Android target, enabled scenes, and output path shape before build
+- `android.preflight` does not guarantee later `build.android` success, and it does not validate SDK/JDK/NDK/signing environment issues
+- `build.android` requires Unity's active build target to already be Android
+- `ios.preflight` checks a point-in-time snapshot of iOS target, enabled scenes, bundle identifier, and output directory shape before export
+- `ios.preflight` does not guarantee later `build.ios` success, and it does not validate signing/provisioning/archive/export steps
+- `build.ios` exports an Xcode project directory, not a final `.ipa`, and requires macOS Unity Editor plus iOS build support
+- `build.ios` expects a missing or empty output directory to avoid stale Xcode project contents
+- `scene.bulk_create` is a synchronous manifest job; it usually uses `ASSERT` rather than `WAIT`
+- `scene.bulk_create` fails fast on duplicate target object paths instead of merging into existing hierarchy objects
+- `scene.bulk_create` targets the current open scene in Edit Mode; Play Mode, Prefab Stage, and additive-scene disambiguation are out of scope in the MVP
+- `scene.bulk_create` reuses an existing root when `--rootName` matches, but child object creation remains create-only
+- `scene.bulk_create` uses best-effort Undo rollback for scene edits; arbitrary editor/component side effects are not guaranteed transactional
+- `version.bump` sets persistent PlayerSettings values; it does not restore previous values automatically
+- `version.bump` does not yet expose an iOS-specific build number field
+- persisted workflow jobs are inspectable in the MVP, not resumable
+
+Current scene automation example:
+
+```txt
+FLOW scene_bulk_create
+
+VAR manifest = "Assets/Automation/SpawnPoints.json"
+
+STEP bulk_create JOB scene.bulk_create --manifestPath "${manifest}" --rootName "SpawnPointsRoot"
+ASSERT last.success == true
+
+STEP save_scene UNITY menu_item --menuPath "File/Save"
+ASSERT last.success == true
+
+END
+```
 
 ### Runtime Extension
 
