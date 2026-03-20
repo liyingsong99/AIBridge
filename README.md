@@ -133,8 +133,8 @@ The CLI tool is copied to `./AIBridgeCache/CLI/AIBridgeCLI.exe`. Run the example
 # Get prefab hierarchy
 ./AIBridgeCache/CLI/AIBridgeCLI.exe prefab get_hierarchy --prefabPath "Assets/Prefabs/Player.prefab"
 
-# Search through Unity index to resolve the canonical asset path
-./AIBridgeCache/CLI/AIBridgeCLI.exe asset search --mode script --keyword "Player" --raw
+# Search through Unity index to resolve canonical asset paths for AI workflows
+./AIBridgeCache/CLI/AIBridgeCLI.exe asset search --mode script --keyword "Player" --format paths --raw
 
 # Optional fallback: read text through AIBridge only when native file reads are unavailable
 ./AIBridgeCache/CLI/AIBridgeCLI.exe asset read_text --assetPath "Assets/Scripts/Player.cs" --startLine 1 --maxLines 120 --raw
@@ -219,11 +219,13 @@ AIBridgeRuntime.Instance.RegisterHandler(new MyCustomHandler());
 
 For large Unity projects, prefer AIBridge asset queries before generic filesystem search:
 
-1. Use `asset search` / `asset find` to discover the canonical Unity asset path.
-2. Use `asset get_path` when you start from a GUID, and `asset load` when you want quick metadata confirmation.
+1. Use `asset search` / `asset find` with `format=paths` to discover canonical Unity asset paths with minimal token usage.
+2. Use `asset get_path` only when you start from a GUID, and `asset load` only when you want quick metadata confirmation.
 3. Once the path is known, prefer your AI assistant's native file-read tool for text-based assets such as `.cs`, `.shader`, `.json`, `.asset`, `.prefab`, `.unity`, `.mat`, `.meta`, and similar files under the project root.
 4. Use `asset read_text` only as a fallback when native reads are unavailable or when you specifically want a Unity-side line window.
 5. Fall back to generic repo search only if the target cannot be resolved through AIBridge.
+
+`format=full` (default) keeps `data.assets` as an array of asset objects. `format=paths` changes `data.assets` to an array of Unity asset path strings, which is usually the better fit for AI-driven file discovery.
 
 ## Command Protocol
 
