@@ -29,7 +29,7 @@ namespace AIBridgeCLI.Commands
             },
             ["dotnet"] = new List<ParameterInfo>
             {
-                new ParameterInfo("solution", "Solution file path (relative to project root)", false, "ET.sln"),
+                new ParameterInfo("solution", "Solution file path (relative to project root). If omitted, auto-detect from project root.", false, null),
                 new ParameterInfo("configuration", "Build configuration (Debug/Release)", false, "Debug"),
                 new ParameterInfo("verbosity", "MSBuild verbosity (quiet/minimal/normal/detailed)", false, "minimal"),
                 new ParameterInfo("timeout", "Build timeout in milliseconds", false, "300000"),

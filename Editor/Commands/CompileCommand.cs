@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using UnityEditor;
@@ -152,19 +153,19 @@ namespace AIBridge.Editor
         /// </summary>
         private CommandResult RunDotnetBuild(CommandRequest request)
         {
-            var solution = request.GetParam("solution", "ET.sln");
+            var solution = request.GetParam<string>("solution", null);
             var configuration = request.GetParam("configuration", "Debug");
             var verbosity = request.GetParam("verbosity", "minimal");
             var timeoutMs = request.GetParam("timeout", 120000);
 
-            // Find solution file
             var projectRoot = Path.GetDirectoryName(Application.dataPath);
-            var solutionPath = Path.Combine(projectRoot, solution);
-
-            if (!File.Exists(solutionPath))
+            var solutionResolution = ResolveSolutionPath(projectRoot, solution);
+            if (!solutionResolution.success)
             {
-                return CommandResult.Failure(request.id, $"Solution file not found: {solutionPath}");
+                return CommandResult.Failure(request.id, solutionResolution.error);
             }
+
+            var solutionPath = solutionResolution.solutionPath;
 
             var stopwatch = Stopwatch.StartNew();
             var errors = new List<object>();
@@ -235,7 +236,7 @@ namespace AIBridge.Editor
                     return CommandResult.Success(request.id, new
                     {
                         action = "dotnet",
-                        solution = solution,
+                        solution = solutionPath,
                         configuration = configuration,
                         exitCode = exitCode,
                         success = success,
@@ -253,6 +254,53 @@ namespace AIBridge.Editor
                 stopwatch.Stop();
                 return CommandResult.Failure(request.id, $"Failed to run dotnet build: {ex.Message}");
             }
+        }
+
+        private (bool success, string solutionPath, string error) ResolveSolutionPath(string projectRoot, string solution)
+        {
+            if (!string.IsNullOrWhiteSpace(solution))
+            {
+                var explicitPath = Path.IsPathRooted(solution)
+                    ? Path.GetFullPath(solution)
+                    : Path.GetFullPath(Path.Combine(projectRoot, solution));
+
+                if (!File.Exists(explicitPath))
+                {
+                    return (false, null, $"Specified solution file not found: {explicitPath}");
+                }
+
+                return (true, explicitPath, null);
+            }
+
+            var candidates = Directory
+                .EnumerateFiles(projectRoot, "*.sln", SearchOption.TopDirectoryOnly)
+                .Concat(Directory.EnumerateFiles(projectRoot, "*.slnx", SearchOption.TopDirectoryOnly))
+                .Select(Path.GetFullPath)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (candidates.Count == 0)
+            {
+                return (false, null, "No solution file was found in project root. Pass --solution explicitly or regenerate project files from Unity.");
+            }
+
+            if (candidates.Count == 1)
+            {
+                return (true, candidates[0], null);
+            }
+
+            var projectName = new DirectoryInfo(projectRoot).Name;
+            var projectNameMatches = candidates
+                .Where(path => string.Equals(Path.GetFileNameWithoutExtension(path), projectName, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (projectNameMatches.Count == 1)
+            {
+                return (true, projectNameMatches[0], null);
+            }
+
+            var candidateList = string.Join(", ", candidates.Select(Path.GetFileName));
+            return (false, null, $"Multiple solution files were found in project root: {candidateList}. Pass --solution explicitly.");
         }
 
         /// <summary>

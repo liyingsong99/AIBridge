@@ -181,14 +181,17 @@ All Windows examples below assume you run them from the Unity project root.
 
 ### 1.1 `compile` - Compilation Operations (Recommended for AI)
 
-**IMPORTANT for AI**: Use `compile unity` (recommended) or `compile dotnet` (fallback) to verify code changes compile successfully.
+**IMPORTANT for AI**: Use `compile unity` first to verify Unity script compilation. Use `compile dotnet` only when you explicitly want to validate the generated solution build.
 
 ```bash
 # Recommended: Unity internal compilation (requires Unity Editor running)
 ./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
 
-# Fallback: External dotnet build (when Unity is not running)
+# Optional: External dotnet solution build
 ./AIBridgeCache/CLI/AIBridgeCLI.exe compile dotnet
+
+# Optional: Explicitly choose a solution when multiple exist
+./AIBridgeCache/CLI/AIBridgeCLI.exe compile dotnet --solution MyGame.sln
 ```
 
 **Workflow for AI after modifying code:**
@@ -197,7 +200,7 @@ All Windows examples below assume you run them from the Unity project root.
 # Step 1: Try Unity compile first (recommended)
 ./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
 
-# If timeout (Unity not running), fallback to dotnet
+# Optional: Run dotnet solution build as a separate compatibility check
 ./AIBridgeCache/CLI/AIBridgeCLI.exe compile dotnet
 
 # Output (success): {"success":true,"status":"success","duration":5.2,"errorCount":0,"warningCount":3,...}
@@ -224,11 +227,11 @@ All Windows examples below assume you run them from the Unity project root.
 | `--poll-interval` | Status polling interval in ms | `500` |
 | `--transport-timeout` | Single command round-trip timeout in ms | `min(30000, timeout)` |
 
-**Dotnet compile parameters (fallback):**
+**Dotnet compile parameters (explicit solution build check):**
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `--solution` | Solution file path | `ET.sln` |
+| `--solution` | Solution file path. If omitted, auto-detect from project root; if ambiguous, pass explicitly | auto-detect |
 | `--configuration` | Build configuration | `Debug` |
 | `--verbosity` | MSBuild verbosity | `minimal` |
 | `--timeout` | Timeout in ms | `300000` |
@@ -239,8 +242,9 @@ All Windows examples below assume you run them from the Unity project root.
 
 - `compile unity` requires Unity Editor to be running, automatically polls for completion
 - If Unity is already compiling or temporarily busy, `compile unity` will attach to the current compilation and keep polling until a final result or the outer timeout is reached
+- `compile unity` does not fall back to `dotnet build`; Unity compile and solution build are intentionally separate checks
 - `--timeout` controls the full compile wait window, while `--transport-timeout` controls each CLI↔Unity communication attempt
-- `compile dotnet` runs independently without Unity, has intelligent error filtering
+- `compile dotnet` runs independently without Unity, auto-detects a single root-level `.sln` or `.slnx` when `--solution` is omitted, and has intelligent error filtering
 - Use `compile start` and `compile status` for low-level manual compilation control
 
 ### 2. `gameobject` - GameObject Operations

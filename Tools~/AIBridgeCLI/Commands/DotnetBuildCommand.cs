@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json;
@@ -60,22 +61,23 @@ namespace AIBridgeCLI.Commands
 
             try
             {
-                // Find project root
-                var projectRoot = FindProjectRoot(options.Solution);
+                var projectRoot = FindUnityProjectRoot();
                 if (projectRoot == null)
                 {
                     result.Success = false;
-                    result.Error = $"Could not find solution file: {options.Solution}";
+                    result.Error = "Could not determine Unity project root for dotnet build.";
                     return result;
                 }
 
-                var solutionPath = Path.Combine(projectRoot, options.Solution);
-                if (!File.Exists(solutionPath))
+                var solutionResolution = ResolveSolutionPath(projectRoot, options.Solution);
+                if (!solutionResolution.Success)
                 {
                     result.Success = false;
-                    result.Error = $"Solution file not found: {solutionPath}";
+                    result.Error = solutionResolution.Error;
                     return result;
                 }
+
+                var solutionPath = solutionResolution.SolutionPath;
 
                 result.SolutionPath = solutionPath;
                 result.ProjectRoot = projectRoot;
@@ -190,42 +192,154 @@ namespace AIBridgeCLI.Commands
         }
 
         /// <summary>
-        /// Find project root by searching for solution file
+        /// Find Unity project root from environment, current directory, or CLI location.
         /// </summary>
-        private static string FindProjectRoot(string solutionName)
+        private static string FindUnityProjectRoot()
         {
-            // Start from CLI exe location
-            var exeDir = AppDomain.CurrentDomain.BaseDirectory;
-            var currentDir = new DirectoryInfo(exeDir);
-
-            // Search up to 10 levels
-            for (int i = 0; i < 10 && currentDir != null; i++)
+            var envProjectRoot = Environment.GetEnvironmentVariable("UNITY_PROJECT_ROOT");
+            if (!string.IsNullOrWhiteSpace(envProjectRoot))
             {
-                var solutionPath = Path.Combine(currentDir.FullName, solutionName);
-                if (File.Exists(solutionPath))
+                var fullPath = Path.GetFullPath(envProjectRoot);
+                if (IsUnityProjectRoot(fullPath))
                 {
-                    return currentDir.FullName;
+                    return fullPath;
                 }
-                currentDir = currentDir.Parent;
             }
 
-            // Try common Unity project structure: Tools~/CLI -> Package -> Packages -> ProjectRoot
-            currentDir = new DirectoryInfo(exeDir);
-            for (int i = 0; i < 6 && currentDir != null; i++)
+            var cwdProjectRoot = SearchUpwardsForUnityProjectRoot(Directory.GetCurrentDirectory());
+            if (cwdProjectRoot != null)
             {
-                currentDir = currentDir.Parent;
+                return cwdProjectRoot;
             }
 
-            if (currentDir != null)
+            var exeProjectRoot = SearchUpwardsForUnityProjectRoot(AppDomain.CurrentDomain.BaseDirectory);
+            if (exeProjectRoot != null)
             {
-                var solutionPath = Path.Combine(currentDir.FullName, solutionName);
-                if (File.Exists(solutionPath))
-                {
-                    return currentDir.FullName;
-                }
+                return exeProjectRoot;
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Resolve solution path from explicit input or project-root discovery.
+        /// </summary>
+        private static SolutionResolution ResolveSolutionPath(string projectRoot, string solution)
+        {
+            if (!string.IsNullOrWhiteSpace(solution))
+            {
+                var explicitPath = Path.IsPathRooted(solution)
+                    ? Path.GetFullPath(solution)
+                    : Path.GetFullPath(Path.Combine(projectRoot, solution));
+
+                if (!File.Exists(explicitPath))
+                {
+                    return SolutionResolution.Failure($"Specified solution file not found: {explicitPath}");
+                }
+
+                return SolutionResolution.SuccessResult(explicitPath);
+            }
+
+            var candidates = FindSolutionCandidates(projectRoot);
+            if (candidates.Count == 0)
+            {
+                return SolutionResolution.Failure("No solution file was found in project root. Pass --solution explicitly or regenerate project files from Unity.");
+            }
+
+            if (candidates.Count == 1)
+            {
+                return SolutionResolution.SuccessResult(candidates[0]);
+            }
+
+            var projectName = new DirectoryInfo(projectRoot).Name;
+            var projectNameMatches = candidates
+                .Where(path => string.Equals(Path.GetFileNameWithoutExtension(path), projectName, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (projectNameMatches.Count == 1)
+            {
+                return SolutionResolution.SuccessResult(projectNameMatches[0]);
+            }
+
+            var candidateList = string.Join(", ", candidates.Select(Path.GetFileName));
+            return SolutionResolution.Failure($"Multiple solution files were found in project root: {candidateList}. Pass --solution explicitly.");
+        }
+
+        /// <summary>
+        /// Find solution candidates in the Unity project root only.
+        /// </summary>
+        private static List<string> FindSolutionCandidates(string projectRoot)
+        {
+            return Directory
+                .EnumerateFiles(projectRoot, "*.sln", SearchOption.TopDirectoryOnly)
+                .Concat(Directory.EnumerateFiles(projectRoot, "*.slnx", SearchOption.TopDirectoryOnly))
+                .Select(Path.GetFullPath)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        /// <summary>
+        /// Search upward from a starting directory for a Unity project root.
+        /// </summary>
+        private static string SearchUpwardsForUnityProjectRoot(string startPath)
+        {
+            if (string.IsNullOrWhiteSpace(startPath))
+            {
+                return null;
+            }
+
+            var currentDir = new DirectoryInfo(Path.GetFullPath(startPath));
+
+            while (currentDir != null)
+            {
+                if (IsUnityProjectRoot(currentDir.FullName))
+                {
+                    return currentDir.FullName;
+                }
+
+                currentDir = currentDir.Parent;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Check if the directory looks like a Unity project root.
+        /// </summary>
+        private static bool IsUnityProjectRoot(string directory)
+        {
+            if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+            {
+                return false;
+            }
+
+            return Directory.Exists(Path.Combine(directory, "Assets")) &&
+                   File.Exists(Path.Combine(directory, "ProjectSettings", "ProjectSettings.asset"));
+        }
+
+        private class SolutionResolution
+        {
+            public bool Success { get; private set; }
+            public string SolutionPath { get; private set; }
+            public string Error { get; private set; }
+
+            public static SolutionResolution SuccessResult(string solutionPath)
+            {
+                return new SolutionResolution
+                {
+                    Success = true,
+                    SolutionPath = solutionPath
+                };
+            }
+
+            public static SolutionResolution Failure(string error)
+            {
+                return new SolutionResolution
+                {
+                    Success = false,
+                    Error = error
+                };
+            }
         }
 
         /// <summary>
@@ -327,7 +441,7 @@ namespace AIBridgeCLI.Commands
     /// </summary>
     public class DotnetBuildOptions
     {
-        public string Solution { get; set; } = "ET.sln";
+        public string Solution { get; set; }
         public string Configuration { get; set; } = "Debug";
         public string Verbosity { get; set; } = "minimal";
         public int TimeoutMs { get; set; } = 300000; // 5 minutes default

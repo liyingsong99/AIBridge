@@ -402,7 +402,7 @@ Options:
         {
             var options = new DotnetBuildOptions
             {
-                Solution = parsed.Options.TryGetValue("solution", out var sol) ? sol : "ET.sln",
+                Solution = parsed.Options.TryGetValue("solution", out var sol) ? sol : null,
                 Configuration = parsed.Options.TryGetValue("configuration", out var cfg) ? cfg : "Debug",
                 Verbosity = parsed.Options.TryGetValue("verbosity", out var verb) ? verb : "minimal",
                 TimeoutMs = parsed.Options.TryGetValue("timeout", out var t) && int.TryParse(t, out var tVal) ? tVal : 300000,
@@ -418,7 +418,8 @@ Options:
 
             if (outputMode == OutputMode.Pretty)
             {
-                OutputFormatter.PrintInfo($"Building {options.Solution} (configuration: {options.Configuration})...");
+                var solutionLabel = string.IsNullOrWhiteSpace(options.Solution) ? "auto-detected solution" : options.Solution;
+                OutputFormatter.PrintInfo($"Building {solutionLabel} (configuration: {options.Configuration})...");
             }
 
             var result = DotnetBuildCommand.Execute(options);
