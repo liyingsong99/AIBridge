@@ -524,6 +524,40 @@ Execute multiple commands in one CLI call (more efficient than multiple calls).
 | `--cmd <commands>` | Commands separated by `&` |
 | `--stdin` | Read from stdin (one per line) |
 
+### 14. `gameview` - Game View Resolution
+
+```bash
+# Get current Game view resolution
+./AIBridgeCache/CLI/AIBridgeCLI.exe gameview get_resolution
+
+# Set resolution (adds custom preset if not already present)
+./AIBridgeCache/CLI/AIBridgeCLI.exe gameview set_resolution --width 1920 --height 1080
+./AIBridgeCache/CLI/AIBridgeCLI.exe gameview set_resolution --width 1280 --height 720
+
+# List all available resolution presets
+./AIBridgeCache/CLI/AIBridgeCLI.exe gameview list_resolutions
+```
+
+**Response for `get_resolution`:**
+
+```json
+{"success":true,"data":{"action":"get_resolution","width":1920,"height":1080,"name":"Full HD","selectedIndex":5,"sizeType":"FixedResolution"}}
+```
+
+**Response for `set_resolution`:**
+
+```json
+{"success":true,"data":{"action":"set_resolution","width":1920,"height":1080,"selectedIndex":5,"wasAdded":false,"label":"Full HD"}}
+```
+
+**Notes:**
+
+- The Game view window must be open in the Unity Editor
+- `set_resolution` adds a custom `FixedResolution` preset named `AIBridge WxH` if no matching resolution exists
+- Resolution constraints: width and height must be integers between 1 and 8192
+- Works in both Edit Mode and Play Mode
+- Use before `screenshot game` to ensure consistent capture resolution
+
 ---
 
 **Skill Version**: 1.0

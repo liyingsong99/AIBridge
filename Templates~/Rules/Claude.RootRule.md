@@ -43,6 +43,10 @@ AIBridgeCLI outputs raw JSON by default for AI consumption. Use `--pretty` only 
 {{CLI_PATH}} gameobject create --name "Cube" --primitiveType Cube
 {{CLI_PATH}} transform set_position --path "Player" --x 0 --y 1 --z 0
 
+# Game view resolution
+{{CLI_PATH}} gameview set_resolution --width 1920 --height 1080
+{{CLI_PATH}} gameview get_resolution
+
 # Fallback only
 {{CLI_PATH}} asset read_text --assetPath "Assets/Scripts/Player.cs" --startLine 1 --maxLines 120
 ```

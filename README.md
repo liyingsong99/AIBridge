@@ -68,7 +68,7 @@ You can also clone or download this repository and place it under your project's
 ## Requirements
 
 - Unity 2019.4 or later
-- .NET 6.0 Runtime for the bundled CLI tools
+- .NET 8.0 Runtime for the bundled CLI tools
 
 ## CLI command quick reference
 
@@ -113,6 +113,11 @@ The bundled AIBridgeCLI is designed to expose the main AIBridge workflows as dir
   ```bash
   ./AIBridgeCache/CLI/AIBridgeCLI.exe screenshot game
   ./AIBridgeCache/CLI/AIBridgeCLI.exe screenshot gif --frameCount 50
+  ```
+- **Set or inspect the Game view resolution** for consistent visual testing
+  ```bash
+  ./AIBridgeCache/CLI/AIBridgeCLI.exe gameview set_resolution --width 1920 --height 1080
+  ./AIBridgeCache/CLI/AIBridgeCLI.exe gameview get_resolution
   ```
 
 ## License
