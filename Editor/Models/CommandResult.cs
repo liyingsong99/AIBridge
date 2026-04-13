@@ -31,7 +31,7 @@ namespace AIBridge.Editor
         /// <summary>
         /// Execution time in milliseconds
         /// </summary>
-        public long executionTime;
+        public long? executionTime;
 
         /// <summary>
         /// Create a successful result

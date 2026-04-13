@@ -220,10 +220,20 @@ namespace AIBridge.Editor
             }
 
             stopwatch.Stop();
-            result.executionTime = stopwatch.ElapsedMilliseconds;
+            if (string.Equals(request.type, "compile", StringComparison.OrdinalIgnoreCase))
+            {
+                result.executionTime = stopwatch.ElapsedMilliseconds;
+            }
 
             WriteResult(result);
-            AIBridgeLogger.LogDebug($"Processed command {request.id} in {result.executionTime}ms, success={result.success}");
+            if (result.executionTime.HasValue)
+            {
+                AIBridgeLogger.LogDebug($"Processed command {request.id} in {result.executionTime.Value}ms, success={result.success}");
+            }
+            else
+            {
+                AIBridgeLogger.LogDebug($"Processed command {request.id}, success={result.success}");
+            }
 
             return true;
         }
