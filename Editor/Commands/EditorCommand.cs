@@ -13,6 +13,19 @@ namespace AIBridge.Editor
         public string Type => "editor";
         public bool RequiresRefresh => false;  // Editor commands handle refresh internally if needed
 
+        public string SkillDescription => @"### `editor` - Editor Control
+
+```bash
+$CLI editor log --message ""Hello"" [--logType Warning|Error]
+$CLI editor undo [--count 3]
+$CLI editor redo
+$CLI editor compile  # Simple compile, use `compile` command for full features
+$CLI editor refresh [--forceUpdate true]
+$CLI editor play [--domainReload false]
+$CLI editor stop|pause
+$CLI editor get_state
+```";
+
         public CommandResult Execute(CommandRequest request)
         {
             var action = request.GetParam("action", "undo");
@@ -130,12 +143,25 @@ namespace AIBridge.Editor
                 });
             }
 
+            // Configure Enter Play Mode Settings based on domainReload parameter
+            var domainReload = request.GetParam("domainReload", true);
+            if (domainReload)
+            {
+                EditorSettings.enterPlayModeOptionsEnabled = false;
+            }
+            else
+            {
+                EditorSettings.enterPlayModeOptionsEnabled = true;
+                EditorSettings.enterPlayModeOptions = EnterPlayModeOptions.DisableDomainReload;
+            }
+
             EditorApplication.isPlaying = true;
 
             return CommandResult.Success(request.id, new
             {
                 action = "play",
-                started = true
+                started = true,
+                domainReload = domainReload
             });
         }
 
@@ -189,7 +215,9 @@ namespace AIBridge.Editor
                 isCompiling = EditorApplication.isCompiling,
                 isUpdating = EditorApplication.isUpdating,
                 applicationPath = EditorApplication.applicationPath,
-                applicationContentsPath = EditorApplication.applicationContentsPath
+                applicationContentsPath = EditorApplication.applicationContentsPath,
+                enterPlayModeOptionsEnabled = EditorSettings.enterPlayModeOptionsEnabled,
+                enterPlayModeOptions = EditorSettings.enterPlayModeOptions.ToString()
             });
         }
 

@@ -16,6 +16,16 @@ namespace AIBridge.Editor
         public string Type => "scene";
         public bool RequiresRefresh => true;
 
+        public string SkillDescription => @"### `scene` - Scene Operations
+
+```bash
+$CLI scene load --scenePath ""Assets/Scenes/Main.unity"" [--mode additive]
+$CLI scene save [--saveAs ""Assets/Scenes/NewScene.unity""]
+$CLI scene get_hierarchy [--depth 3] [--includeInactive false]
+$CLI scene get_active
+$CLI scene new [--setup empty]
+```";
+
         public CommandResult Execute(CommandRequest request)
         {
             var action = request.GetParam("action", "get_hierarchy");

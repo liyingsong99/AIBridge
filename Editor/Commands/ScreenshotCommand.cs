@@ -15,6 +15,35 @@ namespace AIBridge.Editor
         public string Type => "screenshot";
         public bool RequiresRefresh => false;
 
+        public string SkillDescription => @"### `screenshot` - Screenshot & GIF Recording (Play Mode)
+
+**Requires Play mode.** Files saved to `AIBridgeCache/screenshots/`.
+
+```bash
+$CLI screenshot game  # Capture Game view screenshot (JPG)
+$CLI screenshot gif --frameCount 50  # Record GIF
+$CLI screenshot gif --frameCount 100 --fps 25 --scale 0.5 --colorCount 128
+```
+
+**GIF Parameters:**
+
+| Parameter | Range | Default | Description |
+|-----------|-------|---------|-------------|
+| `--frameCount` | 1-200 | Required | Number of frames to capture |
+| `--fps` | 10-30 | 25 | Frames per second |
+| `--scale` | 0.25-1.0 | 0.5 | Resolution scale factor |
+| `--colorCount` | 64-256 | 128 | GIF palette color count |
+| `--startDelay` | 0-5 seconds | 0 | Delay before capture starts |
+
+**Estimated File Sizes:**
+
+| Frames | Duration | Resolution | Size |
+|--------|----------|------------|------|
+| 25 | 1s | 480x270 | 200KB - 800KB |
+| 50 | 2s | 480x270 | 400KB - 1.5MB |
+| 100 | 4s | 480x270 | 800KB - 3MB |
+| 200 | 8s | 480x270 | 1.5MB - 6MB |";
+
         // For async GIF recording - stores the command ID for deferred result writing
         private static string _pendingGifCommandId;
         private static bool _gifRecordingInProgress;

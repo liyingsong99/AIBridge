@@ -16,6 +16,32 @@ namespace AIBridge.Editor
         public string Type => "asset";
         public bool RequiresRefresh => true;
 
+        public string SkillDescription => @"### `asset` - AssetDatabase Operations
+
+```bash
+# Search (recommended - Unity AssetDatabase index)
+$CLI asset search --mode script --keyword ""Player"" --format paths
+$CLI asset search --mode prefab --keyword ""UI"" --format paths
+$CLI asset search --filter ""t:ScriptableObject"" --format paths
+# Modes: all, prefab, scene, script, texture, material, audio, animation, shader, font, model, so
+
+# Find (precise control)
+$CLI asset find --filter ""t:Prefab"" --format paths [--searchInFolders ""Assets/Textures""] [--maxResults 50]
+
+# Import / Refresh
+$CLI asset import --assetPath ""Assets/Textures/icon.png""
+$CLI asset refresh
+
+# Get Path / Load Metadata
+$CLI asset get_path --guid ""abc123...""
+$CLI asset load --assetPath ""Assets/Prefabs/Player.prefab""
+
+# Fallback: read text (use host AI native file-read tool first)
+$CLI asset read_text --assetPath ""Assets/Scripts/Player.cs"" --startLine 1 --maxLines 120
+```
+
+**Note:** `format=paths` returns Unity asset paths only (efficient). `format=full` returns asset objects with metadata.";
+
         /// <summary>
         /// Predefined search mode filters
         /// </summary>

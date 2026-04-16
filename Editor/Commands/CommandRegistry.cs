@@ -117,6 +117,19 @@ namespace AIBridge.Editor
         }
 
         /// <summary>
+        /// Get all registered command instances
+        /// </summary>
+        public static IEnumerable<ICommand> GetAllCommands()
+        {
+            if (!_initialized)
+            {
+                Initialize();
+            }
+
+            return Commands.Values;
+        }
+
+        /// <summary>
         /// Get all registered command types
         /// </summary>
         public static IEnumerable<string> GetRegisteredTypes()

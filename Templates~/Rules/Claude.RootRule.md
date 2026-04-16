@@ -25,4 +25,4 @@ target: root-rule
 {{CLI_PATH}} gameobject create --name "Cube" --primitiveType Cube
 ```
 
-**Full Documentation**: [{{SKILL_DOC_PATH}}]({{SKILL_DOC_PATH}})
+**Skill Documentation**: [AIBridge Skill]({{SKILL_DOC_PATH}})

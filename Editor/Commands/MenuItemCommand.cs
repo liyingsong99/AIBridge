@@ -11,6 +11,13 @@ namespace AIBridge.Editor
         public string Type => "menu_item";
         public bool RequiresRefresh => true;  // Menu items may modify assets
 
+        public string SkillDescription => @"### `menu_item` - Invoke Menu Item
+
+```bash
+$CLI menu_item --menuPath ""GameObject/Create Empty""
+$CLI menu_item --menuPath ""Assets/Create/Folder""
+```";
+
         public CommandResult Execute(CommandRequest request)
         {
             var menuPath = request.GetParam<string>("menuPath");

@@ -18,6 +18,55 @@ namespace AIBridge.Editor
     public class CompileCommand : ICommand
     {
         public string Type => "compile";
+
+        public string SkillDescription => @"### `compile` - Compilation Operations
+
+```bash
+$CLI compile unity  # Default (requires Unity Editor)
+$CLI compile dotnet [--solution MyGame.sln]  # Optional validation
+
+# Output: {""success"":true,""status"":""success"",""duration"":5.2,""errorCount"":0,""warningCount"":3,...}
+```
+
+**Unity compile response fields:**
+
+| Field | Description |
+|-------|-------------|
+| `success` | Whether build succeeded |
+| `status` | ""success"", ""failed"", ""idle"", or ""timeout"" |
+| `duration` | Build duration in seconds |
+| `errorCount` | Number of errors |
+| `warningCount` | Number of warnings |
+| `errors` | Array of error details (file, line, column, code, message) |
+| `warnings` | Array of warning details (limited to 20) |
+
+**Unity compile parameters:**
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--timeout` | Total compilation timeout in ms | `120000` |
+| `--poll-interval` | Status polling interval in ms | `500` |
+| `--transport-timeout` | Single command round-trip timeout in ms | `min(30000, timeout)` |
+
+**Dotnet compile parameters (explicit solution build check):**
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--solution` | Solution file path. If omitted, auto-detect from project root; if ambiguous, pass explicitly | auto-detect |
+| `--configuration` | Build configuration | `Debug` |
+| `--verbosity` | MSBuild verbosity | `minimal` |
+| `--timeout` | Timeout in ms | `300000` |
+| `--no-filter` | Disable error filtering | `false` |
+| `--exclude` | Custom exclude paths (comma separated) | - |
+
+**NOTE**:
+
+- `compile unity` requires Unity Editor to be running, automatically polls for completion
+- If Unity is already compiling or temporarily busy, `compile unity` will attach to the current compilation and keep polling until a final result or the outer timeout is reached
+- `compile unity` does not fall back to `dotnet build`; Unity compile and solution build are intentionally separate validations
+- `--timeout` controls the full compile wait window, while `--transport-timeout` controls each CLI-Unity communication attempt
+- `compile dotnet` runs independently without Unity, auto-detects a single root-level `.sln` or `.slnx` when `--solution` is omitted, and has intelligent error filtering
+- Use `compile start` and `compile status` for low-level manual compilation control";
         public bool RequiresRefresh => false;
 
         // Regex to parse MSBuild error format: path(line,column): error CS0001: message

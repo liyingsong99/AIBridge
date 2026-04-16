@@ -68,7 +68,7 @@ UnityMCP 更偏向 AI 客户端和 Unity Editor 之间的实时 MCP 连接；AIB
 ## 系统要求
 
 - Unity 2019.4 或更高版本
-- .NET 6.0 Runtime，用于随包提供的 CLI 工具
+- .NET 8.0 Runtime，用于随包提供的 CLI 工具
 
 ## CLI 命令速览
 
@@ -113,6 +113,11 @@ UnityMCP 更偏向 AI 客户端和 Unity Editor 之间的实时 MCP 连接；AIB
   ```bash
   ./AIBridgeCache/CLI/AIBridgeCLI.exe screenshot game
   ./AIBridgeCache/CLI/AIBridgeCLI.exe screenshot gif --frameCount 50
+  ```
+- **设置或查询 Game 视图分辨率**，用于视觉测试的一致性确认
+  ```bash
+  ./AIBridgeCache/CLI/AIBridgeCLI.exe gameview set_resolution --width 1920 --height 1080
+  ./AIBridgeCache/CLI/AIBridgeCLI.exe gameview get_resolution
   ```
 
 ## 许可证

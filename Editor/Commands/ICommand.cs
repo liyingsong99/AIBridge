@@ -20,6 +20,13 @@ namespace AIBridge.Editor
         bool RequiresRefresh { get; }
 
         /// <summary>
+        /// Markdown documentation snippet for this command, used to generate SKILL.md.
+        /// Return a self-contained markdown section (starting with a ### heading).
+        /// Return null or empty string to exclude this command from SKILL.md generation.
+        /// </summary>
+        string SkillDescription { get; }
+
+        /// <summary>
         /// Execute the command and return result.
         /// This method is called on the main thread.
         /// </summary>

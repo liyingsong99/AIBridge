@@ -14,6 +14,16 @@ namespace AIBridge.Editor
         public string Type => "selection";
         public bool RequiresRefresh => false;
 
+        public string SkillDescription => @"### `selection` - Selection Operations
+
+```bash
+$CLI selection get [--includeComponents true]
+$CLI selection set --path ""Player"" [--assetPath ""Assets/Prefabs/Player.prefab""]
+$CLI selection clear
+$CLI selection add --path ""Enemy1""
+$CLI selection remove --path ""Enemy1""
+```";
+
         public CommandResult Execute(CommandRequest request)
         {
             var action = request.GetParam("action", "get");
@@ -122,7 +132,11 @@ namespace AIBridge.Editor
             // By instance ID
             if (instanceId != 0)
             {
+#if UNITY_6000_3_OR_NEWER
+                selectedObject = EditorUtility.EntityIdToObject(instanceId);
+#else
                 selectedObject = EditorUtility.InstanceIDToObject(instanceId);
+#endif
                 if (selectedObject != null)
                 {
                     selectedObjects.Add(selectedObject);
@@ -136,7 +150,11 @@ namespace AIBridge.Editor
                 {
                     if (int.TryParse(idStr.Trim(), out var id))
                     {
+#if UNITY_6000_3_OR_NEWER
+                        var obj = EditorUtility.EntityIdToObject(id);
+#else
                         var obj = EditorUtility.InstanceIDToObject(id);
+#endif
                         if (obj != null)
                         {
                             selectedObjects.Add(obj);
@@ -202,7 +220,11 @@ namespace AIBridge.Editor
 
             if (instanceId != 0)
             {
+#if UNITY_6000_3_OR_NEWER
+                objectToAdd = EditorUtility.EntityIdToObject(instanceId);
+#else
                 objectToAdd = EditorUtility.InstanceIDToObject(instanceId);
+#endif
             }
             else if (!string.IsNullOrEmpty(path))
             {
@@ -243,7 +265,11 @@ namespace AIBridge.Editor
 
             if (instanceId != 0)
             {
+#if UNITY_6000_3_OR_NEWER
+                objectToRemove = EditorUtility.EntityIdToObject(instanceId);
+#else
                 objectToRemove = EditorUtility.InstanceIDToObject(instanceId);
+#endif
             }
             else if (!string.IsNullOrEmpty(path))
             {

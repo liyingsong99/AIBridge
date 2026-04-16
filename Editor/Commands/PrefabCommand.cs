@@ -13,6 +13,17 @@ namespace AIBridge.Editor
         public string Type => "prefab";
         public bool RequiresRefresh => true;
 
+        public string SkillDescription => @"### `prefab` - Prefab Operations
+
+```bash
+$CLI prefab instantiate --prefabPath ""Assets/Prefabs/Player.prefab"" [--posX 5 --posY 0 --posZ 0]
+$CLI prefab save --gameObjectPath ""Player"" --savePath ""Assets/Prefabs/Player.prefab""
+$CLI prefab unpack --gameObjectPath ""Player(Clone)"" [--completely true]
+$CLI prefab get_info --prefabPath ""Assets/Prefabs/Player.prefab""
+$CLI prefab get_hierarchy --prefabPath ""Assets/Prefabs/Player.prefab"" [--depth 4] [--includeInactive false]
+$CLI prefab apply --gameObjectPath ""Player(Clone)""
+```";
+
         public CommandResult Execute(CommandRequest request)
         {
             var action = request.GetParam("action", "instantiate");

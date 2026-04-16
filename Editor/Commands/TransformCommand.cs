@@ -12,6 +12,19 @@ namespace AIBridge.Editor
         public string Type => "transform";
         public bool RequiresRefresh => false;
 
+        public string SkillDescription => @"### `transform` - Transform Operations
+
+```bash
+$CLI transform get --path ""Player""
+$CLI transform set_position --path ""Player"" --x 0 --y 1 --z 0 [--local true]
+$CLI transform set_rotation --path ""Player"" --x 0 --y 90 --z 0
+$CLI transform set_scale --path ""Player"" --x 2 --y 2 --z 2 [--uniform 2]
+$CLI transform set_parent --path ""Child"" --parentPath ""Parent""
+$CLI transform look_at --path ""Player"" --targetPath ""Enemy"" [--targetX 0 --targetY 0 --targetZ 10]
+$CLI transform reset --path ""Player""
+$CLI transform set_sibling_index --path ""Child"" --index 0 [--first true]
+```";
+
         public CommandResult Execute(CommandRequest request)
         {
             var action = request.GetParam("action", "get");
@@ -175,7 +188,11 @@ namespace AIBridge.Editor
 
             if (parentInstanceId != 0)
             {
+#if UNITY_6000_3_OR_NEWER
+                var parentGo = EditorUtility.EntityIdToObject(parentInstanceId) as GameObject;
+#else
                 var parentGo = EditorUtility.InstanceIDToObject(parentInstanceId) as GameObject;
+#endif
                 newParent = parentGo?.transform;
             }
             else if (!string.IsNullOrEmpty(parentPath))
@@ -264,7 +281,11 @@ namespace AIBridge.Editor
 
             if (instanceId != 0)
             {
+#if UNITY_6000_3_OR_NEWER
+                var go = EditorUtility.EntityIdToObject(instanceId) as GameObject;
+#else
                 var go = EditorUtility.InstanceIDToObject(instanceId) as GameObject;
+#endif
                 return go?.transform;
             }
 

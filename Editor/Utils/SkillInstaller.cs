@@ -255,10 +255,11 @@ namespace AIBridge.Editor
         }
 
         /// <summary>
-        /// Copy skill file to target location with CLI path replacement.
-        /// This ensures the CLI path in SKILL.md uses the fixed ./AIBridgeCache/CLI location for AI-facing docs.
+        /// Generate and write skill file to target location.
+        /// Reads the template, applies CLI path replacement, then generates
+        /// dynamic command sections from all registered ICommand.SkillDescription values.
         /// </summary>
-        private static void CopySkillFile(string sourcePath, string targetDir, string targetFile)
+        private static void GenerateAndWriteSkillFile(string sourcePath, string targetDir, string targetFile)
         {
             if (!Directory.Exists(targetDir))
             {
@@ -272,8 +273,11 @@ namespace AIBridge.Editor
             if (content.Contains(hardcodedPath))
             {
                 content = content.Replace(hardcodedPath, fixedCliPath);
-                AIBridgeLogger.LogInfo($"[SkillInstaller] Replaced CLI path: {hardcodedPath} -> {fixedCliPath}");
             }
+
+            // Generate dynamic command sections from registered commands
+            var commands = CommandRegistry.GetAllCommands();
+            content = SkillDocumentGenerator.Generate(content, commands);
 
             File.WriteAllText(targetFile, content, System.Text.Encoding.UTF8);
         }
@@ -336,21 +340,10 @@ namespace AIBridge.Editor
 
             var targetDir = Path.Combine(projectRoot, target.SkillDirectoryRelativePath.Replace('/', Path.DirectorySeparatorChar));
             skillFilePath = Path.Combine(targetDir, target.SkillFileName);
-            if (File.Exists(skillFilePath))
-            {
-                var sourceTime = File.GetLastWriteTimeUtc(sourceSkillPath);
-                var targetTime = File.GetLastWriteTimeUtc(skillFilePath);
-                if (sourceTime <= targetTime)
-                {
-                    return IntegrationAction.AlreadyUpToDate;
-                }
+            var existed = File.Exists(skillFilePath);
 
-                CopySkillFile(sourceSkillPath, targetDir, skillFilePath);
-                return IntegrationAction.UpdatedBlock;
-            }
-
-            CopySkillFile(sourceSkillPath, targetDir, skillFilePath);
-            return IntegrationAction.CreatedFile;
+            GenerateAndWriteSkillFile(sourceSkillPath, targetDir, skillFilePath);
+            return existed ? IntegrationAction.UpdatedBlock : IntegrationAction.CreatedFile;
         }
 
         private static Dictionary<string, string> BuildTemplateTokens(string projectRoot, AssistantIntegrationTarget target)

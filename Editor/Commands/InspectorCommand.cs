@@ -15,6 +15,17 @@ namespace AIBridge.Editor
         public string Type => "inspector";
         public bool RequiresRefresh => true;
 
+        public string SkillDescription => @"### `inspector` - Component Operations
+
+```bash
+$CLI inspector get_components --path ""Player""
+$CLI inspector get_properties --path ""Player"" --componentName ""Transform""
+$CLI inspector set_property --path ""Player"" --componentName ""Rigidbody"" --propertyName ""mass"" --value 10
+$CLI inspector set_property --path ""Player"" --componentName ""MeshRenderer"" --propertyName ""m_Materials.Array.data[0]"" --value ""Assets/Materials/MyMat.mat""
+$CLI inspector add_component --path ""Player"" --typeName ""Rigidbody""
+$CLI inspector remove_component --path ""Player"" --componentName ""Rigidbody""
+```";
+
         public CommandResult Execute(CommandRequest request)
         {
             var action = request.GetParam("action", "get_components");
@@ -305,7 +316,11 @@ namespace AIBridge.Editor
 
             if (componentInstanceId != 0)
             {
+#if UNITY_6000_3_OR_NEWER
+                component = EditorUtility.EntityIdToObject(componentInstanceId) as Component;
+#else
                 component = EditorUtility.InstanceIDToObject(componentInstanceId) as Component;
+#endif
             }
             else if (componentIndex >= 0)
             {
@@ -355,7 +370,11 @@ namespace AIBridge.Editor
 
             if (instanceId != 0)
             {
+#if UNITY_6000_3_OR_NEWER
+                return EditorUtility.EntityIdToObject(instanceId) as GameObject;
+#else
                 return EditorUtility.InstanceIDToObject(instanceId) as GameObject;
+#endif
             }
 
             if (!string.IsNullOrEmpty(path))
@@ -446,6 +465,9 @@ namespace AIBridge.Editor
                             }
                         }
                         return true;
+                    case SerializedPropertyType.ObjectReference:
+                        prop.objectReferenceValue = ResolveObjectReference(value, prop);
+                        return true;
                     default:
                         return false;
                 }
@@ -454,6 +476,116 @@ namespace AIBridge.Editor
             {
                 return false;
             }
+        }
+
+        private UnityEngine.Object ResolveObjectReference(object value, SerializedProperty prop = null)
+        {
+            if (value == null)
+                return null;
+
+            // By instanceId
+            if (value is double d)
+            {
+                var id = (int)d;
+#if UNITY_6000_3_OR_NEWER
+                return id != 0 ? EditorUtility.EntityIdToObject(id) : null;
+#else
+                return id != 0 ? EditorUtility.InstanceIDToObject(id) : null;
+#endif
+            }
+
+            if (value is int intId)
+            {
+#if UNITY_6000_3_OR_NEWER
+                return intId != 0 ? EditorUtility.EntityIdToObject(intId) : null;
+#else
+                return intId != 0 ? EditorUtility.InstanceIDToObject(intId) : null;
+#endif
+            }
+
+            var str = value.ToString();
+            if (string.IsNullOrEmpty(str))
+                return null;
+
+            // Resolve asset path (try GUID first if it looks like one)
+            var assetPath = str;
+            if (!str.StartsWith("Assets/") && !str.StartsWith("Packages/"))
+            {
+                var guidPath = AssetDatabase.GUIDToAssetPath(str);
+                if (!string.IsNullOrEmpty(guidPath))
+                    assetPath = guidPath;
+            }
+
+            // Try type-specific loading based on prop.type (e.g. "PPtr<$Sprite>")
+            if (prop != null)
+            {
+                var expectedType = GetExpectedTypeFromProperty(prop);
+                if (expectedType != null)
+                {
+                    var typed = AssetDatabase.LoadAssetAtPath(assetPath, expectedType);
+                    if (typed != null)
+                        return typed;
+                }
+
+                // Fallback: iterate sub-assets and match by type name
+                var allAssets = AssetDatabase.LoadAllAssetsAtPath(assetPath);
+                if (allAssets != null && allAssets.Length > 1)
+                {
+                    var propType = prop.type;
+                    foreach (var sub in allAssets)
+                    {
+                        if (sub == null) continue;
+                        if (propType.Contains(sub.GetType().Name))
+                            return sub;
+                    }
+                }
+            }
+
+            // Fallback: load main asset
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+            if (asset != null)
+                return asset;
+
+            // By scene GameObject path
+            var go = GameObject.Find(str);
+            if (go != null)
+                return go;
+
+            return null;
+        }
+
+        /// <summary>
+        /// Extract expected type from SerializedProperty.type (e.g. "PPtr<$Sprite>" -> Sprite)
+        /// </summary>
+        private static System.Type GetExpectedTypeFromProperty(SerializedProperty prop)
+        {
+            var typeName = prop.type; // e.g. "PPtr<$Sprite>", "PPtr<$Material>"
+            var start = typeName.IndexOf('<');
+            var end = typeName.IndexOf('>');
+            if (start < 0 || end <= start)
+                return null;
+
+            var inner = typeName.Substring(start + 1, end - start - 1);
+            if (inner.StartsWith("$"))
+                inner = inner.Substring(1);
+
+            // Search in common assemblies
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var type = assembly.GetType($"UnityEngine.{inner}");
+                if (type != null)
+                    return type;
+
+                type = assembly.GetType($"UnityEngine.UI.{inner}");
+                if (type != null)
+                    return type;
+
+                type = assembly.GetType(inner);
+                if (type != null)
+                    return type;
+            }
+
+            return null;
         }
 
         [Serializable]

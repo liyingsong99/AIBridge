@@ -12,6 +12,12 @@ namespace AIBridge.Editor
         public string Type => "get_logs";
         public bool RequiresRefresh => false;
 
+        public string SkillDescription => @"### `get_logs` - Get Console Logs
+
+```bash
+$CLI get_logs [--count 100] [--logType Error|Warning]
+```";
+
         public CommandResult Execute(CommandRequest request)
         {
             var count = request.GetParam("count", 50);

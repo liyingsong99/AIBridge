@@ -12,6 +12,13 @@ namespace AIBridge.Editor
         public string Type => "batch";
         public bool RequiresRefresh => true;
 
+        public string SkillDescription => @"### `batch` - Batch Commands
+
+```bash
+$CLI batch execute --commands '[{""type"":""editor"",""params"":{""action"":""log"",""message"":""Step 1""}}]'
+$CLI batch from_file --file ""commands.json""
+```";
+
         public CommandResult Execute(CommandRequest request)
         {
             var commandsParam = request.GetParam<object>("commands");

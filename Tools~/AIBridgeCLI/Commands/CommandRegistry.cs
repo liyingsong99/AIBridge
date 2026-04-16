@@ -33,6 +33,7 @@ namespace AIBridgeCLI.Commands
             Register(new GetLogsCommandBuilder());
             Register(new BatchCommandBuilder());
             Register(new ScreenshotCommandBuilder());
+            Register(new GameViewCommandBuilder());
 
             _initialized = true;
         }

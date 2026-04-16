@@ -14,6 +14,7 @@ namespace AIBridge.Editor
     {
         public string Type => "help";
         public bool RequiresRefresh => false;
+        public string SkillDescription => null;
 
         public CommandResult Execute(CommandRequest request)
         {
@@ -111,7 +112,7 @@ namespace AIBridge.Editor
                 case "SceneCommand":
                     return "Scene operations: load, save, get hierarchy";
                 case "EditorCommand":
-                    return "Editor operations: undo, redo, compile, play mode";
+                    return "Editor operations: undo, redo, compile, play mode (with domain reload option)";
                 case "SelectionCommand":
                     return "Selection operations: get, set, clear";
                 case "GameObjectCommand":
@@ -130,6 +131,8 @@ namespace AIBridge.Editor
                     return "Compilation operations: start, status, dotnet build";
                 case "ScreenshotCommand":
                     return "Screenshot and GIF recording operations";
+                case "GameViewCommand":
+                    return "Game view resolution management (get, set, list)";
                 default:
                     return "No description available";
             }

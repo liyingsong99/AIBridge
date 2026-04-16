@@ -14,6 +14,18 @@ namespace AIBridge.Editor
         public string Type => "gameobject";
         public bool RequiresRefresh => true;
 
+        public string SkillDescription => @"### `gameobject` - GameObject Operations
+
+```bash
+$CLI gameobject create --name ""Cube"" --primitiveType Cube [--parentPath ""Parent""]
+$CLI gameobject destroy --path ""Cube"" [--instanceId 12345]
+$CLI gameobject find --name ""Player"" [--tag ""Enemy""] [--withComponent ""BoxCollider""] [--maxResults 10]
+$CLI gameobject set_active --path ""Player"" --active false [--toggle true]
+$CLI gameobject rename --path ""OldName"" --newName ""NewName""
+$CLI gameobject duplicate --path ""Original""
+$CLI gameobject get_info --path ""Player""
+```";
+
         public CommandResult Execute(CommandRequest request)
         {
             var action = request.GetParam("action", "find");
@@ -302,7 +314,11 @@ namespace AIBridge.Editor
 
             if (instanceId != 0)
             {
+#if UNITY_6000_3_OR_NEWER
+                return EditorUtility.EntityIdToObject(instanceId) as GameObject;
+#else
                 return EditorUtility.InstanceIDToObject(instanceId) as GameObject;
+#endif
             }
 
             if (!string.IsNullOrEmpty(path))
