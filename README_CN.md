@@ -35,6 +35,7 @@ UnityMCP 更偏向 AI 客户端和 Unity Editor 之间的实时 MCP 连接；AIB
 - 查看和修改场景、GameObject、Transform、组件与 Prefab。
 - 从 AI 自动化流程中触发编译、预检查、打包和构建任务。
 - 生成截图和 GIF，用于可视化结果验证。
+- 控制 Game 视图分辨率，用于不同屏幕尺寸下的一致性视觉测试。
 - 让重复出现的 Unity 任务进入更稳定的 AI 自动化流程，而不是每次都从文字描述重新开始。
 
 ## 常见 Unity 使用场景

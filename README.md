@@ -35,6 +35,7 @@ If you want an MCP-native live editor connection, UnityMCP is a strong fit. If y
 - Inspect and modify scenes, GameObjects, transforms, components, and prefabs.
 - Run compile, preflight, packaging, and build tasks from AI-driven automation.
 - Capture screenshots and animated GIFs for visual verification.
+- Control Game view resolution for consistent visual testing across different screen sizes.
 - Automate repeated Unity tasks without falling back to text-only guidance.
 
 ## Common Unity workflows
