@@ -1,9 +1,9 @@
 ---
 name: aibridge
-description: "Unity CLI Tool. Execute compile, asset search, gameobject manipulation, transform operations, component inspection, scene/prefab management, screenshot capture, and GIF recording. Supports multi-command execution and runtime extension."
-commands: [compile, asset, gameobject, transform, inspector, selection, scene, prefab, screenshot, gameview, get_logs, focus, batch, multi, menu_item, editor]
-capabilities: [asset-lookup, scene-editing, build-automation, visual-verification, component-inspection, hierarchy-manipulation, prefab-management, console-monitoring, editor-control]
-triggers: [unity, compile, gameobject, transform, component, scene, prefab, screenshot, gif, console, log, asset, hierarchy, inspector, selection, menu, editor, focus, batch, gameview, resolution]
+description: "Unity CLI 工具。执行编译、资源搜索、游戏对象操作、变换操作、组件检查、场景/预制体管理、截图捕获和 GIF 录制。支持多命令执行、运行时扩展和脚本自动化。"
+commands: [compile, asset, gameobject, transform, inspector, selection, scene, prefab, screenshot, gameview, get_logs, focus, batch, multi, menu_item, editor, script]
+capabilities: [asset-lookup, scene-editing, build-automation, visual-verification, component-inspection, hierarchy-manipulation, prefab-management, console-monitoring, editor-control, script-automation]
+triggers: [unity, compile, gameobject, transform, component, scene, prefab, screenshot, gif, console, log, asset, hierarchy, inspector, selection, menu, editor, focus, batch, gameview, resolution, script, automation]
 ---
 
 # AI Bridge Unity Skill
@@ -67,6 +67,32 @@ $CLI focus
 $CLI multi --cmd 'editor log --message Step1&gameobject create --name Cube --primitiveType Cube'
 $CLI multi --stdin  # Read from stdin (one per line)
 ```
+
+### AIBridge 脚本自动化
+
+**用途**：自动化 Unity 编辑器操作和 CLI 命令执行（`.txt` 文件，存放于 `Assets/AIBridgeScripts/`）
+
+**命令语法**：
+```
+log "消息"              # 输出日志
+delay 毫秒数            # 延迟执行
+call [CLI命令] [参数]   # 调用 AIBridge CLI（可选 --timeout 毫秒数）
+menu 菜单路径           # 执行编辑器菜单项
+```
+
+**语法规则**：`#` 注释，空行跳过，命令不区分大小写
+
+**常用示例**：
+```
+# 自动化构建
+log "开始构建"
+call compile unity
+delay 2000
+call scene get_hierarchy --depth 2
+menu File/Save Project
+```
+
+**典型场景**：编译流程、场景批处理、资源管理、重复任务自动化
 
 <!-- AIBRIDGE:COMMANDS -->
 
