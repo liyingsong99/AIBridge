@@ -85,7 +85,7 @@ namespace AIBridgeCLI.Commands
                 }
 
                 // 生成脚本文件路径（写入 AIBridgeCache/scripts 目录）
-                string cacheDir = GetExchangeDirectory();
+                string cacheDir = PathHelper.GetExchangeDirectory();
                 string scriptsDir = Path.Combine(cacheDir, "scripts");
                 string scriptName = options.TryGetValue("name", out var name) ? name : $"script_{DateTime.Now:yyyyMMddHHmmss}";
                 bool keepFile = options.TryGetValue("keep-file", out var keep) && keep.ToLower() == "true";
