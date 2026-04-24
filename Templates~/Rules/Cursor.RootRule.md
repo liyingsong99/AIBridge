@@ -1,5 +1,5 @@
 ---
-templateId: unity-project-rules
+templateId: unity-integration
 assistant: cursor
 version: 2
 target: root-rule

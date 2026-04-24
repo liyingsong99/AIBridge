@@ -40,7 +40,24 @@ namespace AIBridge.Editor
             }
 
             var content = File.ReadAllText(ruleFilePath, Encoding.UTF8);
-            var existingBlock = InjectionBlockParser.FindMatchingBlock(content, target.Id, template.Metadata.TemplateId, template.Metadata.Target);
+            
+            // 迁移逻辑：清理旧的重复块（同一 templateId 的多个 assistant 版本）
+            var allMatchingBlocks = InjectionBlockParser.FindAllMatchingBlocks(content, template.Metadata.TemplateId, template.Metadata.Target);
+            if (allMatchingBlocks.Count > 1)
+            {
+                // 发现重复块，保留第一个，移除其他
+                for (int i = allMatchingBlocks.Count - 1; i > 0; i--)
+                {
+                    var blockToRemove = allMatchingBlocks[i];
+                    content = content.Substring(0, blockToRemove.StartIndex)
+                        + content.Substring(blockToRemove.StartIndex + blockToRemove.Length);
+                }
+                // 清理多余的空行
+                content = Regex.Replace(content, @"\n{3,}", "\n\n");
+            }
+            
+            // 使用新的二元组匹配逻辑（templateId + target），忽略 assistant
+            var existingBlock = InjectionBlockParser.FindMatchingBlock(content, template.Metadata.TemplateId, template.Metadata.Target);
             if (existingBlock != null)
             {
                 if (existingBlock.Metadata.version == template.Metadata.Version && Normalize(existingBlock.RawBlock) == Normalize(renderedBlock))
@@ -135,7 +152,8 @@ namespace AIBridge.Editor
             }
 
             var content = File.ReadAllText(ruleFilePath, Encoding.UTF8);
-            var existingBlock = InjectionBlockParser.FindMatchingBlock(content, target.Id, template.Metadata.TemplateId, template.Metadata.Target);
+            // 使用新的二元组匹配逻辑（templateId + target），忽略 assistant
+            var existingBlock = InjectionBlockParser.FindMatchingBlock(content, template.Metadata.TemplateId, template.Metadata.Target);
             if (existingBlock == null)
             {
                 return false;

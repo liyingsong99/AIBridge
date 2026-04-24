@@ -1,5 +1,5 @@
 ---
-templateId: unity-project-rules
+templateId: unity-integration
 assistant: cline
 version: 2
 target: root-rule

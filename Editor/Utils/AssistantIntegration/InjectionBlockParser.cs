@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using UnityEngine;
 
@@ -28,7 +29,11 @@ namespace AIBridge.Editor
             @"<!-- AIBRIDGE:START (?<metadata>\{.*?\}) -->\s*(?<body>.*?)\s*<!-- AIBRIDGE:END -->",
             RegexOptions.Singleline | RegexOptions.Compiled);
 
-        public static InjectionBlockMatch FindMatchingBlock(string content, string assistantId, string templateId, string target)
+        /// <summary>
+        /// 查找匹配的注入块（仅按 templateId 和 target 匹配，忽略 assistant）
+        /// 这样可以实现同一 templateId 的互斥，避免重复注入
+        /// </summary>
+        public static InjectionBlockMatch FindMatchingBlock(string content, string templateId, string target)
         {
             var matches = BlockRegex.Matches(content);
             foreach (Match match in matches)
@@ -39,7 +44,9 @@ namespace AIBridge.Editor
                     continue;
                 }
 
-                if (metadata.assistant == assistantId && metadata.templateId == templateId && metadata.target == target)
+                // 仅匹配 templateId 和 target，忽略 assistant 字段
+                // 这样同一 templateId 只能有一个注入块，实现互斥
+                if (metadata.templateId == templateId && metadata.target == target)
                 {
                     return new InjectionBlockMatch
                     {
@@ -53,6 +60,37 @@ namespace AIBridge.Editor
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// 查找所有匹配指定 templateId 和 target 的注入块（用于迁移旧的重复块）
+        /// </summary>
+        public static List<InjectionBlockMatch> FindAllMatchingBlocks(string content, string templateId, string target)
+        {
+            var results = new List<InjectionBlockMatch>();
+            var matches = BlockRegex.Matches(content);
+            foreach (Match match in matches)
+            {
+                var metadata = TryParseMetadata(match.Groups["metadata"].Value);
+                if (metadata == null)
+                {
+                    continue;
+                }
+
+                if (metadata.templateId == templateId && metadata.target == target)
+                {
+                    results.Add(new InjectionBlockMatch
+                    {
+                        StartIndex = match.Index,
+                        Length = match.Length,
+                        RawBlock = match.Value,
+                        Body = match.Groups["body"].Value.Trim(),
+                        Metadata = metadata
+                    });
+                }
+            }
+
+            return results;
         }
 
         public static string BuildBlock(RuleTemplateMetadata metadata, string renderedBody)
