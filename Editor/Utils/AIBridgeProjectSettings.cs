@@ -1,13 +1,19 @@
 using System;
 using System.Collections.Generic;
-using UnityEditor;
+using System.IO;
+using UnityEditorInternal;
 using UnityEngine;
 
 namespace AIBridge.Editor
 {
-    [FilePath("ProjectSettings/AIBridgeSettings.asset", FilePathAttribute.Location.ProjectFolder)]
-    internal sealed class AIBridgeProjectSettings : ScriptableSingleton<AIBridgeProjectSettings>
+    /// <summary>
+    /// AIBridge 项目级编辑器配置，兼容 Unity 2019 的手动序列化落盘方式。
+    /// </summary>
+    internal sealed class AIBridgeProjectSettings : ScriptableObject
     {
+        private const string SettingsFilePath = "ProjectSettings/AIBridgeSettings.asset";
+        private static AIBridgeProjectSettings _instance;
+
         [Serializable]
         internal sealed class GifRecorderSettingsData
         {
@@ -45,7 +51,15 @@ namespace AIBridge.Editor
 
         public static AIBridgeProjectSettings Instance
         {
-            get { return instance; }
+            get
+            {
+                if (_instance == null)
+                {
+                    LoadOrCreate();
+                }
+
+                return _instance;
+            }
         }
 
         public int DataVersion
@@ -169,6 +183,20 @@ namespace AIBridge.Editor
             return true;
         }
 
+        /// <summary>
+        /// 从 ProjectSettings 读取配置；首次没有配置文件时创建默认实例。
+        /// </summary>
+        public static AIBridgeProjectSettings LoadOrCreate()
+        {
+            var objects = InternalEditorUtility.LoadSerializedFileAndForget(SettingsFilePath);
+            var loadedSettings = objects.Length > 0 ? objects[0] as AIBridgeProjectSettings : null;
+            _instance = loadedSettings ?? _instance ?? CreateInstance<AIBridgeProjectSettings>();
+            return _instance;
+        }
+
+        /// <summary>
+        /// 手动序列化保存到 ProjectSettings，替代 Unity 2019 下不可访问的 FilePathAttribute。
+        /// </summary>
         public void SaveSettings()
         {
             if (dataVersion != CurrentDataVersion)
@@ -176,7 +204,16 @@ namespace AIBridge.Editor
                 dataVersion = CurrentDataVersion;
             }
 
-            Save(true);
+            var directory = Path.GetDirectoryName(SettingsFilePath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            InternalEditorUtility.SaveToSerializedFileAndForget(
+                new UnityEngine.Object[] { this },
+                SettingsFilePath,
+                true);
         }
     }
 }
