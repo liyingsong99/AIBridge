@@ -1,171 +1,172 @@
+<p align="center">
+  <img src="./Images/aibridge-banner.png" alt="AIBridge banner" width="100%">
+</p>
+
 # AIBridge
 
 [English](./README.md) | 中文
 
-一个面向 Unity 的 AI 辅助插件，适合做资源定位、场景编辑、构建自动化与视觉验证。
+![Unity 2019.4+](https://img.shields.io/badge/Unity-2019.4%2B-black?style=flat-square&logo=unity)
+![Package 1.2.3](https://img.shields.io/badge/Package-1.2.3-5b6cff?style=flat-square)
+![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
+![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
-![Unity 2019.4+](https://img.shields.io/badge/Unity-2019.4%2B-black?style=flat-square&logo=unity) ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square) ![AI 辅助 Unity 操作](https://img.shields.io/badge/工作流-AI%20辅助%20Unity%20操作-5b6cff?style=flat-square)
+AIBridge 是一个 Unity Package，用于在 AI 编码助手和 Unity Editor 之间建立稳定的命令桥接。它可以帮助 AI 定位资源、查看场景和 Prefab、编辑 Unity 对象、执行编译/构建检查、读取 Console 日志，并通过截图或 GIF 做视觉验证。
 
-## AIBridge 是什么？
+它面向的是希望 AI 真正参与 Unity 项目工作的团队，而不只是让 AI 生成文字建议或代码片段。
 
-AIBridge 让 AI 助手以更符合 Unity 实际生产流程的方式参与项目工作。
+## 核心亮点
 
-它不只是生成代码，还可以帮助你定位正确的 Unity 资源、查看和修改场景或 Prefab、执行编译和构建流程，以及生成截图或 GIF 做验证。
-
-它面向的是那些希望 AI 真正参与 Unity 工作，而不只是讨论代码的团队。
+- **文件通信桥接：** 命令请求和执行结果会落盘保存，可跨编辑器重启、脚本编译和域重载继续追踪。
+- **CLI 优先工作流：** 标准命令加紧凑 JSON 输出，便于 AI、脚本和自动化流程解析。
+- **Unity 感知操作：** 支持资源查找、场景层级、Prefab 检查、组件属性、选择集、Transform 和菜单调用。
+- **视觉验证闭环：** 内置截图和 GIF 录制，让 UI/玩法结果可以被真实画面验证。
+- **AI 协作模板：** 支持安装 AGENTS.md 规则，用于 Codex、Claude、Cursor、Cline 等 AI 编码工作流。
+- **可扩展命令模型：** 可新增 Unity 侧命令和 CLI Builder，不依赖持续运行的 MCP 服务。
 
 ## 为什么选择 AIBridge？
 
-AIBridge 和 UnityMCP 解决的是相似问题，但 AIBridge 在稳定性、易用性和可扩展性上具有显著优势。
+很多 Unity AI 集成依赖持续在线的 socket 或 MCP 会话。AIBridge 使用持久化命令文件和结果文件，因此能更好地应对 Unity 最容易打断工具链的时刻：重新编译、域重载、编辑器焦点变化和重启。
 
-### 核心优势
-
-**🚀 更高的稳定性**
-- 基于文件通信机制，不依赖持续的网络连接或 MCP 协议栈
-- 编辑器重启、编译周期、域重载等场景下任务流不会中断
-- 命令执行结果可持久化，支持断点续传和任务恢复
-
-**⚡ 更好的易用性**
-- 开箱即用，无需配置复杂的 MCP 服务端和客户端
-- 标准 CLI 工具，可直接集成到任何 AI 工作流或自动化脚本
-- 紧凑的 JSON 输出格式，便于 AI 解析和处理
-- 支持一键安装 AGENTS.md 工作流模板，快速配置 AI 协作规范
-
-**🔧 更强的可扩展性**
-- 模块化命令架构，易于添加自定义命令和工作流
-- 支持通过 Skills 系统扩展 AI 能力边界
-- 完整的 Unity 资源感知能力（AssetDatabase、场景层级、组件属性）
-- 内置截图和 GIF 录制，支持视觉验证闭环
-
-**📊 实际表现对比**
-
-| 维度 | AIBridge | UnityMCP |
+| 维度 | AIBridge | 持续连接型 MCP 桥接 |
 |---|---|---|
-| 连接稳定性 | ⭐⭐⭐⭐⭐ 文件通信，无连接中断 | ⭐⭐⭐ 依赖持续网络连接 |
-| 编译周期适应 | ⭐⭐⭐⭐⭐ 跨编译周期无缝继续 | ⭐⭐ 编译时连接可能中断 |
-| 部署复杂度 | ⭐⭐⭐⭐⭐ 零配置，开箱即用 | ⭐⭐⭐ 需配置 MCP 服务端 |
-| AI 集成难度 | ⭐⭐⭐⭐⭐ 标准 CLI + JSON 输出 | ⭐⭐⭐ 需适配 MCP 协议 |
-| 任务可追溯性 | ⭐⭐⭐⭐⭐ 完整的执行日志和结果 | ⭐⭐⭐ 依赖会话状态 |
-| 扩展性 | ⭐⭐⭐⭐⭐ 模块化架构 + Skills | ⭐⭐⭐ 基于 MCP 工具扩展 |
+| 连接稳定性 | 基于文件的请求和结果 | 依赖持续连接 |
+| 编译周期适应 | 可轮询并跨重载继续 | 编译期间会话可能中断 |
+| 部署成本 | 使用随包 CLI 命令即可工作 | 需要配置服务端/客户端 |
+| AI 集成方式 | CLI 命令 + JSON 输出 | 需要接入特定协议工具 |
+| 任务可追踪性 | 命令文件、结果文件、截图、日志 | 常依赖当前会话状态 |
+| 扩展方式 | Unity 命令处理器 + CLI Builder | 多数依赖工具服务扩展 |
 
-AIBridge 专为生产环境的 Unity 项目设计，在日常协作、构建自动化、视觉验证等场景中表现更加可靠和高效。
+## 可以自动化什么？
 
-## 你可以用它做什么
-
-- 在修改前先定位正确的 Unity 资源，并解析规范路径。
-- 查看和修改场景、GameObject、Transform、组件与 Prefab。
-- 从 AI 自动化流程中触发编译、预检查、打包和构建任务。
-- 生成截图和 GIF，用于可视化结果验证。
-- 控制 Game 视图分辨率，用于不同屏幕尺寸下的一致性视觉测试。
-- 让重复出现的 Unity 任务进入更稳定的 AI 自动化流程，而不是每次都从文字描述重新开始。
-
-## 常见 Unity 使用场景
-
-### 1. 先让 AI 找到正确资源，再开始修改
-在大型 Unity 项目里，真正的难点往往是先定位到正确的脚本、Prefab、场景或 ScriptableObject。AIBridge 的目标就是先把真实路径找准，再继续后续操作。
-
-### 2. 让 AI 像 Unity 协作者一样修改场景
-你可以让 AI 创建对象、调整 Transform、修改组件值、整理层级结构，并直接保存场景，而不是把任务退回到大量手工编辑。
-
-### 3. 自动化重复的构建步骤
-预检查、版本号更新、Android 打包、iOS 打包等反复执行的步骤，都可以通过 AI 辅助自动化来处理，减少反复手工操作。
-
-### 4. 批量生成可重复的场景内容
-当场景搭建遵循清单、manifest 或固定模式时，AIBridge 更适合稳定地应用同一套结构，而不是一遍遍手工搭建。
-
-### 5. 用真实画面验证结果，而不是靠猜
-截图和 GIF 让 AI 辅助任务可以基于实际编辑器结果去验证 UI 或玩法改动，而不是只看文字描述。
-
-### 6. 让 AI 辅助结果更容易被验证
-通过把 Unity 感知操作、截图能力和面向构建的自动化结合起来，团队可以基于真实项目状态验证 AI 输出，而不是只依赖模糊的提示词。
+- 修改前先定位脚本、Prefab、场景、材质、贴图或 ScriptableObject 的真实 Unity 资源路径。
+- 查看场景层级、当前选择、Prefab 元信息、组件和序列化属性。
+- 从自动化流程创建、重命名、删除、复制、设置父级和调整 GameObject Transform。
+- 通过 Unity 序列化 API 修改组件字段，避免直接手改 YAML。
+- 触发 Unity 编译，并读取真实编译结果。
+- 自动化变更后读取 Unity Console 的错误和警告。
+- 使用 `batch` 和 `multi` 执行多步骤编辑器脚本。
+- 在 Play Mode 下捕获 Game 视图截图和 GIF。
+- 设置 Game 视图分辨率，用于可重复的视觉测试。
 
 ## 安装
 
-在 Unity Package Manager 中使用下面的 Git 地址即可把 AIBridge 加入你的 Unity 项目：
+在 Unity Package Manager 中使用下面的 Git 地址安装：
 
-`https://github.com/liyingsong99/AIBridge.git`
+```text
+https://github.com/liyingsong99/AIBridge.git
+```
 
-你也可以直接克隆或下载本仓库，然后放到项目的 `Packages` 目录下。
+你也可以直接克隆或下载本仓库，然后放到 Unity 项目的 `Packages` 目录下。
 
-### 配置 AI 工作流（推荐）
+## 配置 AI 工作流
 
-AIBridge 提供了开箱即用的 AGENTS.md 工作流模板，帮助你快速配置 AI 协作规范：
+AIBridge 内置可直接使用的 AGENTS.md 工作流模板：
 
-1. 在 Unity 编辑器中打开 `Tools > AIBridge Settings`
-2. 切换到 `Skills 安装` 页签
-3. 点击 `安装 AGENTS.md` 按钮
-4. 确认后将自动安装工作流模板到项目根目录
+1. 在 Unity Editor 中打开 `Tools > AIBridge Settings`。
+2. 切换到 `Skills Installation` 页签。
+3. 点击 `Install AGENTS.md`。
+4. 确认安装到 Unity 项目根目录。
 
-AGENTS.md 包含：
-- 强制工作流规范（Skills 匹配、需求确认、方案实施、检查清单）
-- Unity 项目开发原则（禁止 hard code、C# 版本兼容、代码规范）
-- AIBridge 编译和诊断检查流程
-- 完整的质量保证检查清单
+安装后的规则包含需求确认、实施流程、Unity 编译检查、Console 诊断、C# 兼容规则和质量检查清单。
 
 ## 系统要求
 
-- Unity 2019.4 或更高版本
-- .NET 8.0 Runtime，用于随包提供的 CLI 工具
+- Unity 2019.4 或更高版本。
+- .NET 8.0 Runtime，用于随包提供的 CLI 工具。
 
 ## CLI 命令速览
 
-随包提供的 AIBridgeCLI 把 AIBridge 的主要工作流暴露成可直接调用的命令。命令默认返回紧凑 JSON，因此很适合接入 AI 与自动化流程。
+AIBridge 安装 CLI 缓存后，在 Unity 项目根目录执行命令：
 
-- **先定位正确的 Unity 资源或工程内文件**，通过 Unity 的 AssetDatabase 获取规范路径
-  ```bash
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe asset search --mode script --keyword "Player" --format paths
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe asset find --filter "t:Prefab" --format paths
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe asset get_path --guid "abc123..."
-  ```
-- **查看 Prefab 的元信息和层级结构**，在修改 Prefab 资源或实例前先确认现状
-  ```bash
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe prefab get_info --prefabPath "Assets/Prefabs/Player.prefab"
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe prefab get_hierarchy --prefabPath "Assets/Prefabs/Player.prefab"
-  ```
-- **查看场景层级和当前编辑器上下文**，让 AI 在修改前先理解现有状态
-  ```bash
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe scene get_hierarchy --depth 3 --includeInactive false
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe selection get --includeComponents true
-  ```
-- **查看组件和序列化属性**，避免靠猜测判断 GameObject 上有什么内容
-  ```bash
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe inspector get_components --path "Player"
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe inspector get_properties --path "Player" --componentName "Transform"
-  ```
-- **创建或修改场景对象**，把常见编辑器操作变成可自动化的命令
-  ```bash
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe gameobject create --name "MyCube" --primitiveType Cube
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe transform set_position --path "Player" --x 0 --y 1 --z 0
-  ```
-- **触发 Unity 侧编译并做解决方案校验**，用于脚本改动后的验证流程
-  ```bash
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe compile dotnet
-  ```
-- **读取 Unity Console 日志**，让 AI 能基于真实报错和警告继续推进任务
-  ```bash
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe get_logs --logType Error
-  ```
-- **执行脚本自动化**，支持编译感知的重复任务自动化
-  ```bash
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe batch from_text --text "call editor log 'Hello'\ndelay 1000"
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe batch from_file --file "script.txt"
-  ```
-- **截图或录制 GIF 做视觉验证**，适合 Play Mode 下的结果确认
-  ```bash
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe screenshot game
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe screenshot gif --frameCount 50
-  ```
-- **设置或查询 Game 视图分辨率**，用于视觉测试的一致性确认
-  ```bash
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe gameview set_resolution --width 1920 --height 1080
-  ./AIBridgeCache/CLI/AIBridgeCLI.exe gameview get_resolution
-  ```
+```powershell
+$CLI = "./AIBridgeCache/CLI/AIBridgeCLI.exe"
+```
+
+macOS/Linux 可使用随包平台 CLI，或根据项目配置通过 `dotnet` 运行 DLL。
+
+### 资源定位
+
+```bash
+./AIBridgeCache/CLI/AIBridgeCLI.exe asset search --mode script --keyword "Player" --format paths
+./AIBridgeCache/CLI/AIBridgeCLI.exe asset find --filter "t:Prefab" --format paths
+./AIBridgeCache/CLI/AIBridgeCLI.exe asset get_path --guid "abc123..."
+```
+
+### 场景、选择集和 Prefab 上下文
+
+```bash
+./AIBridgeCache/CLI/AIBridgeCLI.exe scene get_hierarchy --depth 3 --includeInactive false
+./AIBridgeCache/CLI/AIBridgeCLI.exe selection get --includeComponents true
+./AIBridgeCache/CLI/AIBridgeCLI.exe prefab get_info --prefabPath "Assets/Prefabs/Player.prefab"
+./AIBridgeCache/CLI/AIBridgeCLI.exe prefab get_hierarchy --prefabPath "Assets/Prefabs/Player.prefab"
+```
+
+### 组件检查与编辑
+
+```bash
+./AIBridgeCache/CLI/AIBridgeCLI.exe inspector get_components --path "Player"
+./AIBridgeCache/CLI/AIBridgeCLI.exe inspector get_properties --path "Player" --componentName "Transform"
+```
+
+PowerShell 中传递复杂 JSON 时，建议先构造变量：
+
+```powershell
+$values = (@{ 'm_LocalPosition.x' = 0; 'm_LocalPosition.y' = 1 } | ConvertTo-Json -Compress) -replace '"', '\"'
+& "./AIBridgeCache/CLI/AIBridgeCLI.exe" inspector set_properties --assetPath 'Assets/Prefabs/Player.prefab' --componentName Transform --values $values
+```
+
+### 场景对象操作
+
+```bash
+./AIBridgeCache/CLI/AIBridgeCLI.exe gameobject create --name "MyCube" --primitiveType Cube
+./AIBridgeCache/CLI/AIBridgeCLI.exe transform set_position --path "Player" --x 0 --y 1 --z 0
+```
+
+### 编译、日志与自动化
+
+```bash
+./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
+./AIBridgeCache/CLI/AIBridgeCLI.exe get_logs --logType Error
+./AIBridgeCache/CLI/AIBridgeCLI.exe batch from_text --text "call editor log 'Hello'\ndelay 1000"
+./AIBridgeCache/CLI/AIBridgeCLI.exe multi --cmd "editor log --message Step1&get_logs --logType Error --count 1"
+```
+
+`multi --cmd` 会把普通 CLI 行写成 Batch 的 `call` 行。较长脚本或复杂 JSON 命令建议使用 `multi --stdin`。
+
+### 视觉验证
+
+```bash
+./AIBridgeCache/CLI/AIBridgeCLI.exe screenshot game
+./AIBridgeCache/CLI/AIBridgeCLI.exe screenshot gif --frameCount 50
+./AIBridgeCache/CLI/AIBridgeCLI.exe gameview set_resolution --width 1920 --height 1080
+./AIBridgeCache/CLI/AIBridgeCLI.exe gameview get_resolution
+```
+
+## 推荐 AI 工作流程
+
+1. 先解析真实 Unity 资源路径或对象路径。
+2. 查看当前场景、Prefab、组件或序列化属性状态。
+3. 通过 Unity 感知命令或源码编辑执行最小安全改动。
+4. 执行 `compile unity`。
+5. 读取 `get_logs --logType Error`。
+6. 如果结果与画面有关，捕获截图或 GIF 做验证。
+
+## 仓库结构
+
+```text
+Editor/        Unity Editor 命令、工具、设置窗口和集成逻辑
+Runtime/       Runtime 桥接契约和轻量运行时数据
+Tools~/       AIBridgeCLI 源码和随包平台二进制
+Templates~/   AI 工作流规则模板
+Skill~/       面向 AI 助手的 AIBridge Skill 定义
+Images/       README 和宣传图片
+```
 
 ## 许可证
 
-MIT License
+MIT License。详见 [LICENSE](./LICENSE)。
 
 ## 贡献
 
-欢迎提交 issue 和 pull request。
+欢迎提交 issue 和 pull request。修改 Unity 侧行为时，建议同步补充相关 CLI 命令示例和验证说明。

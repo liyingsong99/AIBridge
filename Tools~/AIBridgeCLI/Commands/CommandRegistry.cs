@@ -32,6 +32,7 @@ namespace AIBridgeCLI.Commands
             Register(new MenuItemCommandBuilder());
             Register(new GetLogsCommandBuilder());
             Register(new BatchCommandBuilder());
+            Register(new MultiCommandBuilder());
             Register(new ScreenshotCommandBuilder());
             Register(new GameViewCommandBuilder());
 
@@ -105,7 +106,7 @@ namespace AIBridgeCLI.Commands
             sb.AppendLine("  --raw              Output compact raw JSON (default)");
             sb.AppendLine("  --pretty           Output human-readable formatted text");
             sb.AppendLine("  --quiet            Quiet mode, minimal output");
-            sb.AppendLine("  --json <json>      Pass complex parameters as JSON string");
+            sb.AppendLine("  --json <json>      Pass complex parameters as JSON string (shell-sensitive; PowerShell should prefer variables or --stdin)");
             sb.AppendLine("  --stdin            Read parameters from stdin (JSON format)");
             sb.AppendLine("  --help             Show help");
             sb.AppendLine();

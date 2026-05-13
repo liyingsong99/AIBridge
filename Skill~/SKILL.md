@@ -1,7 +1,7 @@
 ---
 name: aibridge
 description: "Unity CLI 工具。执行编译、资源搜索、游戏对象操作、变换操作、组件检查、场景/预制体管理、截图捕获和 GIF 录制。支持多命令执行、运行时扩展和脚本自动化。"
-commands: [compile, asset, gameobject, transform, inspector, selection, scene, prefab, screenshot, gameview, get_logs, focus, batch, multi, menu_item, editor, script]
+commands: [compile, asset, gameobject, transform, inspector, selection, scene, prefab, screenshot, gameview, get_logs, focus, batch, multi, menu_item, editor]
 capabilities: [asset-lookup, scene-editing, build-automation, visual-verification, component-inspection, serialized-property-editing, prefab-asset-editing, component-field-editing, hierarchy-manipulation, prefab-management, console-monitoring, editor-control, script-automation]
 triggers: [unity, compile, gameobject, transform, component, serializedproperty, property, scene, prefab, screenshot, gif, console, log, asset, hierarchy, inspector, selection, menu, editor, focus, batch, gameview, resolution, script, automation]
 ---
@@ -10,28 +10,13 @@ triggers: [unity, compile, gameobject, transform, component, serializedproperty,
 
 ## AI Operating Rules
 
-**Compile Priority:**
-- Use `compile unity` (default) - requires Unity Editor running
-- Use `compile dotnet` (optional) - separate solution-build validation only, NOT a fallback
-
-**Asset Lookup Priority:**
-1. `asset search/find --format paths` (Unity AssetDatabase index - fastest)
-2. `asset get_path` (only when starting from GUID)
-3. `asset load` (only for metadata confirmation)
-4. Host AI native file-read tool (for file contents)
-5. `asset read_text` (fallback when native reads unavailable)
-6. Generic grep/filesystem search (last resort)
-
-**Serialized Property Editing Priority:**
-1. Use `inspector get_components/get_properties/find_property` to discover target Component and SerializedProperty paths
-2. Use `inspector set_property/set_properties` for scene objects, prefab assets, and ScriptableObject-like assets
-3. For prefab assets, pass `assetPath + objectPath + componentName`; AIBridge edits via Unity PrefabUtility, not raw text
-4. Avoid direct YAML edits unless there is no Unity serialization API path; YAML changes must be reviewed with a dry-run diff first
-
-**Special Constraints:**
-- `focus` - Windows-only, CLI-only, triggers Unity refresh/compile
-- `screenshot` - Requires Play Mode
-- `multi` - Preferred for batch operations
+- Use `compile unity` for Unity validation. `compile dotnet` is an explicit extra solution-build check, not a fallback.
+- For Unity assets, prefer `asset search/find --format paths`; use host file reads for file contents, and `asset read_text` only when host reads are unavailable.
+- For serialized edits, discover targets with `inspector get_components/get_properties/find_property`, then write with `inspector set_property/set_properties`; avoid raw YAML unless no Unity API path exists.
+- For prefab asset edits, use `assetPath + objectPath + componentName` or `componentIndex`; `componentInstanceId` is scene-only.
+- In PowerShell, avoid inline complex `--json`; build JSON in a variable, escape embedded quotes for native EXE argument passing, and pass command parameters directly, especially `inspector set_properties --values $values`.
+- `focus` is Windows CLI-only, `screenshot` requires Play Mode, and `multi` is preferred for batch dispatch.
+- `multi --cmd` accepts plain CLI commands separated by `&` and automatically emits Batch `call` lines; `call`, `delay`, `log`, `menu`, and `#` comment lines are kept as native Batch script.
 
 ---
 
@@ -72,6 +57,19 @@ $CLI focus
 ```bash
 $CLI multi --cmd 'editor log --message Step1&gameobject create --name Cube --primitiveType Cube'
 $CLI multi --stdin  # Read from stdin (one per line)
+```
+
+PowerShell recommendations:
+```powershell
+$script = @'
+editor log --message "Step1"
+delay 1000
+get_logs --logType Error --count 1
+'@
+$script | & "./AIBridgeCache/CLI/AIBridgeCLI.exe" multi --stdin
+
+$values = (@{ 'm_LocalPosition.x' = 0; 'm_LocalPosition.y' = 0 } | ConvertTo-Json -Compress) -replace '"', '\"'
+& "./AIBridgeCache/CLI/AIBridgeCLI.exe" inspector set_properties --assetPath 'Assets/UI/LoginPanel.prefab' --objectPath 'Root/Button' --componentName RectTransform --values $values
 ```
 
 <!-- AIBRIDGE:COMMANDS -->

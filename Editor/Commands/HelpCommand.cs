@@ -177,6 +177,7 @@ namespace AIBridge.Editor
                 case "inspector":
                     return new
                     {
+                        powershell_note = "For set_properties in PowerShell, build a values JSON variable, escape embedded quotes for native EXE argument passing, and pass --values $values instead of inline --json.",
                         get_components = new { type = "inspector", @params = new { action = "get_components", path = "Main Camera" } },
                         get_prefab_components = new { type = "inspector", @params = new { action = "get_components", assetPath = "Assets/UI/LoginPanel.prefab", objectPath = "Root/Button" } },
                         find_rect_transform_property = new { type = "inspector", @params = new { action = "find_property", assetPath = "Assets/UI/LoginPanel.prefab", objectPath = "Root/Button", componentName = "RectTransform", keyword = "AnchoredPosition" } },
@@ -212,18 +213,9 @@ namespace AIBridge.Editor
                 case "batch":
                     return new
                     {
-                        example = new
-                        {
-                            type = "batch",
-                            @params = new
-                            {
-                                commands = new object[]
-                                {
-                                    new { type = "gameobject", @params = new { action = "create", name = "Cube1", primitiveType = "Cube" } },
-                                    new { type = "gameobject", @params = new { action = "create", name = "Cube2", primitiveType = "Cube" } }
-                                }
-                            }
-                        }
+                        from_file = new { type = "batch", @params = new { action = "from_file", file = "AIBridgeCache/scripts/setup.txt" } },
+                        from_text_runtime = new { type = "batch", @params = new { action = "from_text", scriptPath = "AIBridgeCache/scripts/temp_script.txt", keepFile = false } },
+                        cli_note = "CLI batch from_text writes --text to a temporary scriptPath before sending this Unity command."
                     };
 
                 default:

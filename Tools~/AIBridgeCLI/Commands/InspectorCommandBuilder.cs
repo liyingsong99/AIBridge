@@ -78,7 +78,7 @@ namespace AIBridgeCLI.Commands
                 new ParameterInfo("componentName", "Name of the component", false),
                 new ParameterInfo("componentIndex", "Index of the component", false),
                 new ParameterInfo("componentInstanceId", "Instance ID of the component", false),
-                new ParameterInfo("values", "JSON object mapping SerializedProperty paths to values", true)
+                new ParameterInfo("values", "JSON object mapping SerializedProperty paths to values. In PowerShell, build a variable and escape embedded quotes before passing --values $values.", true)
             },
             ["add_component"] = new List<ParameterInfo>
             {
