@@ -7,7 +7,7 @@ using Newtonsoft.Json;
 
 namespace AIBridgeCLI
 {
-    class Program
+    partial class Program
     {
         private const int DEFAULT_TIMEOUT = 5000;
         private const int MULTI_COMMAND_TIMEOUT = 30000;

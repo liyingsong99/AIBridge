@@ -1,17 +1,27 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using AIBridgeCLI.Core;
 
 namespace AIBridgeCLI.Commands
 {
     /// <summary>
-    /// Multi command builder: execute multiple CLI commands in one call
-    /// Supports simple command line syntax instead of complex JSON
+    /// Multi command builder: execute multiple CLI commands through the Unity-side batch script protocol.
     /// </summary>
     public class MultiCommandBuilder : BaseCommandBuilder
     {
+        private const string BatchCallPrefix = "call ";
+
+        private static readonly HashSet<string> BatchNativeCommands = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "call",
+            "delay",
+            "log",
+            "menu"
+        };
+
         public override string Type => "multi";
-        public override string Description => "Execute multiple commands efficiently in one call";
+        public override string Description => "Execute multiple commands by generating a batch from_text script";
 
         public override string[] Actions => new[] { "run" };
 
@@ -19,173 +29,109 @@ namespace AIBridgeCLI.Commands
         {
             ["run"] = new List<ParameterInfo>
             {
-                new ParameterInfo("commands", "Commands separated by semicolon or newline", false)
+                new ParameterInfo("commands", "Commands separated by & or newline", false)
             }
         };
 
-        /// <summary>
-        /// Parse multiple command strings into batch request
-        /// </summary>
         public CommandRequest BuildFromCommands(string[] commandLines, Dictionary<string, string> globalOptions)
         {
-            var commands = new List<object>();
+            var scriptText = BuildBatchScriptText(commandLines);
+            var batchOptions = BuildBatchOptions(globalOptions, scriptText);
+            return new BatchCommandBuilder().Build("from_text", batchOptions);
+        }
 
-            foreach (var line in commandLines)
+        /// <summary>
+        /// Converts multi input to a batch script that matches the Unity-side BatchCommand from_text protocol.
+        /// </summary>
+        private static string BuildBatchScriptText(string[] commandLines)
+        {
+            var script = new StringBuilder();
+            foreach (var rawLine in commandLines)
             {
-                var trimmed = line.Trim();
-                if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("#"))
+                var line = NormalizeLine(rawLine);
+                if (line.Length == 0)
                 {
                     continue;
                 }
 
-                var parsed = ParseCommandLine(trimmed);
-                if (parsed != null)
-                {
-                    commands.Add(parsed);
-                }
+                var batchLine = IsBatchNativeLine(line) ? line : BatchCallPrefix + line;
+                script.AppendLine(batchLine);
             }
 
-            if (commands.Count == 0)
+            if (script.Length == 0)
             {
                 throw new ArgumentException("No valid commands provided");
             }
 
-            return new CommandRequest
+            return script.ToString();
+        }
+
+        private static string NormalizeLine(string rawLine)
+        {
+            if (rawLine == null)
             {
-                id = PathHelper.GenerateCommandId(),
-                type = "batch",
-                @params = new Dictionary<string, object>
-                {
-                    ["commands"] = commands
-                }
+                return string.Empty;
+            }
+
+            return rawLine.Trim().TrimStart('\uFEFF');
+        }
+
+        /// <summary>
+        /// Only forwards BatchCommandBuilder options so multi --stdin is not mistaken for batch from_text --stdin.
+        /// </summary>
+        private static Dictionary<string, string> BuildBatchOptions(Dictionary<string, string> globalOptions, string scriptText)
+        {
+            var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["text"] = scriptText
             };
+
+            if (globalOptions == null)
+            {
+                return options;
+            }
+
+            CopyOptionIfPresent(globalOptions, options, "name");
+            CopyOptionIfPresent(globalOptions, options, "keep-file");
+            CopyOptionIfPresent(globalOptions, options, "output-dir");
+            return options;
         }
 
-        /// <summary>
-        /// Parse a single command line into command object
-        /// Format: "type action --param1 value1 --param2 value2"
-        /// </summary>
-        private Dictionary<string, object> ParseCommandLine(string commandLine)
+        private static void CopyOptionIfPresent(Dictionary<string, string> source, Dictionary<string, string> target, string key)
         {
-            var parts = SplitCommandLine(commandLine);
-            if (parts.Count == 0) return null;
-
-            string type = parts[0];
-            string action = null;
-            var options = new Dictionary<string, object>();
-
-            int i = 1;
-
-            // Check if second part is action (not starting with --)
-            if (i < parts.Count && !parts[i].StartsWith("--"))
+            string value;
+            if (source.TryGetValue(key, out value))
             {
-                action = parts[i];
-                i++;
+                target[key] = value;
             }
-
-            // Parse options
-            while (i < parts.Count)
-            {
-                var part = parts[i];
-                if (part.StartsWith("--"))
-                {
-                    var key = part.Substring(2);
-                    if (i + 1 < parts.Count && !parts[i + 1].StartsWith("--"))
-                    {
-                        var value = parts[i + 1];
-                        // Try to parse as number or boolean
-                        options[key] = ParseValue(value);
-                        i += 2;
-                    }
-                    else
-                    {
-                        options[key] = true;
-                        i++;
-                    }
-                }
-                else
-                {
-                    i++;
-                }
-            }
-
-            // Add action to params if present
-            if (!string.IsNullOrEmpty(action))
-            {
-                options["action"] = action;
-            }
-
-            return new Dictionary<string, object>
-            {
-                ["type"] = type,
-                ["params"] = options
-            };
         }
 
-        /// <summary>
-        /// Split command line respecting quotes (both single and double)
-        /// </summary>
-        private List<string> SplitCommandLine(string commandLine)
+        private static bool IsBatchNativeLine(string line)
         {
-            var result = new List<string>();
-            var current = "";
-            var inQuote = false;
-            var quoteChar = ' ';
-
-            for (int i = 0; i < commandLine.Length; i++)
+            if (line.StartsWith("#", StringComparison.Ordinal))
             {
-                var c = commandLine[i];
-
-                if (!inQuote && (c == '"' || c == '\''))
-                {
-                    inQuote = true;
-                    quoteChar = c;
-                }
-                else if (inQuote && c == quoteChar)
-                {
-                    inQuote = false;
-                    quoteChar = ' ';
-                }
-                else if (!inQuote && c == ' ')
-                {
-                    if (!string.IsNullOrEmpty(current))
-                    {
-                        result.Add(current);
-                        current = "";
-                    }
-                }
-                else
-                {
-                    current += c;
-                }
+                return true;
             }
 
-            if (!string.IsNullOrEmpty(current))
-            {
-                result.Add(current);
-            }
-
-            return result;
+            var firstToken = GetFirstToken(line);
+            return BatchNativeCommands.Contains(firstToken);
         }
 
-        /// <summary>
-        /// Parse string value to appropriate type
-        /// </summary>
-        private new object ParseValue(string value)
+        private static string GetFirstToken(string line)
         {
-            if (bool.TryParse(value, out var boolVal))
-                return boolVal;
-            if (int.TryParse(value, out var intVal))
-                return intVal;
-            if (double.TryParse(value, out var doubleVal))
-                return doubleVal;
-            return value;
+            for (var i = 0; i < line.Length; i++)
+            {
+                if (char.IsWhiteSpace(line[i]))
+                {
+                    return line.Substring(0, i);
+                }
+            }
+
+            return line;
         }
 
         public override CommandRequest Build(string action, Dictionary<string, string> options)
         {
-            // This is called when using standard CLI format
-            // For multi command, we expect commands to be passed differently
             throw new ArgumentException("Use BuildFromCommands method for multi command");
         }
     }
