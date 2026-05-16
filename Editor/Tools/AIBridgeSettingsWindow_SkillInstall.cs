@@ -88,13 +88,13 @@ namespace AIBridge.Editor
 
             EditorGUILayout.Space(10);
 
-            // 安装 AGENTS.md 按钮
-            EditorGUILayout.LabelField("AGENTS 工作流规范", EditorStyles.boldLabel);
+            // 安装 Unity 项目 AGENTS.md 模板按钮
+            EditorGUILayout.LabelField("Unity 项目 AGENTS.md 模板", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "安装 AGENTS.md 工作流规范文档到项目根目录，方便初次使用者更好地使用 AIBridge。\n安装后会自动执行一次 Skills 安装。",
+                "安装面向 Unity 项目的 AGENTS.md 模板到项目根目录，方便初次使用者更好地使用 AIBridge。\n安装后会自动执行一次 Skills 安装。",
                 MessageType.Info);
 
-            if (GUILayout.Button("安装 AGENTS.md 示例到项目", GUILayout.Height(30)))
+            if (GUILayout.Button("安装 Unity 项目 AGENTS.md 模板", GUILayout.Height(30)))
             {
                 InstallAgentsFile();
             }
@@ -338,16 +338,17 @@ namespace AIBridge.Editor
         }
 
         /// <summary>
-        /// 获取 AGENTS.md 源文件路径（兼容 Packages 和 PackageCache）
+        /// 获取 Unity 项目 AGENTS.md 模板路径（兼容 Packages 和 PackageCache）
         /// </summary>
         private static string GetSourceAgentsPath()
         {
             const string PACKAGE_NAME = "cn.lys.aibridge";
             const string AGENTS_FILE_NAME = "AGENTS.md";
+            const string PROJECT_TEMPLATE_RELATIVE_PATH = "Templates~/ProjectRules/AGENTS.md";
             var projectRoot = Path.GetDirectoryName(Application.dataPath);
 
             // 方法 1: 直接从 Packages 目录查找（本地/嵌入式包）
-            var directPath = Path.Combine(projectRoot, "Packages", PACKAGE_NAME, AGENTS_FILE_NAME);
+            var directPath = Path.Combine(projectRoot, "Packages", PACKAGE_NAME, PROJECT_TEMPLATE_RELATIVE_PATH.Replace('/', Path.DirectorySeparatorChar));
             if (File.Exists(directPath))
             {
                 return directPath;
@@ -357,14 +358,48 @@ namespace AIBridge.Editor
             var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath($"Packages/{PACKAGE_NAME}");
             if (packageInfo != null)
             {
-                var packagePath = Path.Combine(packageInfo.resolvedPath, AGENTS_FILE_NAME);
+                var packagePath = Path.Combine(packageInfo.resolvedPath, PROJECT_TEMPLATE_RELATIVE_PATH.Replace('/', Path.DirectorySeparatorChar));
                 if (File.Exists(packagePath))
                 {
                     return packagePath;
                 }
             }
 
+            // 兼容旧版本包结构：历史上项目模板曾放在包根 AGENTS.md。
+            var legacyDirectPath = Path.Combine(projectRoot, "Packages", PACKAGE_NAME, AGENTS_FILE_NAME);
+            if (IsLegacyProjectAgentsTemplate(legacyDirectPath))
+            {
+                return legacyDirectPath;
+            }
+
+            if (packageInfo != null)
+            {
+                var legacyPackagePath = Path.Combine(packageInfo.resolvedPath, AGENTS_FILE_NAME);
+                if (IsLegacyProjectAgentsTemplate(legacyPackagePath))
+                {
+                    return legacyPackagePath;
+                }
+            }
+
             return null;
+        }
+
+        private static bool IsLegacyProjectAgentsTemplate(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                return false;
+            }
+
+            try
+            {
+                var content = File.ReadAllText(path);
+                return !content.Contains("本文件只用于开发 `cn.lys.aibridge` 包自身");
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>
@@ -394,7 +429,7 @@ namespace AIBridge.Editor
             {
                 EditorUtility.DisplayDialog(
                     "安装失败",
-                    "未找到 AGENTS.md 源文件。\n预期位置：Packages/cn.lys.aibridge/AGENTS.md",
+                    "未找到 Unity 项目 AGENTS.md 模板。\n预期位置：Packages/cn.lys.aibridge/Templates~/ProjectRules/AGENTS.md",
                     "确定");
                 return;
             }
@@ -410,7 +445,7 @@ namespace AIBridge.Editor
 
                 EditorUtility.DisplayDialog(
                     "安装成功",
-                    $"AGENTS.md 已成功安装到项目根目录。\n\n已自动执行 Skills 安装。",
+                    "Unity 项目 AGENTS.md 模板已成功安装到项目根目录。\n\n已自动执行 Skills 安装。",
                     "确定");
             }
             catch (Exception ex)

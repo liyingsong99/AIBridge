@@ -7,10 +7,16 @@ namespace AIBridge.Editor
     /// <summary>
     /// 批处理命令执行：执行脚本文件或脚本文本
     /// </summary>
-    public class BatchCommand : ICommand
+    public class BatchCommand : ICommand, ICommandSkillDocProvider
     {
         public string Type => "batch";
         public bool RequiresRefresh => true;
+
+        public CommandSkillDoc SkillDoc => new CommandSkillDoc(SkillDescription)
+        {
+            TargetSkillName = "aibridge-batch-script",
+            TargetReferenceFileName = "batch-script-reference.md"
+        };
 
         public string SkillDescription => @"### `batch` - 脚本自动化执行
 

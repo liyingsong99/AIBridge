@@ -1,6 +1,6 @@
 ---
 name: aibridge
-description: Unity Editor CLI integration for AIBridge. Use when Codex needs to compile Unity, inspect Console logs, search/read assets, manipulate GameObjects, Transforms, components, SerializedProperty values, scenes or prefabs, capture screenshots/GIFs, control Editor focus/menu items/game view, or run batched Unity automation through AIBridgeCLI.
+description: Unity Editor CLI integration for AIBridge. Use when Codex needs to compile Unity, inspect Console logs, search/read assets, manipulate GameObjects, Transforms, components, SerializedProperty values, scenes, screenshots/GIFs, editor focus/menu items/game view, or look up AIBridgeCLI command syntax. For batch/multi scripts use aibridge-batch-script. For complex prefab asset edits use aibridge-prefab-patch.
 ---
 
 # AI Bridge Unity Skill
@@ -38,13 +38,14 @@ Most Unity-side commands require an `action` such as `asset search` or `inspecto
 - For prefab asset edits, use `assetPath + objectPath + componentName` or `componentIndex`; `componentInstanceId` is scene-only.
 - For complex prefab asset edits, use the `aibridge-prefab-patch` skill and prefer `prefab patch --ops <file>` with dry-run first.
 - In PowerShell, avoid inline complex `--json`; build JSON in a variable, escape embedded quotes for native EXE argument passing, and pass command parameters directly, especially `inspector set_properties --values $values`.
-- `focus` is Windows CLI-only, `screenshot` requires Play Mode, and `multi` is preferred for batch dispatch.
-- `multi --cmd` accepts plain CLI commands separated by `&` and automatically emits Batch `call` lines; `call`, `delay`, `log`, `menu`, and `#` comment lines are kept as native Batch script.
+- `focus` is Windows CLI-only and `screenshot` requires Play Mode.
 
 ## Related Resources
 
 - `aibridge-prefab-patch`: specialized Skill for complex prefab asset edits.
-- Generated command reference below: exact command syntax.
+- `aibridge-batch-script`: specialized Skill for `batch` / `multi` script automation.
+- `references/command-reference.md`: generated CLI command syntax for common commands.
+- `references/inspector-property-reference.md`: generated Inspector and SerializedProperty syntax.
 
 ## Essential Commands
 
@@ -59,12 +60,12 @@ $CLI focus
 
 ### `multi` - Execute Multiple Commands (Recommended)
 
+Use `aibridge-batch-script` before writing long scripts or JSON-heavy `multi --stdin` commands.
+
 ```bash
 $CLI multi --cmd 'editor log --message Step1&gameobject create --name Cube --primitiveType Cube'
 $CLI multi --stdin
 ```
-
-<!-- AIBRIDGE:COMMANDS -->
 
 ---
 

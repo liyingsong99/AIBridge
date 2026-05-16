@@ -278,8 +278,8 @@ namespace AIBridge.Editor
 
         /// <summary>
         /// Generate and write skill file to target location.
-        /// Reads the template, applies CLI path replacement, then generates
-        /// dynamic command sections from all registered ICommand.SkillDescription values.
+        /// Reads the template and applies CLI path replacement.
+        /// Command references are generated into Skill reference files separately.
         /// </summary>
         private static void GenerateAndWriteSkillFile(string sourcePath, string targetDir, string targetFile)
         {
@@ -296,10 +296,6 @@ namespace AIBridge.Editor
             {
                 content = content.Replace(hardcodedPath, fixedCliPath);
             }
-
-            // Generate dynamic command sections from registered commands
-            var commands = CommandRegistry.GetAllCommands();
-            content = SkillDocumentGenerator.Generate(content, commands);
 
             File.WriteAllText(targetFile, content, System.Text.Encoding.UTF8);
         }
@@ -349,6 +345,7 @@ namespace AIBridge.Editor
                         result.SkillFileAction = InstallSkillFileForTarget(projectRoot, target, sourceSkillPath, out skillFilePath);
                         result.SkillFilePath = skillFilePath;
                         result.AdditionalSkillFilePaths.AddRange(InstallAdditionalSkillDirectoriesForTarget(projectRoot, target));
+                        GenerateSkillReferenceFilesForTarget(projectRoot, target);
                     }
 
                     var template = RuleTemplateLoader.Load(projectRoot, target.RootRuleTemplateRelativePath);
@@ -429,6 +426,31 @@ namespace AIBridge.Editor
             return installedSkillFiles;
         }
 
+        private static void GenerateSkillReferenceFilesForTarget(string projectRoot, AssistantIntegrationTarget target)
+        {
+            var targetSkillDirectory = GetTargetSkillDirectory(projectRoot, target);
+            if (string.IsNullOrEmpty(targetSkillDirectory))
+            {
+                return;
+            }
+
+            var commands = CommandRegistry.GetAllCommands();
+            SkillDocumentGenerator.GenerateReferenceFiles(targetSkillDirectory, commands);
+        }
+
+        private static string GetTargetSkillDirectory(string projectRoot, AssistantIntegrationTarget target)
+        {
+            if (!target.SupportsSkillDirectory)
+            {
+                return null;
+            }
+
+            var resolvedSkillDirectory = target.GetResolvedSkillDirectoryRelativePath(projectRoot);
+            return string.IsNullOrEmpty(resolvedSkillDirectory)
+                ? null
+                : Path.Combine(projectRoot, resolvedSkillDirectory.Replace('/', Path.DirectorySeparatorChar));
+        }
+
         private static string GetTargetSkillRootDirectory(string projectRoot, AssistantIntegrationTarget target)
         {
             if (!target.SupportsSkillDirectory || string.IsNullOrEmpty(target.SkillDirectoryRelativePath))
@@ -473,6 +495,12 @@ namespace AIBridge.Editor
             var prefabPatchSkillDocPath = target.SupportsSkillDirectory
                 ? "/" + target.GetResolvedSiblingSkillFileRelativePath(projectRoot, "aibridge-prefab-patch")
                 : "/Packages/" + PACKAGE_NAME + "/Skill~/aibridge-prefab-patch/" + SKILL_FILE_NAME;
+            var workflowSkillDocPath = target.SupportsSkillDirectory
+                ? "/" + target.GetResolvedSiblingSkillFileRelativePath(projectRoot, "aibridge-development-workflow")
+                : "/Packages/" + PACKAGE_NAME + "/Skill~/aibridge-development-workflow/" + SKILL_FILE_NAME;
+            var batchScriptSkillDocPath = target.SupportsSkillDirectory
+                ? "/" + target.GetResolvedSiblingSkillFileRelativePath(projectRoot, "aibridge-batch-script")
+                : "/Packages/" + PACKAGE_NAME + "/Skill~/aibridge-batch-script/" + SKILL_FILE_NAME;
             return new Dictionary<string, string>
             {
                 { "CLI_PATH", "./" + CLI_CACHE_FOLDER + "/" + cliExeName },
@@ -480,10 +508,25 @@ namespace AIBridge.Editor
                 { "CLI_CACHE_DIR", CLI_CACHE_FOLDER },
                 { "SKILL_DOC_PATH", skillDocPath },
                 { "PREFAB_PATCH_SKILL_DOC_PATH", prefabPatchSkillDocPath },
+                { "WORKFLOW_SKILL_DOC_PATH", workflowSkillDocPath },
+                { "BATCH_SCRIPT_SKILL_DOC_PATH", batchScriptSkillDocPath },
+                { "SKILL_INDEX", BuildSkillIndex(workflowSkillDocPath, skillDocPath, prefabPatchSkillDocPath, batchScriptSkillDocPath) },
                 { "PROJECT_ROOT_RULE_FILE", target.RootRuleFileName },
                 { "ASSISTANT_NAME", target.DisplayName },
                 { "PROJECT_ROOT", projectRoot }
             };
+        }
+
+        private static string BuildSkillIndex(string workflowSkillDocPath, string skillDocPath, string prefabPatchSkillDocPath, string batchScriptSkillDocPath)
+        {
+            var builder = new StringBuilder();
+            builder.AppendLine("| Skill | 匹配关键词 | 文档 |");
+            builder.AppendLine("|---|---|---|");
+            builder.AppendLine("| `aibridge-development-workflow` | 开发、修改、修复、重构、验证、测试、AGENTS、Skill、Editor 工具、包结构、Unity 资源 | `" + workflowSkillDocPath + "` |");
+            builder.AppendLine("| `aibridge` | CLI、编译、日志、Console、asset、scene、gameobject、inspector、selection、transform、screenshot、test、focus | `" + skillDocPath + "` |");
+            builder.AppendLine("| `aibridge-prefab-patch` | 复杂 Prefab、prefab patch、dryRun、批量 SerializedProperty、ensure_child、ensure_component、数组、引用写入 | `" + prefabPatchSkillDocPath + "` |");
+            builder.AppendLine("| `aibridge-batch-script` | batch、multi、批处理、脚本自动化、stdin、delay、call、menu、长脚本 | `" + batchScriptSkillDocPath + "` |");
+            return builder.ToString().TrimEnd();
         }
 
         private static List<AssistantIntegrationTarget> GetSelectedTargets(string projectRoot)

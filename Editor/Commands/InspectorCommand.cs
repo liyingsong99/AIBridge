@@ -13,7 +13,7 @@ namespace AIBridge.Editor
     /// Inspector operations: component and SerializedProperty read/write.
     /// Supports multiple sub-commands via "action" parameter.
     /// </summary>
-    public partial class InspectorCommand : ICommand
+    public partial class InspectorCommand : ICommand, ICommandSkillDocProvider
     {
         private const string AssetsPathPrefix = "Assets/";
         private const string PackagesPathPrefix = "Packages/";
@@ -26,6 +26,11 @@ namespace AIBridge.Editor
 
         public string Type => "inspector";
         public bool RequiresRefresh => true;
+
+        public CommandSkillDoc SkillDoc => new CommandSkillDoc(SkillDescription)
+        {
+            TargetReferenceFileName = "inspector-property-reference.md"
+        };
 
         public string SkillDescription => @"### `inspector` - Serialized Component/Asset Properties
 

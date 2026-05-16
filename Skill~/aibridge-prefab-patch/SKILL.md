@@ -7,6 +7,8 @@ description: Unity Prefab asset patch workflow for AIBridge. Use when modifying 
 
 Use `prefab patch` for complex Prefab asset edits that need multiple operations in one load/save cycle. Use `inspector set_property` for a single simple serialized field. Use `gameobject`、`transform`、`inspector` for scene objects.
 
+`$CLI` means the platform-appropriate AIBridge CLI invocation, usually `./AIBridgeCache/CLI/AIBridgeCLI.exe` on Windows.
+
 ## 参数选择
 
 - Prefer `--ops <file>` for multi-step edits, nested JSON, arrays, references, or anything run from PowerShell.
@@ -86,3 +88,7 @@ null
 - Duplicate child names under the same parent are ambiguous; use exact hierarchy paths.
 - Duplicate components of the same type are ambiguous; use `componentIndex` when needed.
 - Keep operation JSON under `AIBridgeCache/patch_ops/`; do not put it under `Assets/` or commit it.
+
+## References
+
+- `references/prefab-reference.md`: generated CLI reference for general `prefab` commands.

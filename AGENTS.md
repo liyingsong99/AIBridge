@@ -1,301 +1,52 @@
 # AGENTS.md
 
-## 重要原则
-1. 任何内容都尽量以简体中文回复
-2. 复杂逻辑处必须以简体中文添加必要的注释
-3. 禁止废话,言简意赅
-
----
-
-## 🔴🔴🔴 强制工作流（最高优先级,必须严格遵守）🔴🔴🔴
-
-### 工作流总览
-
-根据任务类型自动选择工作流：
-
-```
-【快速模式】- 问答、查询、简单解释
-【标准工作流】- 其它所有任务：Skills匹配 → 需求确认 → 综合分析 → 方案实施 → 检查清单
-```
-
----
-
-### 【快速模式】（自动触发）
-
-**触发条件**：
-- 纯问答（"这是什么"、"如何使用"、"解释XXX"）
-- 代码解释（"这段代码做什么"）
-- 查询操作（"查找XXX"、"显示XXX"）
-- 无代码修改
-
-**执行方式**：直接回答或执行，跳过完整工作流
-
----
-
-### 【标准工作流】
-
-**触发条件**：创建/修改/修复功能、重构、新模块开发
-
-**流程**：Skills匹配 → 需求确认 → 综合分析 → 方案实施 → 检查清单
-
----
-
-### 【Skills 匹配模式】
-
-**触发时机**：收到任何新任务后立即执行（无例外）
-
-**执行内容**：
-
-1. 分析任务涉及的业务场景
-2. 逐个匹配可用 Skills 列表
-3. 明确回复匹配结果（仅列出名称）
-
-**回复格式**：
-
-```
-【Skills 匹配模式】SkillSample1、SkillSample2
-```
-
-或
-
-```
-【Skills 匹配模式】无匹配 Skills
-```
-
-**分支逻辑**：
-
-- **有匹配 Skills**：继续进入【需求确认模式】
-- **无匹配 Skills**：自动退出工作流，进入自由模式直接回答用户问题
-
----
-
-### 【需求确认模式】
-
-**触发时机**：Skills 匹配模式完成后自动进入
-
-**执行内容**：
-
-1. 整理开发者需求的细节分析
-2. 补充完善后的方案细节
-3. 列出待确认事项,等待用户确认或补充细节
-
-**待确认事项分类**：
-
-1. 不明确的需求点
-2. 有待商榷的实现方案
-3. 考虑步骤中可能存在的 BUG/隐患
-
-**回复格式**：
-
-```
-【需求确认模式】
-方案概述：[简要描述实现方案]
-
-待确认事项：
-1. [不明确点1]
-2. [商榷点1]
-3. [潜在隐患1]
-
-请确认后继续。
-```
-
-**用户确认后**：进入【方案实施模式】
-
----
-
-### 【方案实施模式】
-
-**触发时机**：用户确认需求后
-
-**执行内容**：
-
-1. **开始前**：确认方案内容,如果有2条以上任务,则尽量考虑使用SubAgent/多Task实施方案
-2. **首先**：显示当前匹配的 Skills 列表，并调用 Skill tool 加载完整规范
-3. **开发业务逻辑前**：检查已有工具类，避免重复造轮子
-4. **然后**：按方案逐步实施
-5. 每个子任务完成后进行自测验证
-6. 方案实施完毕后, 强制进入清单检查模式
-
-**回复格式**：
-
-```
-【方案实施模式】
-当前匹配 Skills：SkillSample1、SkillSample2
-正在调用 Skill tool 加载规范...
-
-[调用 Skill: SkillSample1]
-[调用 Skill: SkillSample2]
-[调用 Skill: SkillSample3] # 检查已有工具类
-
-规范已加载，开始实施方案。
-```
-
----
-
-### 【分析模式】（强制执行）
-
-**触发时机**：任何代码修改请求（edit/write/refactor）在进入【方案实施模式】之前
-
-**执行内容**：
-
-#### 步骤 1：上下文收集（并行执行）
-
-必须完成以下至少一项：
-- [ ] 启动 1-2 个 explore agents 查找代码库模式和实现
-- [ ] 启动 1-2 个 librarian agents（如涉及外部库）
-- [ ] 使用直接工具：Grep/AST-grep/LSP/AIBridge 进行针对性搜索
-
-#### 步骤 2：综合分析（阻塞步骤 - 必须完成）
-
-分析收集到的上下文：
-- 存在哪些模式？
-- 有哪些约束？
-- 影响范围是什么？
-- 有哪些风险？
-
-**输出**：2-3 句话的综合分析结果
-
-#### 步骤 3：复杂度评估（阻塞步骤）
-
-问自己："这是常规问题还是需要创造性方法？"
-
-- **常规问题**（标准模式、清晰方案）→ 继续实施
-- **复杂问题**（架构决策、不熟悉的模式、多系统影响）→ **必须咨询 Oracle**
-- **非常规问题**（现有模式不适用、需要创造性方案）→ **必须咨询 Artistry**
-
-#### 步骤 4：实施门控
-
-只有在以下条件全部满足时才能进入【方案实施模式】：
-- [ ] 上下文已收集
-- [ ] 综合分析已完成
-- [ ] 复杂度已评估
-- [ ] 专家已咨询（如需要）
-
-**违规 = 工作不完整**
-
-**回复格式**：
-
-```
-【分析模式】
-✅ 上下文收集：已启动 2 个 explore agents
-✅ 综合分析：发现项目使用 X 模式，需要遵循 Y 约束
-✅ 复杂度评估：常规问题，可以直接实施
-✅ 实施门控：所有条件满足，进入方案实施
-```
-
-或
-
-```
-【分析模式】
-✅ 上下文收集：已启动 1 个 explore agent 和 1 个 librarian agent
-✅ 综合分析：发现多个冲突的模式，需要架构决策
-⚠️ 复杂度评估：复杂问题，需要咨询 Oracle
-⏸️ 实施门控：等待 Oracle 结果
-```
-
----
-
-### 【检查清单模式】（所有任务结束前必须执行）
-
-**触发时机**：方案实施完毕后或修改完代码后自动执行
-
-**执行内容**：
-
-1. 根据匹配的 Skills 自动选择对应检查清单
-2. 逐项执行检查并显示结果
-3. 未通过项自动修复后重新检查
-4. 全部通过后结束此步骤
-
-**检查清单对应关系**：
-
-1. SkillSample1 → SkillSample1 检查清单
-2. SkillSample2 → SkillSample2 检查清单
-3. 代码组织 → 代码组织检查清单
-4. 通用检查（所有任务必执行）：
-   - 代码诊断检查（通过 AIBridge 获取 Unity Console 日志）
-   - AIBridge 编译错误检查
-   - 代码规范检查
-
-## ✅ 检查清单库
-
-开发完成后，根据匹配的 Skills 执行对应检查清单：
-
-- **Sample1** → 见 `SkillSample1` skill 的完整检查清单
-- **Sample2** → 见 `SkillSample2` skill 的完整检查清单
-
-### 通用检查清单
-
-1. ./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity 编译检查（无语法错误、类型错误）
-2. 代码诊断检查（通过 AIBridge 获取Unity日志，无 Error）
-3. 命名空间正确（using 语句完整）
-4. 代码规范检查（遵循项目编码规范）
-5. 无重复代码（相同逻辑提取公共方法）
-6. 无 hard code（配置从配置表读取，魔法数字定义为常量）
-7. C# 9.0 语法兼容（禁止使用 C# 10.0+ 语法）
-8. Unity 对象判空规范（Unity 对象禁用 `?.`，必须使用 `!= null` 显式判空）
-
-**回复格式**：
-
-```
-【检查清单模式】
-1. XXX ✅
-2. YYY ✅
-3. AAA ❌ → 自动修复中...
-    修复完成，重新检查 ✅
-4. 代码诊断检查（无 Error） ✅
-5. ...
-
-检查清单全部通过，任务完成。
-```
-
-### 工作流执行示例
-
-**示例 1：开发任务（完整工作流）**
-
-用户输入：帮我在 LoginPanel 添加一个记住密码的功能
-
-```
-【Skills 匹配模式】SkillSample1
-
-【需求确认模式】
-方案概述：
-1. 在 LoginPanel 添加记住密码复选框 UI
-2. 使用 PlayerPrefs 存储密码（加密后）
-3. 登录成功后根据复选框状态决定是否保存
-
-待确认事项：
-1. 密码存储方式：使用 PlayerPrefs 还是本地文件？
-2. 加密方式：使用 AES 还是简单 Base64？
-3. 是否需要设置过期时间？
-
-请确认后继续。
-```
-
-
-### 项目编译方式
-
-** 只能使用 AIBridge 编译 **
-- ./AIBridgeCache/CLI/AIBridgeCLI.exe compile unity
-
-## ⚠️ 核心开发原则
-
-### 绝对禁止事项
-
-1. **绝对禁止 hard code**
-   - 所有配置必须从配置表读取
-   - 所有魔法数字必须定义为常量
-   - 所有路径必须从配置或常量获取
-
-2. **禁止使用 C# 10.0+ 语法特性**
-   - ❌ 常量插值字符串：`const string s = $"{nameof(Foo)}";`
-   - ❌ 文件范围命名空间：`namespace Foo;`
-   - ❌ 全局 using 指令：`global using System;`
-   - ❌ 原始字符串字面量：`"""..."""`
-   - ❌ required 成员：`required string Name`
-   - ❌ 主构造函数：`class Foo(int x)`
-   - ✅ 替代方案：`const string s = nameof(Foo) + "." + nameof(Bar);`
-
-3. **禁止重复代码**
-   - 相同逻辑出现 2 次以上，必须提取公共方法
-   - 跨文件的通用逻辑，提取到 Helper 或工具类
-   - 使用参数化、回调等方式处理差异部分
+## 基本原则
+1. 尽量使用简体中文回复，禁止废话，言简意赅
+2. 修改复杂业务逻辑时，必须用简体中文添加必要注释
+3. 尊重用户已有改动，不擅自回滚无关文件
+
+## 本文件职责
+本文件只用于开发 `cn.lys.aibridge` 包自身。安装到 Unity 项目根目录的示例模板位于：
+
+`Templates~/ProjectRules/AGENTS.md`
+
+不要把 AIBridge 包内部设计规则写入项目模板，避免污染使用者项目。
+
+## 开发任务工作流
+开发、修改、修复、重构 C# 代码、Unity 资源、Prefab、Editor 工具、包结构、测试、AGENTS 模板或 Skills 时，必须优先使用：
+
+- `aibridge-development-workflow`
+- 涉及 CLI / Unity 编译 / 日志 / 资源 / Inspector 时，再使用 `aibridge`
+- 涉及复杂 Prefab 资源修改时，再使用 `aibridge-prefab-patch`
+- 涉及 batch / multi 脚本自动化时，再使用 `aibridge-batch-script`
+
+## 项目验证
+- `$CLI` 表示：`./AIBridgeCache/CLI/AIBridgeCLI.exe`
+- Unity 编译只能使用：
+  `$CLI compile unity`
+- `compile dotnet` 只能作为额外检查，不能作为 Unity 编译的替代或 fallback
+
+## 代码硬约束
+1. C# 代码必须兼容 C# 9.0，禁止 C# 10.0+ 语法
+2. Unity 对象判空必须显式使用 `!= null`，禁止对 Unity 对象使用 `?.`
+3. 业务配置、路径、魔法数字不得散落硬编码；必要时定义常量或读取配置
+4. 避免重复代码；同一业务规则重复出现时应提取公共方法或工具类
+
+## SkillDoc 生成规则
+1. 主 `Skill~/SKILL.md` 保持轻量，只放 CLI 调用入口、核心规则和 reference 索引
+2. 命令文档默认生成到目标 Skill 的 `references/command-reference.md`
+3. 命令需要写入其它 reference 文件时，实现 `ICommandSkillDocProvider`
+4. `CommandSkillDoc.TargetSkillName` 默认是 `aibridge`
+5. `CommandSkillDoc.TargetReferenceFileName` 默认是 `command-reference.md`
+6. 大模块按职责拆分 reference，例如：
+   - batch / multi：`aibridge-batch-script/references/batch-script-reference.md`
+   - prefab：`aibridge-prefab-patch/references/prefab-reference.md`
+   - inspector：`aibridge/references/inspector-property-reference.md`
+7. 未实现 `ICommandSkillDocProvider` 的旧命令继续使用 `ICommand.SkillDescription`，并写入默认 reference
+
+## 模板维护规则
+1. `Templates~/ProjectRules/AGENTS.md` 是安装到 Unity 项目的示例文件
+2. `Templates~/Rules/*.RootRule.md` 是注入到已有规则文件的最小引导块
+3. RootRule 只放 CLI 路径、常用命令、Skill 索引和“开发任务先加载工作流”的路由规则
+4. 完整行为规范必须放在 `aibridge-development-workflow`
+5. CLI 详细命令说明必须放在对应 Skill 的 `references/*.md`

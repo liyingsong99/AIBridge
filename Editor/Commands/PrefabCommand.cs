@@ -8,10 +8,16 @@ namespace AIBridge.Editor
     /// Prefab operations: instantiate, save, unpack, inspect, apply, patch
     /// Supports multiple sub-commands via "action" parameter
     /// </summary>
-    public class PrefabCommand : ICommand
+    public class PrefabCommand : ICommand, ICommandSkillDocProvider
     {
         public string Type => "prefab";
         public bool RequiresRefresh => true;
+
+        public CommandSkillDoc SkillDoc => new CommandSkillDoc(SkillDescription)
+        {
+            TargetSkillName = "aibridge-prefab-patch",
+            TargetReferenceFileName = "prefab-reference.md"
+        };
 
         public string SkillDescription => @"### `prefab` - Prefab Operations
 

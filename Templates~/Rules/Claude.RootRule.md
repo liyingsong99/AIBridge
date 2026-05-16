@@ -1,35 +1,24 @@
 ---
 templateId: unity-integration
 assistant: claude
-version: 3
+version: 5
 target: root-rule
 ---
-## AIBridge Unity Integration
+## AIBridge Bootstrap
 
-**Skills**: `aibridge` - Unity CLI automation tool; `aibridge-prefab-patch` - complex prefab asset edits
+**CLI Alias**: `$CLI = {{CLI_PATH}}`
 
-**CLI**: `{{CLI_PATH}}` (outputs JSON by default)
-
-**Core Workflows**:
-- **Compile**: Use `compile unity` (default), `compile dotnet` (optional validation only)
-- **Asset Search**: Use `asset search/find --format paths` before generic filesystem search
-- **Property Edits**: Use `inspector get_properties/find_property/set_property/set_properties`; for prefab assets pass `assetPath + objectPath + componentName`
-- **Prefab Patch**: Use `aibridge-prefab-patch` for complex prefab asset edits, then run `prefab patch --ops <file>` with dry-run first
-- **Console Logs**: `get_logs --logType Error`
-- **PowerShell JSON**: Avoid inline complex `--json`; build a JSON variable, escape embedded quotes, and pass `--values $values`
-- **Multi Commands**: `multi --cmd` auto-wraps plain CLI lines as Batch `call`; use `multi --stdin` for long or JSON-heavy scripts
-- **Scene/GameObject**: Create, modify, inspect hierarchy
-- **Visual Verification**: `screenshot game`, `screenshot gif --frameCount 50` (Play Mode)
-
-**Quick Reference**:
+**常用命令**:
 ```bash
-{{CLI_PATH}} compile unity
-{{CLI_PATH}} get_logs --logType Error
-{{CLI_PATH}} asset search --mode script --keyword "Player" --format paths
-{{CLI_PATH}} gameobject create --name "Cube" --primitiveType Cube
-{{CLI_PATH}} inspector set_property --assetPath "Assets/UI/LoginPanel.prefab" --objectPath "Root/Button" --componentName "RectTransform" --propertyName "m_AnchoredPosition.x" --value 100
-{{CLI_PATH}} prefab patch --prefabPath "Assets/Prefabs/Player.prefab" --ops "patch_ops.json"
-{{CLI_PATH}} multi --cmd "editor log --message Step1&get_logs --logType Error --count 1"
+$CLI compile unity
+$CLI get_logs --logType Error
+$CLI editor log --message "Hello" --logType Warning
 ```
 
-**Skill Documentation**: [AIBridge Skill]({{SKILL_DOC_PATH}}), [Prefab Patch Skill]({{PREFAB_PATCH_SKILL_DOC_PATH}})
+**路由原则**:
+- 快速任务：纯问答、代码解释、查找、显示、无代码或资源修改，直接回答或执行。
+- 开发任务：创建、修改、修复、重构 C# 代码、Unity 资源、Prefab、Editor 工具、包结构、测试、AGENTS.md 或 Skills，必须优先加载 `aibridge-development-workflow`。
+- 进入标准开发工作流后，由 `aibridge-development-workflow` 在 `【Skills 匹配模式】` 决定是否继续加载其它 Skill。
+
+**Skill 索引**:
+{{SKILL_INDEX}}
