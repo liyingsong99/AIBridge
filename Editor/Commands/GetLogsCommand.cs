@@ -337,6 +337,7 @@ $CLI get_logs [--count 100] [--logType Error|Warning]
             Error = 1 << 0,
             Assert = 1 << 1,
             Log = 1 << 2,
+            Warning = 1 << 3,
             Fatal = 1 << 4,
             AssetImportError = 1 << 6,
             AssetImportWarning = 1 << 7,
@@ -360,6 +361,7 @@ $CLI get_logs [--count 100] [--logType Error|Warning]
             KnownLogMessageFlags.ScriptingException;
 
         private const KnownLogMessageFlags WarningLogMask =
+            KnownLogMessageFlags.Warning |
             KnownLogMessageFlags.AssetImportWarning |
             KnownLogMessageFlags.ScriptingWarning |
             KnownLogMessageFlags.ScriptCompileWarning;
