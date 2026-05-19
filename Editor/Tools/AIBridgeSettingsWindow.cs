@@ -18,6 +18,7 @@ namespace AIBridge.Editor
         {
             BasicSettings,    // 基础设置
             GifSettings,      // GIF 设置
+            LogSettings,      // 日志设置
             DirectoryInfo,    // 目录信息
             SkillInstall,     // Skills 安装
             Scripts,          // 脚本执行
@@ -100,6 +101,9 @@ namespace AIBridge.Editor
                 case TabType.GifSettings:
                     DrawGifSettings();
                     break;
+                case TabType.LogSettings:
+                    DrawLogSettingsTab();
+                    break;
                 case TabType.DirectoryInfo:
                     DrawDirectoryInfo();
                     break;
@@ -119,7 +123,7 @@ namespace AIBridge.Editor
 
         private void DrawTabToolbar()
         {
-            var tabNames = new[] { "基础设置", "GIF 设置", "目录信息", "Skills 安装", "脚本执行", "操作" };
+            var tabNames = new[] { "基础设置", "GIF 设置", "日志设置", "目录信息", "Skills 安装", "脚本执行", "操作" };
             _currentTab = (TabType)GUILayout.Toolbar((int)_currentTab, tabNames);
         }
 

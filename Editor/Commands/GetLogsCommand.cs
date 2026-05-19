@@ -19,10 +19,21 @@ namespace AIBridge.Editor
 $CLI get_logs [--count 100] [--logType Error|Warning]
 ```";
 
+        internal static List<LogEntry> GetConsoleLogsForSettingsPreview(int maxCount, string logTypeFilter)
+        {
+            return new GetLogsCommand().GetConsoleLogs(maxCount, logTypeFilter);
+        }
+
         public CommandResult Execute(CommandRequest request)
         {
-            var count = request.GetParam("count", 50);
-            var logType = request.GetParam("logType", "all");
+            var defaultSettings = AIBridgeProjectSettings.Instance.LogRetrieval;
+            var count = request.HasParam("count")
+                ? request.GetParam("count", defaultSettings.Count)
+                : defaultSettings.Count;
+            var logType = request.HasParam("logType")
+                ? request.GetParam("logType", defaultSettings.LogType)
+                : defaultSettings.LogType;
+            logType = AIBridgeProjectSettings.NormalizeLogRetrievalType(logType);
 
             try
             {
@@ -306,7 +317,7 @@ $CLI get_logs [--count 100] [--logType Error|Warning]
         }
 
         [Serializable]
-        private class LogEntry
+        internal class LogEntry
         {
             public string message;
             public string type;
