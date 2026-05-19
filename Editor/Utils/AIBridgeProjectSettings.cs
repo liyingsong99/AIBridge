@@ -30,6 +30,8 @@ namespace AIBridge.Editor
         {
             public int Count = DefaultLogRetrievalCount;
             public string LogType = DefaultLogRetrievalType;
+            public bool RegexFilterEnabled;
+            public string RegexPattern = string.Empty;
         }
 
         [Serializable]

@@ -18,12 +18,14 @@ namespace AIBridgeCLI.Commands
             ["get"] = new List<ParameterInfo>
             {
                 new ParameterInfo("count", "Maximum number of log entries", false, "50"),
-                new ParameterInfo("logType", "Filter by type: all, Log, Warning, Error", false, "all")
+                new ParameterInfo("logType", "Filter by type: all, Log, Warning, Error", false, "all"),
+                new ParameterInfo("regex", "Filter by message regex", false)
             },
             [""] = new List<ParameterInfo>
             {
                 new ParameterInfo("count", "Maximum number of log entries", false, "50"),
-                new ParameterInfo("logType", "Filter by type: all, Log, Warning, Error", false, "all")
+                new ParameterInfo("logType", "Filter by type: all, Log, Warning, Error", false, "all"),
+                new ParameterInfo("regex", "Filter by message regex", false)
             }
         };
 

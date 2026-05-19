@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using UnityEditor;
 
 namespace AIBridge.Editor
@@ -16,18 +17,19 @@ namespace AIBridge.Editor
         public string SkillDescription => @"### `get_logs` - Get Console Logs
 
 ```bash
-$CLI get_logs [--count 100] [--logType Error|Warning]
+$CLI get_logs [--count 100] [--logType Error|Warning] [--regex ""pattern""]
 ```";
 
-        internal static List<LogEntry> GetConsoleLogsForSettingsPreview(int maxCount, string logTypeFilter)
+        internal static List<LogEntry> GetConsoleLogsForSettingsPreview(int maxCount, string logTypeFilter, string regexPattern)
         {
-            return new GetLogsCommand().GetConsoleLogs(maxCount, logTypeFilter, LogFilterMode.MinimumLevel);
+            return new GetLogsCommand().GetConsoleLogs(maxCount, logTypeFilter, LogFilterMode.MinimumLevel, regexPattern);
         }
 
         public CommandResult Execute(CommandRequest request)
         {
             var defaultSettings = AIBridgeProjectSettings.Instance.LogRetrieval;
             var hasLogType = request.HasParam("logType");
+            var hasRegex = request.HasParam("regex");
             var count = request.HasParam("count")
                 ? request.GetParam("count", defaultSettings.Count)
                 : defaultSettings.Count;
@@ -35,12 +37,15 @@ $CLI get_logs [--count 100] [--logType Error|Warning]
                 ? request.GetParam("logType", defaultSettings.LogType)
                 : defaultSettings.LogType;
             logType = AIBridgeProjectSettings.NormalizeLogRetrievalType(logType);
+            var regexPattern = hasRegex
+                ? request.GetParam<string>("regex", null)
+                : (defaultSettings.RegexFilterEnabled ? defaultSettings.RegexPattern : null);
 
             try
             {
                 // 面板默认值使用“最低等级”语义；显式 CLI 参数保持历史精确筛选，避免破坏现有 AI 命令。
                 var filterMode = hasLogType ? LogFilterMode.Exact : LogFilterMode.MinimumLevel;
-                var logs = GetConsoleLogs(count, logType, filterMode);
+                var logs = GetConsoleLogs(count, logType, filterMode, regexPattern);
                 return CommandResult.Success(request.id, new
                 {
                     logs = logs,
@@ -53,21 +58,28 @@ $CLI get_logs [--count 100] [--logType Error|Warning]
             }
         }
 
-        private List<LogEntry> GetConsoleLogs(int maxCount, string logTypeFilter, LogFilterMode filterMode)
+        private List<LogEntry> GetConsoleLogs(int maxCount, string logTypeFilter, LogFilterMode filterMode, string regexPattern)
         {
+            Regex regexFilter;
+            var regexError = TryCreateRegex(regexPattern, out regexFilter);
+            if (!string.IsNullOrEmpty(regexError))
+            {
+                throw new ArgumentException("Invalid regex: " + regexError);
+            }
+
 #if UNITY_2020_1_OR_NEWER
-            return GetConsoleLogsForModernUnity(maxCount, logTypeFilter, filterMode);
+            return GetConsoleLogsForModernUnity(maxCount, logTypeFilter, filterMode, regexFilter);
 #else
-            return GetConsoleLogsForUnity2019(maxCount, logTypeFilter, filterMode);
+            return GetConsoleLogsForUnity2019(maxCount, logTypeFilter, filterMode, regexFilter);
 #endif
         }
 
-        private List<LogEntry> GetConsoleLogsForModernUnity(int maxCount, string logTypeFilter, LogFilterMode filterMode)
+        private List<LogEntry> GetConsoleLogsForModernUnity(int maxCount, string logTypeFilter, LogFilterMode filterMode, Regex regexFilter)
         {
             try
             {
                 var consoleReflection = ResolveConsoleReflectionForModernUnity();
-                return ReadConsoleLogs(consoleReflection, maxCount, logTypeFilter, filterMode);
+                return ReadConsoleLogs(consoleReflection, maxCount, logTypeFilter, filterMode, regexFilter);
             }
             catch (Exception ex)
             {
@@ -76,12 +88,12 @@ $CLI get_logs [--count 100] [--logType Error|Warning]
             }
         }
 
-        private List<LogEntry> GetConsoleLogsForUnity2019(int maxCount, string logTypeFilter, LogFilterMode filterMode)
+        private List<LogEntry> GetConsoleLogsForUnity2019(int maxCount, string logTypeFilter, LogFilterMode filterMode, Regex regexFilter)
         {
             try
             {
                 var consoleReflection = ResolveConsoleReflectionForUnity2019();
-                return ReadConsoleLogs(consoleReflection, maxCount, logTypeFilter, filterMode);
+                return ReadConsoleLogs(consoleReflection, maxCount, logTypeFilter, filterMode, regexFilter);
             }
             catch (Exception ex)
             {
@@ -90,7 +102,7 @@ $CLI get_logs [--count 100] [--logType Error|Warning]
             }
         }
 
-        private List<LogEntry> ReadConsoleLogs(ConsoleReflection consoleReflection, int maxCount, string logTypeFilter, LogFilterMode filterMode)
+        private List<LogEntry> ReadConsoleLogs(ConsoleReflection consoleReflection, int maxCount, string logTypeFilter, LogFilterMode filterMode, Regex regexFilter)
         {
             var logs = new List<LogEntry>();
             if (consoleReflection == null)
@@ -129,6 +141,11 @@ $CLI get_logs [--count 100] [--logType Error|Warning]
                             continue;
                         }
 
+                        if (!ShouldIncludeByRegex(regexFilter, message))
+                        {
+                            continue;
+                        }
+
                         logs.Add(new LogEntry
                         {
                             message = message,
@@ -147,6 +164,25 @@ $CLI get_logs [--count 100] [--logType Error|Warning]
             }
 
             return logs;
+        }
+
+        private string TryCreateRegex(string pattern, out Regex regex)
+        {
+            regex = null;
+            if (string.IsNullOrEmpty(pattern))
+            {
+                return null;
+            }
+
+            try
+            {
+                regex = new Regex(pattern);
+                return null;
+            }
+            catch (ArgumentException ex)
+            {
+                return ex.Message;
+            }
         }
 
         private ConsoleReflection ResolveConsoleReflectionForModernUnity()
@@ -305,6 +341,16 @@ $CLI get_logs [--count 100] [--logType Error|Warning]
             }
 
             return string.Equals(entryType, logTypeFilter, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool ShouldIncludeByRegex(Regex regexFilter, string message)
+        {
+            if (regexFilter == null)
+            {
+                return true;
+            }
+
+            return regexFilter.IsMatch(message ?? string.Empty);
         }
 
         private int GetLogSeverityRank(string logType)

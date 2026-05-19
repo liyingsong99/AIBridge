@@ -77,6 +77,8 @@ namespace AIBridge.Editor
             _gifScale = GifRecorderSettings.DefaultScale;
             _gifColorCount = GifRecorderSettings.DefaultColorCount;
             _gifStartDelay = GifRecorderSettings.DefaultStartDelay;
+
+            LoadLogSettings();
         }
 
         private void OnGUI()

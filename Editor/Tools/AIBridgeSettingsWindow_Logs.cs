@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 
@@ -12,9 +13,20 @@ namespace AIBridge.Editor
 
         private int _logRetrievalCount = AIBridgeProjectSettings.DefaultLogRetrievalCount;
         private int _logTypeIndex;
+        private bool _regexFilterEnabled;
+        private string _regexPattern = string.Empty;
         private Vector2 _logPreviewScrollPosition;
         private List<GetLogsCommand.LogEntry> _logPreviewEntries = new List<GetLogsCommand.LogEntry>();
         private string _logPreviewError;
+
+        private void LoadLogSettings()
+        {
+            var settings = AIBridgeProjectSettings.Instance.LogRetrieval;
+            _logRetrievalCount = Mathf.Clamp(settings.Count, MinLogRetrievalCount, MaxLogRetrievalCount);
+            _logTypeIndex = GetLogTypeIndex(settings.LogType);
+            _regexFilterEnabled = settings.RegexFilterEnabled;
+            _regexPattern = settings.RegexPattern ?? string.Empty;
+        }
 
         private void DrawLogSettingsTab()
         {
@@ -32,13 +44,14 @@ namespace AIBridge.Editor
 
         private void DrawLogRetrievalSettings()
         {
-            var settings = AIBridgeProjectSettings.Instance.LogRetrieval;
-            _logRetrievalCount = Mathf.Clamp(settings.Count, MinLogRetrievalCount, MaxLogRetrievalCount);
-            _logTypeIndex = GetLogTypeIndex(settings.LogType);
-
             EditorGUI.BeginChangeCheck();
             _logTypeIndex = EditorGUILayout.Popup("默认最低日志等级", _logTypeIndex, AIBridgeProjectSettings.SupportedLogRetrievalTypeLabels);
             _logRetrievalCount = EditorGUILayout.IntSlider("默认获取数量", _logRetrievalCount, MinLogRetrievalCount, MaxLogRetrievalCount);
+            _regexFilterEnabled = EditorGUILayout.Toggle("启用全局正则筛选", _regexFilterEnabled);
+            using (new EditorGUI.DisabledScope(!_regexFilterEnabled))
+            {
+                _regexPattern = EditorGUILayout.TextField("日志内容正则", _regexPattern);
+            }
 
             if (EditorGUI.EndChangeCheck())
             {
@@ -47,6 +60,10 @@ namespace AIBridge.Editor
 
             EditorGUILayout.HelpBox(
                 "这里按最低等级筛选：Info 及以上包含 Info、Warning、Error；Warning 及以上包含 Warning、Error；Error 只包含 Error。CLI 显式传入 --logType 时仍按指定类型精确筛选。",
+                MessageType.Info);
+
+            EditorGUILayout.HelpBox(
+                "开启全局正则筛选后，未显式传入 --regex 的 get_logs 也会按日志内容正则过滤。",
                 MessageType.Info);
         }
 
@@ -118,21 +135,36 @@ namespace AIBridge.Editor
             var logSettings = settings.LogRetrieval;
             var newCount = Mathf.Clamp(_logRetrievalCount, MinLogRetrievalCount, MaxLogRetrievalCount);
             var newLogType = GetSelectedLogType();
+            var newRegexPattern = _regexPattern ?? string.Empty;
 
-            if (logSettings.Count == newCount && string.Equals(logSettings.LogType, newLogType, StringComparison.Ordinal))
+            if (_regexFilterEnabled && !TryValidateRegex(newRegexPattern, out var regexError))
+            {
+                _logPreviewError = "正则表达式无效: " + regexError;
+                return;
+            }
+
+            if (logSettings.Count == newCount &&
+                string.Equals(logSettings.LogType, newLogType, StringComparison.Ordinal) &&
+                logSettings.RegexFilterEnabled == _regexFilterEnabled &&
+                string.Equals(logSettings.RegexPattern ?? string.Empty, newRegexPattern, StringComparison.Ordinal))
             {
                 return;
             }
 
             logSettings.Count = newCount;
             logSettings.LogType = newLogType;
+            logSettings.RegexFilterEnabled = _regexFilterEnabled;
+            logSettings.RegexPattern = newRegexPattern;
             settings.SaveSettings();
+            _logPreviewError = null;
         }
 
         private void ResetLogRetrievalSettings()
         {
             _logRetrievalCount = AIBridgeProjectSettings.DefaultLogRetrievalCount;
             _logTypeIndex = GetLogTypeIndex(AIBridgeProjectSettings.DefaultLogRetrievalType);
+            _regexFilterEnabled = false;
+            _regexPattern = string.Empty;
             SaveLogRetrievalSettings();
             _logPreviewEntries.Clear();
             _logPreviewError = null;
@@ -148,7 +180,8 @@ namespace AIBridge.Editor
             {
                 _logPreviewEntries = GetLogsCommand.GetConsoleLogsForSettingsPreview(
                     _logRetrievalCount,
-                    GetSelectedLogType());
+                    GetSelectedLogType(),
+                    _regexFilterEnabled ? _regexPattern : null);
             }
             catch (Exception ex)
             {
@@ -161,6 +194,26 @@ namespace AIBridge.Editor
         {
             var count = Mathf.Clamp(_logRetrievalCount, MinLogRetrievalCount, MaxLogRetrievalCount);
             return "./.aibridge/cli/AIBridgeCLI.exe get_logs --count " + count;
+        }
+
+        private bool TryValidateRegex(string pattern, out string error)
+        {
+            error = null;
+            if (string.IsNullOrEmpty(pattern))
+            {
+                return true;
+            }
+
+            try
+            {
+                new Regex(pattern);
+                return true;
+            }
+            catch (ArgumentException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
         }
 
         private string GetSelectedLogType()
