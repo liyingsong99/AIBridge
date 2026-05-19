@@ -59,7 +59,7 @@ https://github.com/liyingsong99/AIBridge.git
 AIBridge 复制 CLI 缓存后，在 Unity 项目根目录执行：
 
 ```powershell
-$CLI = "./AIBridgeCache/CLI/AIBridgeCLI.exe"
+$CLI = "./.aibridge/cli/AIBridgeCLI.exe"
 ```
 
 macOS/Linux 可使用随包平台可执行文件，或按项目配置通过 `dotnet` 运行 DLL。
@@ -127,7 +127,7 @@ $CLI inspector set_property --path "Player" --componentName "Rigidbody" --proper
 
 $CLI prefab get_info --prefabPath "Assets/Prefabs/Player.prefab"
 $CLI prefab get_hierarchy --prefabPath "Assets/Prefabs/Player.prefab" --includeComponents true
-$CLI prefab patch --prefabPath "Assets/Prefabs/Player.prefab" --ops "AIBridgeCache/patch_ops/player_patch.json" --dryRun true
+$CLI prefab patch --prefabPath "Assets/Prefabs/Player.prefab" --ops ".aibridge/patch_ops/player_patch.json" --dryRun true
 ```
 
 简单 Prefab 字段修改可用 `inspector set_property`，并传入 `assetPath + objectPath + componentName`。多步骤 Prefab 修改使用 `prefab patch --ops <file>`，正式写入前先执行 `--dryRun true`。
@@ -136,14 +136,14 @@ PowerShell 传复杂 JSON 时建议先构造变量：
 
 ```powershell
 $values = (@{ 'm_LocalPosition.x' = 0; 'm_LocalPosition.y' = 1 } | ConvertTo-Json -Compress) -replace '"', '\"'
-& "./AIBridgeCache/CLI/AIBridgeCLI.exe" inspector set_properties --assetPath 'Assets/Prefabs/Player.prefab' --componentName Transform --values $values
+& "./.aibridge/cli/AIBridgeCLI.exe" inspector set_properties --assetPath 'Assets/Prefabs/Player.prefab' --componentName Transform --values $values
 ```
 
 ### Batch 和 Multi
 
 ```bash
 $CLI batch from_text --text "call editor log 'Hello'\ndelay 1000"
-$CLI batch from_file --file "AIBridgeCache/scripts/setup_scene.txt"
+$CLI batch from_file --file ".aibridge/scripts/setup_scene.txt"
 $CLI multi --cmd "editor log --message Step1&get_logs --logType Error --count 1"
 ```
 
@@ -155,7 +155,7 @@ editor log --message "Start"
 delay 1000
 get_logs --logType Error --count 1
 '@
-$script | & "./AIBridgeCache/CLI/AIBridgeCLI.exe" multi --stdin
+$script | & "./.aibridge/cli/AIBridgeCLI.exe" multi --stdin
 ```
 
 ### 视觉验证

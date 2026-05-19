@@ -84,7 +84,7 @@ namespace AIBridgeCLI.Commands
                     throw new ArgumentException("Script text is required. Use --text or --stdin.");
                 }
 
-                // 生成脚本文件路径（写入 AIBridgeCache/scripts 目录）
+                // 生成脚本文件路径（写入 .aibridge/scripts 目录）
                 string cacheDir = PathHelper.GetExchangeDirectory();
                 string scriptsDir = Path.Combine(cacheDir, "scripts");
                 string scriptName = options.TryGetValue("name", out var name) ? name : $"script_{DateTime.Now:yyyyMMddHHmmss}";

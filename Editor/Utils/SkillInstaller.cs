@@ -17,7 +17,7 @@ namespace AIBridge.Editor
     {
         private const string SKILL_FILE_NAME = "SKILL.md";
         private const string PACKAGE_NAME = "cn.lys.aibridge";
-        private const string CLI_CACHE_FOLDER = "AIBridgeCache/CLI";
+        private const string CLI_CACHE_FOLDER = ".aibridge/cli";
         private static readonly string[] CLI_FILES = new[]
         {
             "AIBridgeCLI.dll",
@@ -92,7 +92,7 @@ namespace AIBridge.Editor
         }
         
         /// <summary>
-        /// Copy CLI files to AIBridgeCache/CLI directory.
+        /// Copy CLI files to .aibridge/cli directory.
         /// This provides a fixed, stable path for AI assistants to use.
         /// </summary>
         private static void CopyCliToCacheIfNeeded(string projectRoot)

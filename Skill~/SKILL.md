@@ -9,15 +9,15 @@ description: Unity Editor CLI integration for AIBridge. Use when Codex needs to 
 
 Run commands from the Unity project root.
 
-**CLI Path:** `./AIBridgeCache/CLI/AIBridgeCLI.exe`
+**CLI Path:** `./.aibridge/cli/AIBridgeCLI.exe`
 
 **Example Alias:** `$CLI` is a shorthand for the platform-appropriate AIBridge CLI invocation. Examples use `$CLI` for consistency; replace it with the matching invocation form when running commands directly.
 
 **Invocation Forms:**
 
-- Windows executable: `./AIBridgeCache/CLI/AIBridgeCLI.exe <command> [action] [options]`
-- macOS/Linux DLL: `dotnet ./AIBridgeCache/CLI/AIBridgeCLI.dll <command> [action] [options]`
-- PowerShell call operator: `& "./AIBridgeCache/CLI/AIBridgeCLI.exe" <command> [action] [options]`
+- Windows executable: `./.aibridge/cli/AIBridgeCLI.exe <command> [action] [options]`
+- macOS/Linux DLL: `dotnet ./.aibridge/cli/AIBridgeCLI.dll <command> [action] [options]`
+- PowerShell call operator: `& "./.aibridge/cli/AIBridgeCLI.exe" <command> [action] [options]`
 
 Most Unity-side commands require an `action` such as `asset search` or `inspector set_property`. CLI-only commands and helpers can differ: `focus` has no action, while `multi` uses `--cmd` or `--stdin`. Use `--help` or the generated command reference for the exact form.
 
@@ -28,7 +28,7 @@ Most Unity-side commands require an `action` such as `asset search` or `inspecto
 - `--json <json>` / `--stdin` - Complex parameters
 - `--help` - Show help
 
-**Cache Directory:** `AIBridgeCache/` (commands, results, screenshots)
+**Cache Directory:** `.aibridge/` (commands, results, screenshots)
 
 ## Operating Rules
 

@@ -22,7 +22,7 @@
 
 ## AIBridge 验证
 
-`$CLI` 表示当前平台的 AIBridge CLI 调用方式，Windows 项目通常是 `./AIBridgeCache/CLI/AIBridgeCLI.exe`。
+`$CLI` 表示当前平台的 AIBridge CLI 调用方式，Windows 项目通常是 `./.aibridge/cli/AIBridgeCLI.exe`。
 
 涉及 C# 或 Unity 逻辑修改时执行：
 

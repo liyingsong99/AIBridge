@@ -90,7 +90,7 @@ namespace AIBridge.Editor.ScriptExecution.Commands
 
         private ScriptCommandResult ExecuteExternalCli(ScriptExecutionContext context, string cliArgs)
         {
-            var cliPath = Path.Combine(Directory.GetCurrentDirectory(), "AIBridgeCache", "CLI", "AIBridgeCLI.exe");
+            var cliPath = Path.Combine(Directory.GetCurrentDirectory(), ".aibridge", "cli", "AIBridgeCLI.exe");
             if (!File.Exists(cliPath))
             {
                 cliPath = Path.Combine(Directory.GetCurrentDirectory(), "Packages", "cn.lys.aibridge", "Tools~", "CLI", "win-x64", "AIBridgeCLI.exe");
@@ -98,7 +98,7 @@ namespace AIBridge.Editor.ScriptExecution.Commands
 
             if (!File.Exists(cliPath))
             {
-                return ScriptCommandResult.Fail("AIBridge CLI not found. Tried AIBridgeCache/CLI/AIBridgeCLI.exe and Packages/cn.lys.aibridge/Tools~/CLI/win-x64/AIBridgeCLI.exe");
+                return ScriptCommandResult.Fail("AIBridge CLI not found. Tried .aibridge/cli/AIBridgeCLI.exe and Packages/cn.lys.aibridge/Tools~/CLI/win-x64/AIBridgeCLI.exe");
             }
 
             context.Log($"[Call] External execute: {cliPath} {cliArgs}");

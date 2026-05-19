@@ -38,7 +38,7 @@ namespace AIBridgeCLI.Core
                 return _exchangeDir;
             }
 
-            _exchangeDir = Path.Combine(projectRoot, "AIBridgeCache");
+            _exchangeDir = Path.Combine(projectRoot, ".aibridge");
             return _exchangeDir;
         }
 

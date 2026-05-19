@@ -61,7 +61,7 @@ namespace AIBridge.Editor
                 if (string.IsNullOrEmpty(_screenshotsDir))
                 {
                     var projectRoot = Path.GetDirectoryName(Application.dataPath);
-                    _screenshotsDir = Path.Combine(projectRoot, "AIBridgeCache", "screenshots");
+                    _screenshotsDir = Path.Combine(projectRoot, ".aibridge", "screenshots");
                 }
                 return _screenshotsDir;
             }

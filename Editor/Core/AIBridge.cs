@@ -187,9 +187,9 @@ namespace AIBridge.Editor
         /// </summary>
         private static string GetExchangeDirectory()
         {
-            // Use AIBridgeCache in Unity project root for better compatibility with git/UPM installation
+            // Use .aibridge in Unity project root for better compatibility with git/UPM installation
             var projectRoot = Path.GetDirectoryName(Application.dataPath);
-            return Path.Combine(projectRoot, "AIBridgeCache");
+            return Path.Combine(projectRoot, ".aibridge");
         }
 
         private static bool ReadEnabled(string key, bool defaultValue)

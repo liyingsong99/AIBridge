@@ -54,7 +54,7 @@ namespace AIBridge.Editor.ScriptExecution
 
         /// <summary>
         /// 关联的 batch 请求 ID。
-        /// 存在该值时，脚本终态需要写回 AIBridgeCache/results。
+        /// 存在该值时，脚本终态需要写回 .aibridge/results。
         /// </summary>
         public string BatchRequestId { get; set; }
 
@@ -63,7 +63,7 @@ namespace AIBridge.Editor.ScriptExecution
         /// </summary>
         public bool DeleteScriptAfterExecution { get; set; }
 
-        private const string StateFilePath = "AIBridgeCache/script-state.json";
+        private const string StateFilePath = ".aibridge/script-state.json";
 
         public ScriptExecutionState()
         {

@@ -224,8 +224,8 @@ namespace AIBridge.Editor
                 case "batch":
                     return new
                     {
-                        from_file = new { type = "batch", @params = new { action = "from_file", file = "AIBridgeCache/scripts/setup.txt" } },
-                        from_text_runtime = new { type = "batch", @params = new { action = "from_text", scriptPath = "AIBridgeCache/scripts/temp_script.txt", keepFile = false } },
+                        from_file = new { type = "batch", @params = new { action = "from_file", file = ".aibridge/scripts/setup.txt" } },
+                        from_text_runtime = new { type = "batch", @params = new { action = "from_text", scriptPath = ".aibridge/scripts/temp_script.txt", keepFile = false } },
                         cli_note = "CLI batch from_text writes --text to a temporary scriptPath before sending this Unity command."
                     };
 

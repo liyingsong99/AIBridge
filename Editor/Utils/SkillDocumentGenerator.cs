@@ -92,7 +92,7 @@ namespace AIBridge.Editor
             sb.AppendLine("# AIBridge Command Reference");
             sb.AppendLine();
             sb.AppendLine("此文件由 AIBridge 自动生成。需要修改命令说明时，请修改对应 ICommand 的 SkillDoc/SkillDescription。");
-            sb.AppendLine("`$CLI` 表示当前平台的 AIBridge CLI 调用方式，Windows 项目通常是 `./AIBridgeCache/CLI/AIBridgeCLI.exe`。");
+            sb.AppendLine("`$CLI` 表示当前平台的 AIBridge CLI 调用方式，Windows 项目通常是 `./.aibridge/cli/AIBridgeCLI.exe`。");
             sb.AppendLine();
 
             foreach (var doc in docs)

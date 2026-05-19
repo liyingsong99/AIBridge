@@ -3,7 +3,7 @@
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
-AIBridgeCache/
+.aibridge/
 
 # Visual Studio
 .vs/

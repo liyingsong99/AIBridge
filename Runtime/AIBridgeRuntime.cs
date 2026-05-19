@@ -156,7 +156,7 @@ namespace AIBridge.Runtime
         private void Initialize()
         {
             var projectRoot = Application.dataPath.Replace("/Assets", "");
-            var exchangePath = Path.Combine(projectRoot, "AIBridgeCache");
+            var exchangePath = Path.Combine(projectRoot, ".aibridge");
 
             _commandsPath = Path.Combine(exchangePath, "commands");
             _resultsPath = Path.Combine(exchangePath, "results");

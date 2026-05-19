@@ -17,7 +17,7 @@ namespace AIBridge.Editor
 
         public string SkillDescription => @"### `screenshot` - Screenshot & GIF Recording (Play Mode)
 
-**Requires Play mode.** Files saved to `AIBridgeCache/screenshots/`.
+**Requires Play mode.** Files saved to `.aibridge/screenshots/`.
 
 ```bash
 $CLI screenshot game  # Capture Game view screenshot (JPG)

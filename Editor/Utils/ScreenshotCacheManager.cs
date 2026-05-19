@@ -166,7 +166,7 @@ namespace AIBridge.Editor
         private static string GetScreenshotsDirectory()
         {
             var projectRoot = Path.GetDirectoryName(Application.dataPath);
-            return Path.Combine(projectRoot, "AIBridgeCache", "screenshots");
+            return Path.Combine(projectRoot, ".aibridge", "screenshots");
         }
     }
 }

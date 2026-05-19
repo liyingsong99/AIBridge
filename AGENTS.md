@@ -21,7 +21,7 @@
 - 涉及 batch / multi 脚本自动化时，再使用 `aibridge-batch-script`
 
 ## 项目验证
-- `$CLI` 表示：`./AIBridgeCache/CLI/AIBridgeCLI.exe`
+- `$CLI` 表示：`./.aibridge/cli/AIBridgeCLI.exe`
 - Unity 编译只能使用：
   `$CLI compile unity`
 - `compile dotnet` 只能作为额外检查，不能作为 Unity 编译的替代或 fallback

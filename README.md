@@ -59,7 +59,7 @@ Installed integrations include the fixed CLI path, Skill routing rules, Unity co
 Run commands from the Unity project root after AIBridge has copied its CLI cache:
 
 ```powershell
-$CLI = "./AIBridgeCache/CLI/AIBridgeCLI.exe"
+$CLI = "./.aibridge/cli/AIBridgeCLI.exe"
 ```
 
 On macOS/Linux, use the bundled platform executable or run the DLL with `dotnet` according to your project setup.
@@ -127,7 +127,7 @@ $CLI inspector set_property --path "Player" --componentName "Rigidbody" --proper
 
 $CLI prefab get_info --prefabPath "Assets/Prefabs/Player.prefab"
 $CLI prefab get_hierarchy --prefabPath "Assets/Prefabs/Player.prefab" --includeComponents true
-$CLI prefab patch --prefabPath "Assets/Prefabs/Player.prefab" --ops "AIBridgeCache/patch_ops/player_patch.json" --dryRun true
+$CLI prefab patch --prefabPath "Assets/Prefabs/Player.prefab" --ops ".aibridge/patch_ops/player_patch.json" --dryRun true
 ```
 
 For simple prefab field edits, use `inspector set_property` with `assetPath + objectPath + componentName`. For multi-step prefab edits, use `prefab patch --ops <file>` and run `--dryRun true` first.
@@ -136,14 +136,14 @@ PowerShell JSON tip:
 
 ```powershell
 $values = (@{ 'm_LocalPosition.x' = 0; 'm_LocalPosition.y' = 1 } | ConvertTo-Json -Compress) -replace '"', '\"'
-& "./AIBridgeCache/CLI/AIBridgeCLI.exe" inspector set_properties --assetPath 'Assets/Prefabs/Player.prefab' --componentName Transform --values $values
+& "./.aibridge/cli/AIBridgeCLI.exe" inspector set_properties --assetPath 'Assets/Prefabs/Player.prefab' --componentName Transform --values $values
 ```
 
 ### Batch And Multi
 
 ```bash
 $CLI batch from_text --text "call editor log 'Hello'\ndelay 1000"
-$CLI batch from_file --file "AIBridgeCache/scripts/setup_scene.txt"
+$CLI batch from_file --file ".aibridge/scripts/setup_scene.txt"
 $CLI multi --cmd "editor log --message Step1&get_logs --logType Error --count 1"
 ```
 
@@ -155,7 +155,7 @@ editor log --message "Start"
 delay 1000
 get_logs --logType Error --count 1
 '@
-$script | & "./AIBridgeCache/CLI/AIBridgeCLI.exe" multi --stdin
+$script | & "./.aibridge/cli/AIBridgeCLI.exe" multi --stdin
 ```
 
 ### Visual Verification

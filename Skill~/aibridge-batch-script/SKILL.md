@@ -7,14 +7,14 @@ description: AIBridge batch and multi command automation. Use when Codex needs t
 
 Use this Skill for `batch` and `multi` automation. Prefer `multi --stdin` for long scripts, JSON-heavy commands, or PowerShell quoting-sensitive commands.
 
-`$CLI` means the platform-appropriate AIBridge CLI invocation, usually `./AIBridgeCache/CLI/AIBridgeCLI.exe` on Windows.
+`$CLI` means the platform-appropriate AIBridge CLI invocation, usually `./.aibridge/cli/AIBridgeCLI.exe` on Windows.
 
 ## Rules
 
 - Run commands from the Unity project root.
 - Plain `multi` lines become Batch `call` lines automatically.
 - Native Batch lines are kept as-is: `call`, `delay`, `log`, `menu`, and `#` comments.
-- Keep generated scripts under `AIBridgeCache/scripts/` when a file is needed.
+- Keep generated scripts under `.aibridge/scripts/` when a file is needed.
 - Use `--keep-file` only when debugging the generated script.
 
 ## Quick Examples

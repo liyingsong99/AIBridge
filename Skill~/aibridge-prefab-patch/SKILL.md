@@ -7,24 +7,24 @@ description: Unity Prefab asset patch workflow for AIBridge. Use when modifying 
 
 Use `prefab patch` for complex Prefab asset edits that need multiple operations in one load/save cycle. Use `inspector set_property` for a single simple serialized field. Use `gameobject`、`transform`、`inspector` for scene objects.
 
-`$CLI` means the platform-appropriate AIBridge CLI invocation, usually `./AIBridgeCache/CLI/AIBridgeCLI.exe` on Windows.
+`$CLI` means the platform-appropriate AIBridge CLI invocation, usually `./.aibridge/cli/AIBridgeCLI.exe` on Windows.
 
 ## 参数选择
 
 - Prefer `--ops <file>` for multi-step edits, nested JSON, arrays, references, or anything run from PowerShell.
 - Use `--ops-json <json>` only for one or two very small operations.
-- Put temporary operation files under `AIBridgeCache/patch_ops/`.
+- Put temporary operation files under `.aibridge/patch_ops/`.
 - Always run `--dryRun true` before writing the prefab.
 
 ## 标准流程
 
 1. Find the target prefab with `asset find/search --format paths`.
 2. Inspect structure with `prefab get_hierarchy --prefabPath "<prefab>"`.
-3. Create `AIBridgeCache/patch_ops/<task>.json`.
+3. Create `.aibridge/patch_ops/<task>.json`.
 4. Run dry-run:
 
 ```bash
-$CLI prefab patch --prefabPath "Assets/Prefabs/Player.prefab" --ops "AIBridgeCache/patch_ops/player_hp_patch.json" --dryRun true
+$CLI prefab patch --prefabPath "Assets/Prefabs/Player.prefab" --ops ".aibridge/patch_ops/player_hp_patch.json" --dryRun true
 ```
 
 5. If dry-run succeeds, run the same command without `--dryRun true`.
@@ -87,7 +87,7 @@ null
 - Paths are normalized against the prefab root; both `Root/Child` and `Child` can work when unambiguous.
 - Duplicate child names under the same parent are ambiguous; use exact hierarchy paths.
 - Duplicate components of the same type are ambiguous; use `componentIndex` when needed.
-- Keep operation JSON under `AIBridgeCache/patch_ops/`; do not put it under `Assets/` or commit it.
+- Keep operation JSON under `.aibridge/patch_ops/`; do not put it under `Assets/` or commit it.
 
 ## References
 
