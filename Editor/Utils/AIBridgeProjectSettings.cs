@@ -26,6 +26,13 @@ namespace AIBridge.Editor
         }
 
         [Serializable]
+        internal sealed class LogRetrievalSettingsData
+        {
+            public int Count = DefaultLogRetrievalCount;
+            public string LogType = DefaultLogRetrievalType;
+        }
+
+        [Serializable]
         internal sealed class AssistantSelectionEntry
         {
             public string TargetId;
@@ -39,19 +46,24 @@ namespace AIBridge.Editor
             public string SkillRootDirectory;
         }
 
-        public const int CurrentDataVersion = 2;
+        public const int CurrentDataVersion = 3;
         public const int DefaultGifFrameCount = 50;
         public const int DefaultGifFps = 20;
         public const float DefaultGifScale = 0.5f;
         public const int DefaultGifColorCount = 128;
         public const float DefaultGifStartDelay = 0.1f;
+        public const int DefaultLogRetrievalCount = 50;
+        public const string DefaultLogRetrievalType = "all";
         public const string DefaultScriptDirectory = "Assets/AIBridgeScripts";
+        public static readonly string[] SupportedLogRetrievalTypes = { "all", "Log", "Warning", "Error" };
+        public static readonly string[] SupportedLogRetrievalTypeLabels = { "全部", "Info 及以上", "Warning 及以上", "Error" };
 
         [SerializeField] private int dataVersion = CurrentDataVersion;
         [SerializeField] private bool bridgeEnabled = true;
         [SerializeField] private bool debugLogging;
         [SerializeField] private string scriptDirectory = DefaultScriptDirectory;
         [SerializeField] private GifRecorderSettingsData gifRecorder = new GifRecorderSettingsData();
+        [SerializeField] private LogRetrievalSettingsData logRetrieval = new LogRetrievalSettingsData();
         [SerializeField] private List<AssistantSelectionEntry> assistantSelections = new List<AssistantSelectionEntry>();
         [SerializeField] private List<AssistantSkillRootDirectoryEntry> assistantSkillRootDirectories = new List<AssistantSkillRootDirectoryEntry>();
         [SerializeField] private bool legacyGifMigrated;
@@ -106,6 +118,52 @@ namespace AIBridge.Editor
 
                 return gifRecorder;
             }
+        }
+
+        public LogRetrievalSettingsData LogRetrieval
+        {
+            get
+            {
+                if (logRetrieval == null)
+                {
+                    logRetrieval = new LogRetrievalSettingsData();
+                }
+
+                if (logRetrieval.Count <= 0)
+                {
+                    logRetrieval.Count = DefaultLogRetrievalCount;
+                }
+
+                if (string.IsNullOrEmpty(logRetrieval.LogType))
+                {
+                    logRetrieval.LogType = DefaultLogRetrievalType;
+                }
+                else
+                {
+                    logRetrieval.LogType = NormalizeLogRetrievalType(logRetrieval.LogType);
+                }
+
+                return logRetrieval;
+            }
+        }
+
+        public static string NormalizeLogRetrievalType(string logType)
+        {
+            if (string.IsNullOrEmpty(logType))
+            {
+                return DefaultLogRetrievalType;
+            }
+
+            for (var i = 0; i < SupportedLogRetrievalTypes.Length; i++)
+            {
+                var supportedType = SupportedLogRetrievalTypes[i];
+                if (string.Equals(supportedType, logType, StringComparison.OrdinalIgnoreCase))
+                {
+                    return supportedType;
+                }
+            }
+
+            return DefaultLogRetrievalType;
         }
 
         public List<AssistantSelectionEntry> AssistantSelections

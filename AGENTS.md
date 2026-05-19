@@ -43,6 +43,8 @@
    - prefab：`aibridge-prefab-patch/references/prefab-reference.md`
    - inspector：`aibridge/references/inspector-property-reference.md`
 7. 未实现 `ICommandSkillDocProvider` 的旧命令继续使用 `ICommand.SkillDescription`，并写入默认 reference
+8. 面向 AI 的 Skill / SkillDescription / command reference 必须精简凝练，只保留调用方式、关键约束和必要决策规则，避免冗余解释性说明
+9. 面向用户的编辑器面板、README、HelpBox、Tooltip 可以解释功能影响、默认行为和使用说明；不要把这类用户说明混入面向 AI 的提示词
 
 ## 模板维护规则
 1. `Templates~/ProjectRules/AGENTS.md` 是安装到 Unity 项目的示例文件

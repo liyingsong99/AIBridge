@@ -150,7 +150,6 @@ namespace AIBridge.Editor
         /// <summary>
         /// Manually trigger a scan and process cycle
         /// </summary>
-        [MenuItem("AIBridge/Process Commands Now")]
         public static void ProcessCommandsNow()
         {
             _watcher.ScanForCommands();
@@ -163,7 +162,6 @@ namespace AIBridge.Editor
         /// <summary>
         /// Open the bridge directory in file explorer
         /// </summary>
-        [MenuItem("AIBridge/Open Bridge Directory")]
         public static void OpenBridgeDirectory()
         {
             if (!Directory.Exists(BridgeDirectory))
@@ -171,16 +169,6 @@ namespace AIBridge.Editor
                 Directory.CreateDirectory(BridgeDirectory);
             }
             EditorUtility.RevealInFinder(BridgeDirectory);
-        }
-
-        /// <summary>
-        /// Toggle debug logging
-        /// </summary>
-        [MenuItem("AIBridge/Toggle Debug Logging")]
-        public static void ToggleDebugLogging()
-        {
-            AIBridgeLogger.DebugEnabled = !AIBridgeLogger.DebugEnabled;
-            AIBridgeLogger.LogInfo($"Debug logging {(AIBridgeLogger.DebugEnabled ? "enabled" : "disabled")}");
         }
 
         /// <summary>

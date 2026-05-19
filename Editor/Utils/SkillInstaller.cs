@@ -664,9 +664,8 @@ namespace AIBridge.Editor
         }
 
         /// <summary>
-        /// Manually trigger skill installation (for menu item)
+        /// Manually trigger skill installation.
         /// </summary>
-        [MenuItem("AIBridge/Install Skill Documentation")]
         public static void ManualInstall()
         {
             try

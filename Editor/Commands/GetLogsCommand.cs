@@ -19,14 +19,28 @@ namespace AIBridge.Editor
 $CLI get_logs [--count 100] [--logType Error|Warning]
 ```";
 
+        internal static List<LogEntry> GetConsoleLogsForSettingsPreview(int maxCount, string logTypeFilter)
+        {
+            return new GetLogsCommand().GetConsoleLogs(maxCount, logTypeFilter, LogFilterMode.MinimumLevel);
+        }
+
         public CommandResult Execute(CommandRequest request)
         {
-            var count = request.GetParam("count", 50);
-            var logType = request.GetParam("logType", "all");
+            var defaultSettings = AIBridgeProjectSettings.Instance.LogRetrieval;
+            var hasLogType = request.HasParam("logType");
+            var count = request.HasParam("count")
+                ? request.GetParam("count", defaultSettings.Count)
+                : defaultSettings.Count;
+            var logType = hasLogType
+                ? request.GetParam("logType", defaultSettings.LogType)
+                : defaultSettings.LogType;
+            logType = AIBridgeProjectSettings.NormalizeLogRetrievalType(logType);
 
             try
             {
-                var logs = GetConsoleLogs(count, logType);
+                // 面板默认值使用“最低等级”语义；显式 CLI 参数保持历史精确筛选，避免破坏现有 AI 命令。
+                var filterMode = hasLogType ? LogFilterMode.Exact : LogFilterMode.MinimumLevel;
+                var logs = GetConsoleLogs(count, logType, filterMode);
                 return CommandResult.Success(request.id, new
                 {
                     logs = logs,
@@ -39,21 +53,21 @@ $CLI get_logs [--count 100] [--logType Error|Warning]
             }
         }
 
-        private List<LogEntry> GetConsoleLogs(int maxCount, string logTypeFilter)
+        private List<LogEntry> GetConsoleLogs(int maxCount, string logTypeFilter, LogFilterMode filterMode)
         {
 #if UNITY_2020_1_OR_NEWER
-            return GetConsoleLogsForModernUnity(maxCount, logTypeFilter);
+            return GetConsoleLogsForModernUnity(maxCount, logTypeFilter, filterMode);
 #else
-            return GetConsoleLogsForUnity2019(maxCount, logTypeFilter);
+            return GetConsoleLogsForUnity2019(maxCount, logTypeFilter, filterMode);
 #endif
         }
 
-        private List<LogEntry> GetConsoleLogsForModernUnity(int maxCount, string logTypeFilter)
+        private List<LogEntry> GetConsoleLogsForModernUnity(int maxCount, string logTypeFilter, LogFilterMode filterMode)
         {
             try
             {
                 var consoleReflection = ResolveConsoleReflectionForModernUnity();
-                return ReadConsoleLogs(consoleReflection, maxCount, logTypeFilter);
+                return ReadConsoleLogs(consoleReflection, maxCount, logTypeFilter, filterMode);
             }
             catch (Exception ex)
             {
@@ -62,12 +76,12 @@ $CLI get_logs [--count 100] [--logType Error|Warning]
             }
         }
 
-        private List<LogEntry> GetConsoleLogsForUnity2019(int maxCount, string logTypeFilter)
+        private List<LogEntry> GetConsoleLogsForUnity2019(int maxCount, string logTypeFilter, LogFilterMode filterMode)
         {
             try
             {
                 var consoleReflection = ResolveConsoleReflectionForUnity2019();
-                return ReadConsoleLogs(consoleReflection, maxCount, logTypeFilter);
+                return ReadConsoleLogs(consoleReflection, maxCount, logTypeFilter, filterMode);
             }
             catch (Exception ex)
             {
@@ -76,7 +90,7 @@ $CLI get_logs [--count 100] [--logType Error|Warning]
             }
         }
 
-        private List<LogEntry> ReadConsoleLogs(ConsoleReflection consoleReflection, int maxCount, string logTypeFilter)
+        private List<LogEntry> ReadConsoleLogs(ConsoleReflection consoleReflection, int maxCount, string logTypeFilter, LogFilterMode filterMode)
         {
             var logs = new List<LogEntry>();
             if (consoleReflection == null)
@@ -110,7 +124,7 @@ $CLI get_logs [--count 100] [--logType Error|Warning]
                         var mode = GetLogMode(consoleReflection, entry);
                         var normalizedType = NormalizeLogType(mode);
 
-                        if (!ShouldIncludeLog(logTypeFilter, normalizedType))
+                        if (!ShouldIncludeLog(logTypeFilter, normalizedType, filterMode))
                         {
                             continue;
                         }
@@ -278,14 +292,34 @@ $CLI get_logs [--count 100] [--logType Error|Warning]
             return 0;
         }
 
-        private bool ShouldIncludeLog(string logTypeFilter, string entryType)
+        private bool ShouldIncludeLog(string logTypeFilter, string entryType, LogFilterMode filterMode)
         {
             if (string.IsNullOrEmpty(logTypeFilter) || string.Equals(logTypeFilter, "all", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
 
+            if (filterMode == LogFilterMode.MinimumLevel)
+            {
+                return GetLogSeverityRank(entryType) >= GetLogSeverityRank(logTypeFilter);
+            }
+
             return string.Equals(entryType, logTypeFilter, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private int GetLogSeverityRank(string logType)
+        {
+            if (string.Equals(logType, "Error", StringComparison.OrdinalIgnoreCase))
+            {
+                return 3;
+            }
+
+            if (string.Equals(logType, "Warning", StringComparison.OrdinalIgnoreCase))
+            {
+                return 2;
+            }
+
+            return 1;
         }
 
         private string NormalizeLogType(int mode)
@@ -306,10 +340,16 @@ $CLI get_logs [--count 100] [--logType Error|Warning]
         }
 
         [Serializable]
-        private class LogEntry
+        internal class LogEntry
         {
             public string message;
             public string type;
+        }
+
+        private enum LogFilterMode
+        {
+            Exact,
+            MinimumLevel
         }
 
         /// <summary>
