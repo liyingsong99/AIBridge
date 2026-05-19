@@ -17,7 +17,7 @@ namespace AIBridge.Editor
         public string SkillDescription => @"### `get_logs` - Get Console Logs
 
 ```bash
-$CLI get_logs [--count 100] [--logType Error|Warning]
+$CLI get_logs [--count 100] [--logType Error|Warning] [--regex ""pattern""]
 ```";
 
         internal static List<LogEntry> GetConsoleLogsForSettingsPreview(int maxCount, string logTypeFilter, string regexPattern)

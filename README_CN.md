@@ -7,7 +7,7 @@
 [English](./README.md) | 中文
 
 ![Unity 2019.4+](https://img.shields.io/badge/Unity-2019.4%2B-black?style=flat-square&logo=unity)
-![Package 1.3.0](https://img.shields.io/badge/Package-1.3.0-5b6cff?style=flat-square)
+![Package 1.3.2](https://img.shields.io/badge/Package-1.3.2-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
@@ -83,11 +83,19 @@ $CLI editor get_state
 $CLI compile unity
 $CLI get_logs --logType Error --count 50
 $CLI get_logs --logType Warning --count 50
+$CLI get_logs --regex "NullReference|MissingReference"
 $CLI test run --mode EditMode
 $CLI test status
 ```
 
 Unity 验证必须使用 `compile unity`。`compile dotnet` 只能作为额外的解决方案构建检查，不能替代 Unity 编译。
+
+`get_logs` 支持设置面板默认值和可选的正则筛选：
+
+- 日志页签可设置默认最低日志等级和全局正则筛选。
+- 如果不传 `--logType`，`get_logs` 会使用日志页签里的默认等级筛选。
+- 如果传了 `--regex`，会先按日志内容正则匹配，再返回结果。
+- 如果在日志页签里启用了全局正则，而本次没有传 `--regex`，则会自动应用全局正则。
 
 ### 资源和场景
 
