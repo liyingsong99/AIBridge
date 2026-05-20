@@ -21,10 +21,8 @@
 - 涉及 batch / multi 脚本自动化时，再使用 `aibridge-batch-script`
 
 ## 项目验证
-- `$CLI` 表示：`./.aibridge/cli/AIBridgeCLI.exe`
-- Unity 编译只能使用：
-  `$CLI compile unity`
-- `compile dotnet` 只能作为额外检查，不能作为 Unity 编译的替代或 fallback
+- 编译.\Tools~\AIBridgeCLI\AIBridgeCLI.csproj 项目确认无报错
+- 检查所有Runtime和Editor下的代码文件都有生成相应的meta文件
 
 ## 代码硬约束
 1. C# 代码必须兼容 C# 9.0，禁止 C# 10.0+ 语法
