@@ -1,6 +1,4 @@
 using System;
-using System.IO;
-
 namespace AIBridge.Editor
 {
     internal enum MissingRootRuleStrategy
@@ -12,10 +10,6 @@ namespace AIBridge.Editor
 
     internal sealed class AssistantIntegrationTarget
     {
-        private const string CodexTargetId = "codex";
-        private const string AgentsDirectoryName = ".agents";
-        private const string AgentsSkillRootDirectory = ".agents/skills";
-
         public string Id { get; set; }
         public string DisplayName { get; set; }
         public bool SupportsSkillDirectory { get; set; }
@@ -68,21 +62,8 @@ namespace AIBridge.Editor
                 return null;
             }
 
-            string customRootDirectory;
-            if (AIBridgeProjectSettings.Instance.TryGetAssistantSkillRootDirectory(Id, out customRootDirectory))
-            {
-                return customRootDirectory;
-            }
-
-            // Codex 项目如果已存在 .agents，则优先采用开放标准的 .agents/skills 根目录。
-            if (string.Equals(Id, CodexTargetId, StringComparison.OrdinalIgnoreCase)
-                && !string.IsNullOrEmpty(projectRoot)
-                && Directory.Exists(Path.Combine(projectRoot, AgentsDirectoryName)))
-            {
-                return AgentsSkillRootDirectory;
-            }
-
-            return GetDefaultSkillRootDirectoryRelativePath();
+            // 默认使用项目级共享 Skill 根目录，避免同一 Skill 在不同 AI 工具目录重复安装。
+            return AIBridgeProjectSettings.Instance.SkillRootDirectory;
         }
 
         public string GetResolvedSkillDirectoryRelativePath(string projectRoot)

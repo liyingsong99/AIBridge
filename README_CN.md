@@ -52,7 +52,9 @@ https://github.com/liyingsong99/AIBridge.git
 4. 点击 `Install Selected Integrations`。
 5. 可选：点击 `Install Unity Project AGENTS.md Template`，在项目根目录创建 `AGENTS.md`。
 
-安装后的集成会包含固定 CLI 路径、Skill 路由规则、Unity 编译检查、Console 诊断、C# 兼容规则和工作流检查清单。命令说明会生成到各 Skill 的 `references/` 目录。
+安装后的 AIBridge Skills 默认统一写入项目根目录 `skills/`，也可以在 Skills 安装页签改成 `.skill` 等项目内相对目录。不同 AI 工具只写入各自的 RootRule 或插件适配层。集成会包含固定 CLI 路径、Skill 路由规则、Unity 编译检查、Console 诊断、C# 兼容规则和工作流检查清单。命令说明会生成到各 Skill 的 `references/` 目录。
+
+也可以在 `Recommended Skill Library / 推荐 Skill 库` 页签刷新默认推荐仓库，例如 `mattpocock/skills`，并将其中的第三方 Skill 安装到同一个共享目录。
 
 ## CLI 基础
 

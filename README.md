@@ -52,7 +52,9 @@ You can also clone this repository into a Unity project's `Packages` folder.
 4. Click `Install Selected Integrations`.
 5. Optionally click `Install Unity Project AGENTS.md Template` to create a root `AGENTS.md`.
 
-Installed integrations include the fixed CLI path, Skill routing rules, Unity compile checks, Console diagnostics, C# compatibility rules, and workflow checklists. Command references are generated under each installed Skill's `references/` directory.
+Installed AIBridge Skills are written to the project-root `skills/` directory by default. You can change that shared directory in the Skills Installation tab, for example to `.skill`. Each AI tool only receives its own RootRule or plugin adapter. Integrations include the fixed CLI path, Skill routing rules, Unity compile checks, Console diagnostics, C# compatibility rules, and workflow checklists. Command references are generated under each installed Skill's `references/` directory.
+
+You can also open the `Recommended Skill Library` tab, refresh a default repository such as `mattpocock/skills`, and install third-party Skills into the same shared root.
 
 ## CLI Basics
 

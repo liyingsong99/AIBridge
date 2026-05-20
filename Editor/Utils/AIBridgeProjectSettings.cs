@@ -54,8 +54,9 @@ namespace AIBridge.Editor
             public string SkillRootDirectory;
         }
 
-        public const int CurrentDataVersion = 4;
+        public const int CurrentDataVersion = 6;
         public const string DefaultEditorLanguage = "English";
+        public const string DefaultSkillRootDirectory = "skills";
         public const int DefaultGifFrameCount = 50;
         public const int DefaultGifFps = 20;
         public const float DefaultGifScale = 0.5f;
@@ -71,6 +72,7 @@ namespace AIBridge.Editor
         [SerializeField] private bool debugLogging;
         [SerializeField] private string editorLanguage = DefaultEditorLanguage;
         [SerializeField] private bool editorLanguageInitialized;
+        [SerializeField] private string skillRootDirectory = DefaultSkillRootDirectory;
         [SerializeField] private string scriptDirectory = DefaultScriptDirectory;
         [SerializeField] private GifRecorderSettingsData gifRecorder = new GifRecorderSettingsData();
         [SerializeField] private LogRetrievalSettingsData logRetrieval = new LogRetrievalSettingsData();
@@ -127,6 +129,20 @@ namespace AIBridge.Editor
         {
             get { return string.IsNullOrEmpty(scriptDirectory) ? DefaultScriptDirectory : scriptDirectory; }
             set { scriptDirectory = string.IsNullOrEmpty(value) ? DefaultScriptDirectory : value; }
+        }
+
+        public string SkillRootDirectory
+        {
+            get
+            {
+                var normalized = NormalizeSkillRootDirectory(skillRootDirectory);
+                return IsValidSkillRootDirectory(normalized) ? normalized : DefaultSkillRootDirectory;
+            }
+            set
+            {
+                var normalized = NormalizeSkillRootDirectory(value);
+                skillRootDirectory = IsValidSkillRootDirectory(normalized) ? normalized : DefaultSkillRootDirectory;
+            }
         }
 
         public GifRecorderSettingsData GifRecorder
@@ -390,6 +406,13 @@ namespace AIBridge.Editor
             return value.Trim().Replace('\\', '/').Trim('/');
         }
 
+        private static bool IsValidSkillRootDirectory(string value)
+        {
+            return !string.IsNullOrEmpty(value)
+                && !Path.IsPathRooted(value)
+                && !value.Split('/').Any(part => part == "..");
+        }
+
         /// <summary>
         /// 从 ProjectSettings 读取配置；首次没有配置文件时创建默认实例。
         /// </summary>
@@ -412,6 +435,7 @@ namespace AIBridge.Editor
             }
 
             editorLanguage = EditorLanguage.ToString();
+            skillRootDirectory = SkillRootDirectory;
 
             var directory = Path.GetDirectoryName(SettingsFilePath);
             if (!string.IsNullOrEmpty(directory))

@@ -9,8 +9,8 @@ using UnityEngine;
 namespace AIBridge.Editor
 {
     /// <summary>
-    /// Automatically installs the AIBridge skill documentation to the project's .claude/skills directory.
-    /// This allows Claude Code to discover and use the skill for Unity Editor operations.
+    /// Automatically installs the AIBridge skill documentation to the project shared skills directory.
+    /// This allows AI assistants to discover and use the skill for Unity Editor operations.
     /// </summary>
     [InitializeOnLoad]
     public static class SkillInstaller
@@ -93,6 +93,7 @@ namespace AIBridge.Editor
 
                 CopyCliToCacheIfNeeded(projectRoot);
                 var results = InstallAssistantIntegrations(projectRoot, targets);
+                SkillPluginAdapter.GenerateForTargets(projectRoot, targets);
                 LogResults(results);
             }
             catch (Exception ex)
@@ -691,8 +692,10 @@ namespace AIBridge.Editor
                         AIBridgeLogger.LogInfo($"[SkillInstaller] Removed AIBridge block from {target.DisplayName}: {ruleFilePath}");
                     }
 
-                    // 清理 Skill 目录（如果支持）
-                    if (target.SupportsSkillDirectory && !string.IsNullOrEmpty(target.SkillDirectoryRelativePath))
+                    // 共享 skills 根目录可能被多个工具复用，只有没有任何已选工具仍引用时才清理。
+                    if (target.SupportsSkillDirectory
+                        && !string.IsNullOrEmpty(target.SkillDirectoryRelativePath)
+                        && !IsSkillRootUsedByAnySelectedTarget(projectRoot, target, selectedTargets))
                     {
                         CleanupSkillDirectoriesForTarget(projectRoot, target);
                     }
@@ -736,6 +739,31 @@ namespace AIBridge.Editor
             }
         }
 
+        private static bool IsSkillRootUsedByAnySelectedTarget(string projectRoot, AssistantIntegrationTarget target, IEnumerable<AssistantIntegrationTarget> selectedTargets)
+        {
+            var targetRoot = target.GetResolvedSkillRootDirectoryRelativePath(projectRoot);
+            if (string.IsNullOrEmpty(targetRoot))
+            {
+                return false;
+            }
+
+            foreach (var selectedTarget in selectedTargets)
+            {
+                if (!selectedTarget.SupportsSkillDirectory)
+                {
+                    continue;
+                }
+
+                var selectedRoot = selectedTarget.GetResolvedSkillRootDirectoryRelativePath(projectRoot);
+                if (string.Equals(targetRoot, selectedRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         /// <summary>
         /// Manually trigger skill installation.
         /// </summary>
@@ -756,6 +784,7 @@ namespace AIBridge.Editor
 
                 CopyCliToCacheIfNeeded(projectRoot);
                 var results = InstallAssistantIntegrations(projectRoot, targets);
+                SkillPluginAdapter.GenerateForTargets(projectRoot, targets);
                 LogResults(results);
                 EditorUtility.DisplayDialog("AIBridge", BuildManualInstallSummary(results), AIBridgeEditorText.T("OK", "确定"));
             }
@@ -788,6 +817,7 @@ namespace AIBridge.Editor
 
                 CopyCliToCacheIfNeeded(projectRoot);
                 var results = InstallAssistantIntegrations(projectRoot, targets);
+                SkillPluginAdapter.GenerateForTargets(projectRoot, targets);
                 LogResults(results);
                 EditorUtility.DisplayDialog("AIBridge", BuildManualInstallSummary(results), AIBridgeEditorText.T("OK", "确定"));
             }

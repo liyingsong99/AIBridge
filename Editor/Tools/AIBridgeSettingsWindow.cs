@@ -19,6 +19,7 @@ namespace AIBridge.Editor
             LogSettings,      // 日志设置
             DirectoryInfo,    // 目录信息
             SkillInstall,     // Skills 安装
+            SkillLibrary,      // 推荐 Skill 库
             Scripts,          // 脚本执行
             Actions           // 操作
         }
@@ -36,6 +37,8 @@ namespace AIBridge.Editor
         private bool _bridgeEnabled;
         private bool _debugLogging;
         private List<AssistantIntegrationSelectionState> _assistantIntegrationSelections;
+        private List<RecommendedSkillInfo> _recommendedSkills;
+        private int _selectedRecommendedRepositoryIndex;
         private TabType _currentTab = TabType.BasicSettings; // 当前选中的页签
         private static EditorOption<string> _scriptDirectoryOption;
 
@@ -111,6 +114,9 @@ namespace AIBridge.Editor
                 case TabType.SkillInstall:
                     DrawAssistantIntegrationSettings();
                     break;
+                case TabType.SkillLibrary:
+                    DrawRecommendedSkillLibraryTab();
+                    break;
                 case TabType.Scripts:
                     DrawScriptsTab();
                     break;
@@ -131,6 +137,7 @@ namespace AIBridge.Editor
                 AIBridgeEditorText.T("Logs", "日志设置"),
                 AIBridgeEditorText.T("Directories", "目录信息"),
                 AIBridgeEditorText.T("Skills", "Skills 安装"),
+                AIBridgeEditorText.T("Library", "推荐库"),
                 AIBridgeEditorText.T("Scripts", "脚本执行"),
                 AIBridgeEditorText.T("Actions", "操作")
             };
