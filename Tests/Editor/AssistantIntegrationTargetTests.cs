@@ -7,12 +7,15 @@ namespace AIBridge.Editor.Tests
     public class AssistantIntegrationTargetTests
     {
         private string _projectRoot;
+        private string _originalGitExecutablePath;
 
         [SetUp]
         public void SetUp()
         {
             _projectRoot = Path.Combine(Path.GetTempPath(), "AIBridgeTargetTests_" + Path.GetRandomFileName());
             Directory.CreateDirectory(_projectRoot);
+            _originalGitExecutablePath = RecommendedSkillGitClient.GitExecutablePathForTests;
+            RecommendedSkillGitClient.GitExecutablePathForTests = "git";
             AIBridgeProjectSettings.Instance.ClearAssistantSkillRootDirectory("codex");
             AIBridgeProjectSettings.Instance.ClearAssistantSkillRootDirectory("claude");
             AIBridgeProjectSettings.Instance.SkillRootDirectory = AIBridgeProjectSettings.DefaultSkillRootDirectory;
@@ -24,6 +27,7 @@ namespace AIBridge.Editor.Tests
             AIBridgeProjectSettings.Instance.ClearAssistantSkillRootDirectory("codex");
             AIBridgeProjectSettings.Instance.ClearAssistantSkillRootDirectory("claude");
             AIBridgeProjectSettings.Instance.SkillRootDirectory = AIBridgeProjectSettings.DefaultSkillRootDirectory;
+            RecommendedSkillGitClient.GitExecutablePathForTests = _originalGitExecutablePath;
 
             if (Directory.Exists(_projectRoot))
             {
@@ -288,6 +292,49 @@ namespace AIBridge.Editor.Tests
             Assert.IsTrue(result.Success);
             Assert.IsFalse(Directory.Exists(skillDirectory));
             Assert.IsNull(RecommendedSkillInstallRegistry.Find(_projectRoot, "tdd"));
+        }
+
+        [Test]
+        public void RecommendedSkillRefreshReportsMissingGitWithoutRawProcessError()
+        {
+            RecommendedSkillGitClient.GitExecutablePathForTests = "aibridge_missing_git_executable";
+            var repository = CreateRecommendedSkillRepository();
+
+            var ex = Assert.Throws<System.InvalidOperationException>(() =>
+                RecommendedSkillInstaller.RefreshRepository(_projectRoot, repository));
+
+            StringAssert.Contains("Git", ex.Message);
+            StringAssert.Contains("PATH", ex.Message);
+        }
+
+        [Test]
+        public void RecommendedSkillInstallReturnsFailureWhenGitIsMissing()
+        {
+            RecommendedSkillGitClient.GitExecutablePathForTests = "aibridge_missing_git_executable";
+            var repository = CreateRecommendedSkillRepository();
+            var skill = new RecommendedSkillInfo
+            {
+                Name = "tdd",
+                SourceRelativePath = "skills/tdd"
+            };
+
+            var result = RecommendedSkillInstaller.Install(_projectRoot, repository, skill, true);
+
+            Assert.IsFalse(result.Success);
+            StringAssert.Contains("Git", result.Message);
+            StringAssert.Contains("PATH", result.Message);
+        }
+
+        private static RecommendedSkillRepository CreateRecommendedSkillRepository()
+        {
+            return new RecommendedSkillRepository
+            {
+                Id = "test",
+                RepositoryUrl = "https://example.com/repo.git",
+                BranchOrTag = "main",
+                ManifestRelativePath = ".claude-plugin/plugin.json",
+                ScanRootRelativePath = "skills"
+            };
         }
     }
 }

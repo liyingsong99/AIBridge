@@ -10,6 +10,14 @@ namespace AIBridge.Editor
     {
         private const int GitTimeoutMilliseconds = 120000;
         private const string CacheRootRelativePath = ".aibridge/skill-library/cache";
+        private const string GitExecutableName = "git";
+        private static string _gitExecutablePath = GitExecutableName;
+
+        public static string GitExecutablePathForTests
+        {
+            get { return _gitExecutablePath; }
+            set { _gitExecutablePath = string.IsNullOrWhiteSpace(value) ? GitExecutableName : value; }
+        }
 
         public static string EnsureRepository(string projectRoot, RecommendedSkillRepository repository)
         {
@@ -114,7 +122,7 @@ namespace AIBridge.Editor
         private static string RunGit(string workingDirectory, string arguments)
         {
             var process = new Process();
-            process.StartInfo.FileName = "git";
+            process.StartInfo.FileName = _gitExecutablePath;
             process.StartInfo.Arguments = arguments;
             process.StartInfo.WorkingDirectory = string.IsNullOrEmpty(workingDirectory) ? Directory.GetCurrentDirectory() : workingDirectory;
             process.StartInfo.UseShellExecute = false;
@@ -122,7 +130,15 @@ namespace AIBridge.Editor
             process.StartInfo.RedirectStandardOutput = true;
             process.StartInfo.RedirectStandardError = true;
 
-            process.Start();
+            try
+            {
+                process.Start();
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(BuildGitLaunchFailedMessage(ex), ex);
+            }
+
             var output = process.StandardOutput.ReadToEnd();
             var error = process.StandardError.ReadToEnd();
             if (!process.WaitForExit(GitTimeoutMilliseconds))
@@ -144,6 +160,13 @@ namespace AIBridge.Editor
             }
 
             return output;
+        }
+
+        private static string BuildGitLaunchFailedMessage(Exception ex)
+        {
+            return AIBridgeEditorText.T(
+                "Recommended Skill Library could not start Git. Please install Git and make sure the git command is available in PATH.\n\n" + ex.Message,
+                "推荐 Skill 库无法启动 Git。请安装 Git，并确认 git 命令已加入 PATH。\n\n" + ex.Message);
         }
 
         private static string Quote(string value)
