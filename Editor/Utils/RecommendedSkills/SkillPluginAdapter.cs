@@ -39,6 +39,27 @@ namespace AIBridge.Editor
             }
         }
 
+        public static void CleanupForTargets(string projectRoot, IEnumerable<AssistantIntegrationTarget> targets)
+        {
+            foreach (var target in targets)
+            {
+                if (target == null)
+                {
+                    continue;
+                }
+
+                if (string.Equals(target.Id, "claude", StringComparison.OrdinalIgnoreCase))
+                {
+                    CleanupClaudePlugin(projectRoot);
+                }
+                else if (string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase))
+                {
+                    CleanupCodexPlugin(projectRoot);
+                    CleanupCodexMarketplace(projectRoot);
+                }
+            }
+        }
+
         private static void GenerateClaudePlugin(string projectRoot)
         {
             var pluginRoot = Path.Combine(projectRoot, ".claude-plugin");
@@ -93,6 +114,55 @@ namespace AIBridge.Editor
             File.WriteAllText(marketplacePath, AIBridgeJson.Serialize(payload, pretty: true));
         }
 
+        private static void CleanupClaudePlugin(string projectRoot)
+        {
+            var pluginRoot = Path.Combine(projectRoot, ".claude-plugin");
+            var pluginJsonPath = Path.Combine(pluginRoot, "plugin.json");
+            if (!File.Exists(pluginJsonPath))
+            {
+                return;
+            }
+
+            var payload = LoadPluginPayload(pluginJsonPath);
+            if (!string.Equals(GetString(payload, "name", string.Empty), AIBridgePluginName, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            File.Delete(pluginJsonPath);
+            TryDeleteDirectoryIfEmpty(pluginRoot);
+        }
+
+        private static void CleanupCodexPlugin(string projectRoot)
+        {
+            var pluginRoot = Path.Combine(projectRoot, "plugins", AIBridgePluginName);
+            if (Directory.Exists(pluginRoot))
+            {
+                Directory.Delete(pluginRoot, true);
+            }
+        }
+
+        private static void CleanupCodexMarketplace(string projectRoot)
+        {
+            var marketplacePath = Path.Combine(projectRoot, ".agents", "plugins", "marketplace.json");
+            if (!File.Exists(marketplacePath))
+            {
+                return;
+            }
+
+            var payload = LoadMarketplacePayload(marketplacePath);
+            var plugins = GetPluginList(payload);
+            if (plugins == null)
+            {
+                return;
+            }
+
+            if (RemoveMarketplacePlugin(plugins))
+            {
+                File.WriteAllText(marketplacePath, AIBridgeJson.Serialize(payload, pretty: true));
+            }
+        }
+
         private static Dictionary<string, object> LoadMarketplacePayload(string marketplacePath)
         {
             if (!File.Exists(marketplacePath))
@@ -123,6 +193,14 @@ namespace AIBridge.Editor
             }
 
             return (List<object>)pluginsValue;
+        }
+
+        private static List<object> GetPluginList(Dictionary<string, object> payload)
+        {
+            object pluginsValue;
+            return payload.TryGetValue("plugins", out pluginsValue) && pluginsValue is List<object>
+                ? (List<object>)pluginsValue
+                : null;
         }
 
         private static void UpsertMarketplacePlugin(List<object> plugins)
@@ -158,6 +236,22 @@ namespace AIBridge.Editor
                     },
                     { "category", "Productivity" }
                 });
+        }
+
+        private static bool RemoveMarketplacePlugin(List<object> plugins)
+        {
+            var changed = false;
+            for (var i = plugins.Count - 1; i >= 0; i--)
+            {
+                var map = plugins[i] as Dictionary<string, object>;
+                if (map != null && string.Equals(GetString(map, "name", string.Empty), AIBridgePluginName, StringComparison.OrdinalIgnoreCase))
+                {
+                    plugins.RemoveAt(i);
+                    changed = true;
+                }
+            }
+
+            return changed;
         }
 
         private static Dictionary<string, object> LoadPluginPayload(string pluginJsonPath)
@@ -227,6 +321,19 @@ namespace AIBridge.Editor
             var created = new Dictionary<string, object>();
             payload[key] = created;
             return created;
+        }
+
+        private static void TryDeleteDirectoryIfEmpty(string directory)
+        {
+            if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+            {
+                return;
+            }
+
+            if (Directory.GetFileSystemEntries(directory).Length == 0)
+            {
+                Directory.Delete(directory);
+            }
         }
     }
 }

@@ -91,6 +91,7 @@ namespace AIBridge.Editor
                     return;
                 }
 
+                CleanupUnselectedTargets(projectRoot, targets);
                 CopyCliToCacheIfNeeded(projectRoot);
                 var results = InstallAssistantIntegrations(projectRoot, targets);
                 SkillPluginAdapter.GenerateForTargets(projectRoot, targets);
@@ -609,6 +610,11 @@ namespace AIBridge.Editor
             return allTargets.Where(target => selections.TryGetValue(target.Id, out var selected) && selected).ToList();
         }
 
+        internal static List<AssistantIntegrationTarget> GetSelectedTargetsForPluginGeneration(string projectRoot)
+        {
+            return GetSelectedTargets(projectRoot);
+        }
+
         private static List<AssistantIntegrationTarget> GetTargetsByIds(IEnumerable<string> targetIds)
         {
             var selectedIds = new HashSet<string>(targetIds ?? Enumerable.Empty<string>(), StringComparer.OrdinalIgnoreCase);
@@ -705,6 +711,8 @@ namespace AIBridge.Editor
                     AIBridgeLogger.LogWarning($"[SkillInstaller] Failed to cleanup {target.DisplayName}: {ex.Message}");
                 }
             }
+
+            SkillPluginAdapter.CleanupForTargets(projectRoot, allTargets.Where(target => !selectedIds.Contains(target.Id)));
         }
 
         private static void CleanupSkillDirectoriesForTarget(string projectRoot, AssistantIntegrationTarget target)
@@ -815,6 +823,7 @@ namespace AIBridge.Editor
                     AssistantIntegrationSelectionSettings.SetSelected(target.Id, selectedIds.Contains(target.Id));
                 }
 
+                CleanupUnselectedTargets(projectRoot, targets);
                 CopyCliToCacheIfNeeded(projectRoot);
                 var results = InstallAssistantIntegrations(projectRoot, targets);
                 SkillPluginAdapter.GenerateForTargets(projectRoot, targets);

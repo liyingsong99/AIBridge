@@ -18,6 +18,7 @@ namespace AIBridge.Editor.Tests
             RecommendedSkillGitClient.GitExecutablePathForTests = "git";
             AIBridgeProjectSettings.Instance.ClearAssistantSkillRootDirectory("codex");
             AIBridgeProjectSettings.Instance.ClearAssistantSkillRootDirectory("claude");
+            ClearAssistantSelections();
             AIBridgeProjectSettings.Instance.SkillRootDirectory = AIBridgeProjectSettings.DefaultSkillRootDirectory;
             AIBridgeProjectSettings.Instance.EditorLanguage = AIBridgeEditorLanguage.English;
             AIBridgeProjectSettings.Instance.EditorLanguageInitialized = true;
@@ -28,6 +29,7 @@ namespace AIBridge.Editor.Tests
         {
             AIBridgeProjectSettings.Instance.ClearAssistantSkillRootDirectory("codex");
             AIBridgeProjectSettings.Instance.ClearAssistantSkillRootDirectory("claude");
+            ClearAssistantSelections();
             AIBridgeProjectSettings.Instance.SkillRootDirectory = AIBridgeProjectSettings.DefaultSkillRootDirectory;
             AIBridgeProjectSettings.Instance.EditorLanguage = AIBridgeEditorLanguage.English;
             AIBridgeProjectSettings.Instance.EditorLanguageInitialized = true;
@@ -102,6 +104,98 @@ namespace AIBridge.Editor.Tests
                 SkillDirectoryRelativePath = skillDirectoryRelativePath,
                 SkillFileName = "SKILL.md"
             };
+        }
+
+        private static void ClearAssistantSelections()
+        {
+            var targets = AssistantIntegrationRegistry.GetTargets();
+            foreach (var target in targets)
+            {
+                AIBridgeProjectSettings.Instance.ClearAssistantSelection(target.Id);
+            }
+        }
+
+        private static int CountSelectedTargets(System.Collections.Generic.Dictionary<string, bool> selections)
+        {
+            var count = 0;
+            foreach (var selection in selections)
+            {
+                if (selection.Value)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        [Test]
+        public void EmptyProjectDefaultsToSingleCodexSelection()
+        {
+            var targets = AssistantIntegrationRegistry.GetTargets();
+
+            var selections = AssistantIntegrationSelectionSettings.LoadSelections(_projectRoot, targets);
+
+            Assert.AreEqual(1, CountSelectedTargets(selections));
+            Assert.IsTrue(selections["codex"]);
+            Assert.IsFalse(selections["claude"]);
+        }
+
+        [Test]
+        public void ClaudeRootRuleDefaultsToSingleClaudeSelection()
+        {
+            File.WriteAllText(Path.Combine(_projectRoot, "CLAUDE.md"), "# Claude");
+            var targets = AssistantIntegrationRegistry.GetTargets();
+
+            var selections = AssistantIntegrationSelectionSettings.LoadSelections(_projectRoot, targets);
+
+            Assert.AreEqual(1, CountSelectedTargets(selections));
+            Assert.IsTrue(selections["claude"]);
+            Assert.IsFalse(selections["codex"]);
+        }
+
+        [Test]
+        public void AgentsRootRuleDefaultsToSingleCodexSelection()
+        {
+            File.WriteAllText(Path.Combine(_projectRoot, "AGENTS.md"), "# Agents");
+            var targets = AssistantIntegrationRegistry.GetTargets();
+
+            var selections = AssistantIntegrationSelectionSettings.LoadSelections(_projectRoot, targets);
+
+            Assert.AreEqual(1, CountSelectedTargets(selections));
+            Assert.IsTrue(selections["codex"]);
+            Assert.IsFalse(selections["claude"]);
+        }
+
+        [Test]
+        public void CodexWinsWhenClaudeAndAgentsRootRulesBothExist()
+        {
+            File.WriteAllText(Path.Combine(_projectRoot, "CLAUDE.md"), "# Claude");
+            File.WriteAllText(Path.Combine(_projectRoot, "AGENTS.md"), "# Agents");
+            var targets = AssistantIntegrationRegistry.GetTargets();
+
+            var selections = AssistantIntegrationSelectionSettings.LoadSelections(_projectRoot, targets);
+
+            Assert.AreEqual(1, CountSelectedTargets(selections));
+            Assert.IsTrue(selections["codex"]);
+            Assert.IsFalse(selections["claude"]);
+        }
+
+        [Test]
+        public void SharedSkillDirectoryDoesNotDetectEveryAssistant()
+        {
+            var sharedSkillDirectory = Path.Combine(_projectRoot, ".skills", "aibridge");
+            Directory.CreateDirectory(sharedSkillDirectory);
+            File.WriteAllText(Path.Combine(sharedSkillDirectory, "SKILL.md"), "# AIBridge");
+            var targets = AssistantIntegrationRegistry.GetTargets();
+
+            var selections = AssistantIntegrationSelectionSettings.LoadSelections(_projectRoot, targets);
+
+            Assert.AreEqual(1, CountSelectedTargets(selections));
+            Assert.IsTrue(selections["codex"]);
+            Assert.IsFalse(selections["claude"]);
+            Assert.IsFalse(AssistantIntegrationDetector.Detect(_projectRoot, targets.First(target => target.Id == "claude")).IsDetected);
+            Assert.IsFalse(AssistantIntegrationDetector.Detect(_projectRoot, targets.First(target => target.Id == "codex")).IsDetected);
         }
 
         [Test]
@@ -302,6 +396,28 @@ namespace AIBridge.Editor.Tests
 
             var codexPluginJson = File.ReadAllText(Path.Combine(_projectRoot, "plugins", "aibridge-skills", ".codex-plugin", "plugin.json"));
             StringAssert.Contains("\"skills\": \"./../../.skill/\"", codexPluginJson);
+        }
+
+        [Test]
+        public void SkillPluginAdapterCleanupRemovesOnlyAIBridgePluginEntries()
+        {
+            var marketplaceDirectory = Path.Combine(_projectRoot, ".agents", "plugins");
+            Directory.CreateDirectory(marketplaceDirectory);
+            File.WriteAllText(
+                Path.Combine(marketplaceDirectory, "marketplace.json"),
+                "{ \"name\": \"existing\", \"plugins\": [{ \"name\": \"other\", \"source\": { \"source\": \"local\", \"path\": \"./plugins/other\" } }, { \"name\": \"aibridge-skills\", \"source\": { \"source\": \"local\", \"path\": \"./plugins/aibridge-skills\" } }] }");
+            Directory.CreateDirectory(Path.Combine(_projectRoot, "plugins", "aibridge-skills", ".codex-plugin"));
+            File.WriteAllText(
+                Path.Combine(_projectRoot, "plugins", "aibridge-skills", ".codex-plugin", "plugin.json"),
+                "{ \"name\": \"aibridge-skills\" }");
+            var codexTarget = AssistantIntegrationRegistry.GetTargets().First(target => target.Id == "codex");
+
+            SkillPluginAdapter.CleanupForTargets(_projectRoot, new[] { codexTarget });
+
+            var marketplaceJson = File.ReadAllText(Path.Combine(marketplaceDirectory, "marketplace.json"));
+            StringAssert.Contains("\"name\": \"other\"", marketplaceJson);
+            Assert.IsFalse(marketplaceJson.Contains("\"name\": \"aibridge-skills\""));
+            Assert.IsFalse(Directory.Exists(Path.Combine(_projectRoot, "plugins", "aibridge-skills")));
         }
 
         [Test]

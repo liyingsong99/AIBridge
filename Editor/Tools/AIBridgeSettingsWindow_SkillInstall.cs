@@ -15,8 +15,8 @@ namespace AIBridge.Editor
             EditorGUILayout.LabelField(AIBridgeEditorText.T("Skill Installation", "Skills 安装"), EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 AIBridgeEditorText.T(
-                    "Select which supported AI tools should receive AIBridge skill installation. Detected tools are selected by default on first use.",
-                    "选择要安装 AIBridge Skill 适配层的 AI 工具。AIBridge Skill 默认统一安装到项目根目录 .skills。首次使用时会默认勾选已检测到的工具。"),
+                    "Select which supported AI tool should receive the AIBridge integration. On first use, AIBridge selects one recommended tool based on existing project signals.",
+                    "选择要安装 AIBridge 适配层的 AI 工具。AIBridge Skill 默认统一安装到项目根目录 .skills。首次使用时会根据项目已有信号默认选择一个推荐工具。"),
                 MessageType.Info);
 
             // 自动安装开关
@@ -101,8 +101,8 @@ namespace AIBridge.Editor
             EditorGUILayout.LabelField(AIBridgeEditorText.T("Unity Project AGENTS.md Template", "Unity 项目 AGENTS.md 模板"), EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 AIBridgeEditorText.T(
-                    "Install the Unity project AGENTS.md template to the project root. This also runs Skill installation once.",
-                    "安装面向 Unity 项目的 AGENTS.md 模板到项目根目录，方便初次使用者更好地使用 AIBridge。\n安装后会自动执行一次 Skills 安装。"),
+                    "Install the Unity project AGENTS.md template to the project root. This also installs the Codex integration once.",
+                    "安装面向 Unity 项目的 AGENTS.md 模板到项目根目录，方便初次使用者更好地使用 AIBridge。\n安装后会自动执行一次 Codex 集成安装。"),
                 MessageType.Info);
 
             if (GUILayout.Button(AIBridgeEditorText.T("Install Unity Project AGENTS.md Template", "安装 Unity 项目 AGENTS.md 模板"), GUILayout.Height(30)))
@@ -337,6 +337,16 @@ namespace AIBridge.Editor
             }
         }
 
+        private void SelectSingleTool(string targetId)
+        {
+            foreach (var selection in _assistantIntegrationSelections)
+            {
+                var selected = string.Equals(selection.Target.Id, targetId, StringComparison.OrdinalIgnoreCase);
+                selection.IsSelected = selected;
+                AssistantIntegrationSelectionSettings.SetSelected(selection.Target.Id, selected);
+            }
+        }
+
         private void InstallSelectedTools()
         {
             var selectedTargetIds = _assistantIntegrationSelections
@@ -486,14 +496,15 @@ namespace AIBridge.Editor
                 File.Copy(sourcePath, targetPath, true);
                 Debug.Log(AIBridgeEditorText.T($"[AIBridge] AGENTS.md installed to: {targetPath}", $"[AIBridge] AGENTS.md 已安装到: {targetPath}"));
 
-                // 自动执行 Skills 安装
+                // AGENTS.md 是 Codex 规则入口，模板安装时只启用 Codex，避免新工程同时生成多个工具适配目录。
+                SelectSingleTool("codex");
                 InstallSelectedTools();
 
                 EditorUtility.DisplayDialog(
                     AIBridgeEditorText.T("Install Complete", "安装成功"),
                     AIBridgeEditorText.T(
-                        "Unity project AGENTS.md template was installed to the project root.\n\nSkill installation has also run once.",
-                        "Unity 项目 AGENTS.md 模板已成功安装到项目根目录。\n\n已自动执行 Skills 安装。"),
+                        "Unity project AGENTS.md template was installed to the project root.\n\nCodex integration has also run once.",
+                        "Unity 项目 AGENTS.md 模板已成功安装到项目根目录。\n\n已自动执行 Codex 集成安装。"),
                     AIBridgeEditorText.T("OK", "确定"));
             }
             catch (Exception ex)

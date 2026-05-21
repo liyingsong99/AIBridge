@@ -72,7 +72,8 @@ namespace AIBridge.Editor
                     InstalledAtUtcTicks = DateTime.UtcNow.Ticks
                 });
 
-                SkillPluginAdapter.GenerateAll(projectRoot);
+                var targets = SkillInstaller.GetSelectedTargetsForPluginGeneration(projectRoot);
+                SkillPluginAdapter.GenerateForTargets(projectRoot, targets);
                 return new RecommendedSkillInstallResult
                 {
                     Success = true,

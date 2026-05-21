@@ -7,10 +7,15 @@ namespace AIBridge.Editor
         public string TargetId { get; set; }
         public bool IsDetected { get; set; }
         public string Detail { get; set; }
+        public int Priority { get; set; }
     }
 
     internal static class AssistantIntegrationDetector
     {
+        public const int NoSignalPriority = 0;
+        public const int DirectorySignalPriority = 50;
+        public const int RootRuleSignalPriority = 100;
+
         public static AssistantIntegrationDetection Detect(string projectRoot, AssistantIntegrationTarget target)
         {
             var rootRuleFileName = target.RootRuleFileName;
@@ -23,81 +28,61 @@ namespace AIBridge.Editor
                     {
                         TargetId = target.Id,
                         IsDetected = true,
-                        Detail = rootRuleFileName
-                    };
-                }
-
-                var rootRuleDirectory = Path.GetDirectoryName(rootRulePath);
-                if (!string.IsNullOrEmpty(rootRuleDirectory) && Directory.Exists(rootRuleDirectory))
-                {
-                    var relativeDirectory = Path.GetDirectoryName(rootRuleFileName.Replace('/', Path.DirectorySeparatorChar));
-                    return new AssistantIntegrationDetection
-                    {
-                        TargetId = target.Id,
-                        IsDetected = true,
-                        Detail = string.IsNullOrEmpty(relativeDirectory) ? rootRuleFileName : relativeDirectory.Replace(Path.DirectorySeparatorChar, '/')
+                        Detail = rootRuleFileName,
+                        Priority = RootRuleSignalPriority
                     };
                 }
             }
 
-            if (target.SupportsSkillDirectory)
+            var detectionDirectories = target.DetectionDirectoryRelativePaths;
+            if (detectionDirectories != null)
             {
-                var resolvedSkillDirectory = target.GetResolvedSkillDirectoryRelativePath(projectRoot);
-                if (!string.IsNullOrEmpty(resolvedSkillDirectory))
+                for (var i = 0; i < detectionDirectories.Length; i++)
                 {
-                    var skillDirPath = Path.Combine(projectRoot, resolvedSkillDirectory.Replace('/', Path.DirectorySeparatorChar));
-                    if (Directory.Exists(skillDirPath))
+                    var relativeDirectory = detectionDirectories[i];
+                    if (string.IsNullOrEmpty(relativeDirectory))
                     {
-                        return new AssistantIntegrationDetection
-                        {
-                            TargetId = target.Id,
-                            IsDetected = true,
-                            Detail = resolvedSkillDirectory
-                        };
+                        continue;
                     }
-                }
 
-                var relativeSkillPath = target.GetResolvedSkillFileRelativePath(projectRoot);
-                if (!string.IsNullOrEmpty(relativeSkillPath))
-                {
-                    var skillFilePath = Path.Combine(projectRoot, relativeSkillPath.Replace('/', Path.DirectorySeparatorChar));
-                    if (File.Exists(skillFilePath))
+                    var directoryPath = Path.Combine(projectRoot, relativeDirectory.Replace('/', Path.DirectorySeparatorChar));
+                    if (Directory.Exists(directoryPath))
                     {
                         return new AssistantIntegrationDetection
                         {
                             TargetId = target.Id,
                             IsDetected = true,
-                            Detail = relativeSkillPath
+                            Detail = relativeDirectory,
+                            Priority = DirectorySignalPriority
                         };
                     }
                 }
             }
 
+            // 共享 .skills 目录只表示 AIBridge Skill 已存在，不能作为 Claude/Codex 等具体工具的默认勾选依据。
             return new AssistantIntegrationDetection
             {
                 TargetId = target.Id,
                 IsDetected = false,
-                Detail = BuildExpectedSignal(target)
+                Detail = BuildExpectedSignal(target),
+                Priority = NoSignalPriority
             };
         }
 
         private static string BuildExpectedSignal(AssistantIntegrationTarget target)
         {
-            if (target.SupportsSkillDirectory)
+            if (!string.IsNullOrEmpty(target.RootRuleFileName))
             {
-                var relativeSkillPath = target.GetResolvedSkillFileRelativePath(null);
-                if (!string.IsNullOrEmpty(target.RootRuleFileName) && !string.IsNullOrEmpty(relativeSkillPath))
+                var detectionDirectories = target.DetectionDirectoryRelativePaths;
+                if (detectionDirectories != null && detectionDirectories.Length > 0)
                 {
-                    return target.RootRuleFileName + " or " + relativeSkillPath;
+                    return target.RootRuleFileName + " or " + detectionDirectories[0];
                 }
 
-                if (!string.IsNullOrEmpty(relativeSkillPath))
-                {
-                    return relativeSkillPath;
-                }
+                return target.RootRuleFileName;
             }
 
-            return target.RootRuleFileName ?? target.DisplayName;
+            return target.DisplayName;
         }
     }
 }

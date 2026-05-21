@@ -311,6 +311,27 @@ namespace AIBridge.Editor
             return true;
         }
 
+        public bool ClearAssistantSelection(string targetId)
+        {
+            if (string.IsNullOrEmpty(targetId))
+            {
+                return false;
+            }
+
+            var entries = AssistantSelections;
+            for (var i = entries.Count - 1; i >= 0; i--)
+            {
+                var entry = entries[i];
+                if (entry != null && entry.TargetId == targetId)
+                {
+                    entries.RemoveAt(i);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         public bool TryGetAssistantSkillRootDirectory(string targetId, out string skillRootDirectory)
         {
             skillRootDirectory = null;
