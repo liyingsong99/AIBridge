@@ -23,6 +23,7 @@
 ## 项目验证
 - 编译.\Tools~\AIBridgeCLI\AIBridgeCLI.csproj 项目确认无报错
 - 检查所有Runtime和Editor下的代码文件都有生成相应的meta文件
+- 检查编辑器面板新增或修改的用户可见文本已适配英文和简体中文
 
 ## 代码硬约束
 1. C# 代码必须兼容 C# 9.0，禁止 C# 10.0+ 语法

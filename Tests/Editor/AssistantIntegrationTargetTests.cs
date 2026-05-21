@@ -19,6 +19,8 @@ namespace AIBridge.Editor.Tests
             AIBridgeProjectSettings.Instance.ClearAssistantSkillRootDirectory("codex");
             AIBridgeProjectSettings.Instance.ClearAssistantSkillRootDirectory("claude");
             AIBridgeProjectSettings.Instance.SkillRootDirectory = AIBridgeProjectSettings.DefaultSkillRootDirectory;
+            AIBridgeProjectSettings.Instance.EditorLanguage = AIBridgeEditorLanguage.English;
+            AIBridgeProjectSettings.Instance.EditorLanguageInitialized = true;
         }
 
         [TearDown]
@@ -27,6 +29,8 @@ namespace AIBridge.Editor.Tests
             AIBridgeProjectSettings.Instance.ClearAssistantSkillRootDirectory("codex");
             AIBridgeProjectSettings.Instance.ClearAssistantSkillRootDirectory("claude");
             AIBridgeProjectSettings.Instance.SkillRootDirectory = AIBridgeProjectSettings.DefaultSkillRootDirectory;
+            AIBridgeProjectSettings.Instance.EditorLanguage = AIBridgeEditorLanguage.English;
+            AIBridgeProjectSettings.Instance.EditorLanguageInitialized = true;
             RecommendedSkillGitClient.GitExecutablePathForTests = _originalGitExecutablePath;
 
             if (Directory.Exists(_projectRoot))
@@ -174,6 +178,36 @@ namespace AIBridge.Editor.Tests
                 && repository.RepositoryUrl == "https://github.com/obra/superpowers.git"
                 && repository.ManifestRelativePath == ".claude-plugin/plugin.json"
                 && repository.ScanRootRelativePath == "skills"));
+        }
+
+        [Test]
+        public void DefaultRecommendedSkillRepositoriesUseSuperpowersFirst()
+        {
+            var repositories = RecommendedSkillRepositories.GetDefaultRepositories();
+
+            Assert.AreEqual("obra-superpowers", repositories.First().Id);
+        }
+
+        [Test]
+        public void RepositoryWebUrlRemovesGitSuffix()
+        {
+            var url = AIBridgeSettingsWindow.GetRepositoryWebUrl("https://github.com/obra/superpowers.git");
+
+            Assert.AreEqual("https://github.com/obra/superpowers", url);
+        }
+
+        [Test]
+        public void DefaultRecommendedSkillRepositoriesUseLocalizedDescriptions()
+        {
+            AIBridgeProjectSettings.Instance.EditorLanguage = AIBridgeEditorLanguage.English;
+            var englishRepositories = RecommendedSkillRepositories.GetDefaultRepositories();
+
+            StringAssert.Contains("workflow Skills", englishRepositories.First().Description);
+
+            AIBridgeProjectSettings.Instance.EditorLanguage = AIBridgeEditorLanguage.SimplifiedChinese;
+            var simplifiedChineseRepositories = RecommendedSkillRepositories.GetDefaultRepositories();
+
+            StringAssert.Contains("工作流 Skills", simplifiedChineseRepositories.First().Description);
         }
 
         [Test]

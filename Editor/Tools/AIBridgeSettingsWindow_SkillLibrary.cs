@@ -8,6 +8,8 @@ namespace AIBridge.Editor
 {
     public partial class AIBridgeSettingsWindow
     {
+        private const string GitRepositorySuffix = ".git";
+
         private void DrawRecommendedSkillLibraryTab()
         {
             var repositories = RecommendedSkillRepositories.GetDefaultRepositories();
@@ -38,6 +40,11 @@ namespace AIBridge.Editor
             if (GUILayout.Button(AIBridgeEditorText.T("Refresh Skill List", "刷新 Skill 列表"), GUILayout.Height(28)))
             {
                 RefreshRecommendedSkillList(selectedRepository);
+            }
+
+            if (GUILayout.Button(AIBridgeEditorText.T("Open Repository", "前往仓库"), GUILayout.Height(28)))
+            {
+                OpenRepositoryWebPage(selectedRepository);
             }
 
             if (GUILayout.Button(AIBridgeEditorText.T("Open Install Root", "打开安装目录"), GUILayout.Height(28)))
@@ -189,6 +196,23 @@ namespace AIBridge.Editor
             }
 
             EditorUtility.RevealInFinder(directory);
+        }
+
+        private static void OpenRepositoryWebPage(RecommendedSkillRepository repository)
+        {
+            if (repository == null || string.IsNullOrEmpty(repository.RepositoryUrl))
+            {
+                return;
+            }
+
+            Application.OpenURL(GetRepositoryWebUrl(repository.RepositoryUrl));
+        }
+
+        internal static string GetRepositoryWebUrl(string repositoryUrl)
+        {
+            return repositoryUrl.EndsWith(GitRepositorySuffix, System.StringComparison.OrdinalIgnoreCase)
+                ? repositoryUrl.Substring(0, repositoryUrl.Length - GitRepositorySuffix.Length)
+                : repositoryUrl;
         }
 
         private static string GetInstallStateText(RecommendedSkillInstallState state)
