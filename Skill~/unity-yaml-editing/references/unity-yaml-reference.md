@@ -35,6 +35,19 @@ GameObject:
 2. `aibridge-prefab-patch`：Prefab 内 `ensure_child`、`ensure_component`、`set_property`、`set_properties`、`set_array`、`append_array`、`clear_array`、GameObject/Component/Asset 引用。
 3. UnityYAML 直接编辑：AIBridge 不能表达的 Scene、Prefab、Prefab Variant、ScriptableObjectTable、复杂 `.asset` 创建/结构修改。
 
+### 资源修改推荐矩阵
+
+| 目标 | 推荐方式 |
+|---|---|
+| 单个可读字段 | `inspector set_property` |
+| 同一目标多个字段 | `inspector set_properties` |
+| Prefab 内新增/确保子物体、组件、数组、引用 | `prefab patch`，先 `--dryRun true` |
+| Scene 对象创建、移动、Transform 修改 | `gameobject`、`transform`、`scene`、`inspector` |
+| Unity 能安全生成的复杂资产 | 临时 Editor 脚本或现有 Unity/AIBridge API |
+| API 不支持的文本序列化结构、修复、批量 authoring | `unity-yaml-editing` |
+
+直接 YAML 不是默认路径；只有当上面 API 不能表达目标、或需要修复/生成明确的 UnityYAML 结构时才使用。
+
 ## UnityYAML 核心格式
 
 每个对象文档形态：
@@ -79,6 +92,8 @@ GameObject:
 3. 搜索目标 `fileID`、`guid`、对象名、组件名，理解引用关系。
 4. 找同类型现有对象作为模板，不凭记忆写字段结构。
 5. 记录新增 `fileID` 列表，确保不与同文件任意 `&<fileID>` 或 `{fileID: <id>}` 冲突。
+6. 新建资产时，先搜索计划使用的 `.meta` GUID，确认项目中未出现。
+7. 对 Light、Camera、ParticleSystem、Renderer、URP/HDRP 组件等版本敏感结构，必须复制同项目、同 Unity 版本、同渲染管线样例。
 
 ## 修改规则
 
@@ -97,6 +112,16 @@ GameObject:
 - 新增 Component 文档后，必须把组件引用加入所属 `GameObject.m_Component`。
 - 新增 GameObject 子节点后，必须更新父 Transform 的 `m_Children`，并设置子 Transform 的 `m_Father`。
 - 删除对象时，必须删除所有引用它的列表项和字段；无法确认引用完整性时不要删除。
+
+Prefab 中新增节点或组件的最小双向关系：
+
+| 新增内容 | 必须同步 |
+|---|---|
+| GameObject + Transform | GameObject 文档、Transform 文档、`GameObject.m_Component`、`Transform.m_GameObject` |
+| 根节点 | 根 Transform 的 `m_Father: {fileID: 0}` |
+| 子节点 | 父 `Transform.m_Children` 追加子 Transform，子 `Transform.m_Father` 指向父 Transform |
+| 新组件 | 组件文档、所属 `GameObject.m_Component`、组件 `m_GameObject` |
+| 外部资源引用 | 使用稳定 `{fileID, guid, type}`，不要修改被引用资源 `.meta` GUID |
 
 ### MonoBehaviour / ScriptableObject
 
@@ -169,6 +194,55 @@ Transform:
 - 不要随意扁平化 Variant 或删除 `m_SourcePrefab`、`m_CorrespondingSourceObject`、`m_PrefabInstance`、`m_PrefabAsset`。
 - 对 Variant 的 override，优先追加/修改对应 modification 记录；不确定结构时通过 Unity API 或手动生成一个样例再复制形状。
 
+### 从零创建普通 Prefab
+
+仅在 Unity/AIBridge API 不适合生成目标结构时使用。最小文件集合：
+
+1. `<Name>.prefab`：包含 `%YAML`、`%TAG`、至少一个 GameObject 文档和一个 Transform 文档。
+2. `<Name>.prefab.meta`：包含唯一 `guid` 和 `PrefabImporter`。
+3. 根 GameObject 的 `m_Component` 引用根 Transform。
+4. 根 Transform 的 `m_GameObject` 指向根 GameObject，`m_Father: {fileID: 0}`。
+5. 每个子节点都同时具备 GameObject、Transform、父子引用。
+6. 每个组件都在 `GameObject.m_Component` 中注册，并让组件 `m_GameObject` 指回所属 GameObject。
+
+最小 `.meta` 形状：
+
+```yaml
+fileFormatVersion: 2
+guid: <unique-32-hex-guid>
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+```
+
+创建后必须导入并确认：
+
+```bash
+$CLI asset import --assetPath "Assets/Generated/Name.prefab"
+$CLI prefab get_info --prefabPath "Assets/Generated/Name.prefab"
+$CLI prefab get_hierarchy --prefabPath "Assets/Generated/Name.prefab" --depth 8 --includeInactive true
+```
+
+### 增量追加 Prefab 节点 / 组件
+
+1. 分配未使用的 GameObject、Transform、组件 fileID。
+2. 添加新 GameObject 文档。
+3. 添加新 Transform 文档，设置 `m_GameObject`、`m_Father`、`m_Children`。
+4. 把新 Transform 加入父 Transform 的 `m_Children`。
+5. 添加组件文档并设置 `m_GameObject`。
+6. 把组件 fileID 加入所属 `GameObject.m_Component`。
+7. 导入后用 `prefab get_hierarchy` 和 `inspector get_properties` 复查。
+
+常见失败点：
+
+- 只新增 Transform，忘记父 `m_Children`。
+- 只新增组件文档，忘记 `GameObject.m_Component`。
+- 复制组件时保留了旧 `m_GameObject`。
+- 新 `.meta` GUID 与项目已有 GUID 冲突。
+- 用了其它 Unity 版本或其它渲染管线的组件字段。
+
 ### Scene `.unity`
 
 - Scene 由多个对象文档组成，根对象 Transform 的 `m_Father` 为 `{fileID: 0}`。
@@ -203,6 +277,7 @@ m_LocalPosition: {x: 0x3fc00000(1.5), y: 0, z: 0}
 - 修改清晰的 ScriptableObject `.asset` 标量、数组、字符串、资源引用。
 - 为不支持的自定义 `.asset` 增加表项，且已有同类表项可复制。
 - 修改 `.unity` / `.prefab` 中无法通过 AIBridge 表达的简单结构，且引用关系可完整追踪。
+- 直接创建普通 Prefab 或追加节点/组件，且已从同项目样例复制组件结构，并能用 AIBridge 导入/复查。
 - 修复明显损坏的 GUID/fileID/缩进/冲突，且有可验证来源。
 
 ## 禁止或需暂停确认
@@ -218,7 +293,13 @@ m_LocalPosition: {x: 0x3fc00000(1.5), y: 0, z: 0}
 1. `rg '&<newFileID>|fileID: <newFileID>' <file>` 确认新增 ID 唯一且引用完整。
 2. 检查 YAML 头、文档分隔符、缩进、列表项格式未被整体重写。
 3. 涉及脚本引用时，确认 `<script>.cs.meta` GUID 与 `m_Script.guid` 一致。
-4. 涉及 Prefab/Scene 时，用 AIBridge 查询 hierarchy/properties，或至少让 Unity 重新导入。
-5. 执行 `$CLI compile unity`。
-6. 执行 `$CLI get_logs --logType Error`，确认没有 YAML parse/import/serialization 错误。
-7. 若修改用户可见资源，按需求打开场景/Prefab 或截图验证。
+4. 新建资产时，`rg "<new-guid>" Assets Packages ProjectSettings` 确认 GUID 只出现在预期 `.meta` 或引用处。
+5. 涉及 Prefab/Scene 时，先 `$CLI asset import --assetPath "<path>"`，再查询 hierarchy/properties。
+6. 新增 Prefab 节点/组件时，确认：
+   - 父 `Transform.m_Children` 包含子 Transform。
+   - 子 `Transform.m_Father` 指回父 Transform。
+   - `GameObject.m_Component` 包含所有组件。
+   - 每个组件 `m_GameObject` 指向所属 GameObject。
+7. 执行 `$CLI compile unity`。
+8. 执行 `$CLI get_logs --logType Error`，确认没有 YAML parse/import/serialization 错误。
+9. 若修改用户可见资源，按需求打开场景/Prefab 或截图验证。
