@@ -5,7 +5,7 @@ description: Unity Prefab asset patch workflow for AIBridge. Use when modifying 
 
 # AIBridge Prefab Patch
 
-Use `prefab patch` for complex Prefab asset edits that need multiple operations in one load/save cycle. Use `inspector set_property` for a single simple serialized field. Use `gameobject`、`transform`、`inspector` for scene objects. If the requested Prefab/Scene/custom `.asset` operation is not supported by AIBridge, load `unity-yaml-editing` and follow its direct UnityYAML rules.
+Use `prefab patch` for complex Prefab asset edits that need multiple operations in one load/save cycle. Use `inspector set_property` for a single simple serialized field, and `inspector set_properties` for small batched field edits. Use `gameobject`、`transform`、`inspector` for scene objects. If the requested Prefab/Scene/custom `.asset` operation is not supported by AIBridge, load `unity-yaml-editing` and follow its direct UnityYAML rules.
 
 `$CLI` means the platform-appropriate AIBridge CLI invocation, usually `./.aibridge/cli/AIBridgeCLI.exe` on Windows.
 
@@ -75,6 +75,8 @@ $CLI prefab patch --prefabPath "Assets/Prefabs/Player.prefab" --ops ".aibridge/p
 
 - Scene `.unity` object creation or structure edits not exposed by scene/gameobject/transform/inspector commands.
 - Prefab Variant override structures, nested modification records, or operations outside the listed patch ops.
+- Creating a brand-new Prefab file from text serialization, including paired `.meta`, root object, child hierarchy, and component documents.
+- Adding Prefab documents/components whose schema is not covered by patch ops, after copying the shape from the same Unity version/project.
 - ScriptableObjectTable/custom `.asset` creation or structural edits that cannot be represented by Inspector SerializedProperty writes.
 - Other text-serialized Unity assets (`.mat`, `.controller`, `.anim`, etc.) requiring direct document/fileID/GUID changes.
 
@@ -93,6 +95,7 @@ null
 ## 注意事项
 
 - Do not edit Prefab YAML directly unless no Unity/AIBridge API path exists; when required, use `unity-yaml-editing`.
+- For direct YAML fallback, copy component schema from a same-project example, update every `GameObject.m_Component`, `Transform.m_Children`, `Transform.m_Father`, and component `m_GameObject` reference, then re-import and inspect.
 - Paths are normalized against the prefab root; both `Root/Child` and `Child` can work when unambiguous.
 - Duplicate child names under the same parent are ambiguous; use exact hierarchy paths.
 - Duplicate components of the same type are ambiguous; use `componentIndex` when needed.

@@ -46,8 +46,9 @@ $CLI get_logs --logType Error
 涉及直接 UnityYAML 修改时：
 
 1. 确认没有可行 AIBridge/Unity API 路径，或该路径不足以表达目标操作。
-2. 检查新增/修改的 `fileID`、`guid`、`m_Script`、父子/组件引用。
-3. 写入后执行 Unity 导入/编译和 Error 日志检查。
+2. 检查新增/修改的 `fileID`、`guid`、`m_Script`、`.meta`、父子/组件双向引用。
+3. 新建或增量修改 Prefab 时，复查 `GameObject.m_Component`、`Transform.m_Children`、`Transform.m_Father`、组件 `m_GameObject`。
+4. 写入后执行 Unity 导入、AIBridge hierarchy/properties 复查、`compile unity` 和 Error 日志检查。
 
 ## 输出格式
 
