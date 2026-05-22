@@ -1,6 +1,6 @@
 ---
 name: aibridge
-description: Unity Editor CLI integration for AIBridge. Use when Codex needs to compile Unity, inspect Console logs, search/read assets, manipulate GameObjects, Transforms, components, SerializedProperty values, scenes, screenshots/GIFs, editor focus/menu items/game view, or look up AIBridgeCLI command syntax. For batch/multi scripts use aibridge-batch-script. For complex prefab asset edits use aibridge-prefab-patch.
+description: Unity Editor CLI integration for AIBridge. Use when Codex needs to compile Unity, inspect Console logs, search/read assets, manipulate GameObjects, Transforms, components, SerializedProperty values, scenes, screenshots/GIFs, editor focus/menu items/game view, or look up AIBridgeCLI command syntax. For batch/multi scripts use aibridge-batch-script. For complex prefab asset edits use aibridge-prefab-patch. For unsupported direct Unity YAML serialized asset edits use unity-yaml-editing.
 ---
 
 # AI Bridge Unity Skill
@@ -34,8 +34,8 @@ Most Unity-side commands require an `action` such as `asset search` or `inspecto
 
 - Use `compile unity` for Unity validation. `compile dotnet` is an explicit extra solution-build check, not a fallback.
 - For Unity assets, prefer `asset search/find --format paths`; use host file reads for file contents, and `asset read_text` only when host reads are unavailable.
-- For scene objects, Prefabs, and complex serialized Unity assets, discover targets with `inspector get_components/get_properties/find_property`, then write with `inspector set_property/set_properties`; avoid raw YAML for Scene/Prefab assets unless no Unity API path exists.
-- Direct YAML edits are acceptable for simple ScriptableObject `.asset` config files only when fields are clear and the diff is easy to review. Preserve `m_Script`, `fileID/guid/type` references, and YAML indentation; validate afterward with `compile unity` or a relevant CLI check.
+- For scene objects, Prefabs, and serialized Unity assets, discover targets with `inspector get_components/get_properties/find_property`, then write with `inspector set_property/set_properties`; avoid raw YAML unless no Unity/AIBridge API path exists.
+- Direct YAML edits are acceptable only after loading `unity-yaml-editing`, including unsupported Scene/Prefab/ScriptableObjectTable/custom `.asset` operations. Preserve `m_Script`, `fileID/guid/type` references, and YAML indentation; validate afterward with `compile unity` and Error logs.
 - For prefab asset edits, use `assetPath + objectPath + componentName` or `componentIndex`; `componentInstanceId` is scene-only.
 - For complex prefab asset edits, use the `aibridge-prefab-patch` skill and prefer `prefab patch --ops <file>` with dry-run first.
 - In PowerShell, avoid inline complex `--json`; build JSON in a variable, escape embedded quotes for native EXE argument passing, and pass command parameters directly, especially `inspector set_properties --values $values`.
@@ -45,6 +45,7 @@ Most Unity-side commands require an `action` such as `asset search` or `inspecto
 
 - `aibridge-prefab-patch`: specialized Skill for complex prefab asset edits.
 - `aibridge-batch-script`: specialized Skill for `batch` / `multi` script automation.
+- `unity-yaml-editing`: fallback Skill for direct UnityYAML edits when AIBridge/Unity APIs cannot express the operation.
 - `references/command-reference.md`: generated CLI command syntax for common commands.
 - `references/inspector-property-reference.md`: generated Inspector and SerializedProperty syntax.
 

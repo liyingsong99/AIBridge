@@ -86,6 +86,20 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
+        public void SkillInstallerIndexEntriesIncludeScannedSiblingSkills()
+        {
+            AIBridgeProjectSettings.Instance.SkillRootDirectory = ".skill";
+            var target = CreateTarget("codex", ".codex/skills/aibridge");
+
+            var entries = SkillInstaller.GetSkillIndexEntriesForTests(_projectRoot, target, "/.skill/aibridge/SKILL.md");
+
+            Assert.IsTrue(entries.Any(entry => entry.Name == "unity-yaml-editing"));
+            var yamlEntry = entries.First(entry => entry.Name == "unity-yaml-editing");
+            Assert.AreEqual("/.skill/unity-yaml-editing/SKILL.md", yamlEntry.DocumentPath);
+            StringAssert.Contains("Unity YAML", yamlEntry.Description);
+        }
+
+        [Test]
         public void NonCodexSkillRootUsesSharedSkillsDirectory()
         {
             Directory.CreateDirectory(Path.Combine(_projectRoot, ".agents"));

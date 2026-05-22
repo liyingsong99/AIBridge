@@ -18,7 +18,8 @@
 2. using 和命名空间正确。
 3. Unity 对象使用 `!= null` 显式判空，未使用 `?.`。
 4. 复杂逻辑有必要的简体中文注释。
-5. SerializedProperty、Prefab、Scene 修改优先使用 AIBridge/Unity API，不直接改 YAML，除非没有可行 API。
+5. SerializedProperty、Prefab、Scene、`.asset` 修改优先使用 AIBridge/Unity API，不直接改 YAML，除非没有可行 API。
+6. 直接修改 UnityYAML 时，已加载 `unity-yaml-editing` 并完成 fileID/GUID/缩进/引用完整性检查。
 
 ## AIBridge 验证
 
@@ -41,6 +42,12 @@ $CLI get_logs --logType Error
 1. 先执行 `prefab patch --dryRun true`。
 2. 写入后复查 hierarchy/properties。
 3. 再执行 `compile unity` 和 Error 日志检查。
+
+涉及直接 UnityYAML 修改时：
+
+1. 确认没有可行 AIBridge/Unity API 路径，或该路径不足以表达目标操作。
+2. 检查新增/修改的 `fileID`、`guid`、`m_Script`、父子/组件引用。
+3. 写入后执行 Unity 导入/编译和 Error 日志检查。
 
 ## 输出格式
 

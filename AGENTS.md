@@ -18,6 +18,7 @@
 - `aibridge-development-workflow`
 - 涉及 CLI / Unity 编译 / 日志 / 资源 / Inspector 时，再使用 `aibridge`
 - 涉及复杂 Prefab 资源修改时，再使用 `aibridge-prefab-patch`
+- 涉及直接修改 Unity YAML 序列化文件或 AIBridge 不支持的 Prefab / Scene / `.asset` 结构修改时，再使用 `unity-yaml-editing`
 - 涉及 batch / multi 脚本自动化时，再使用 `aibridge-batch-script`
 
 ## 项目验证
@@ -41,9 +42,11 @@
    - batch / multi：`aibridge-batch-script/references/batch-script-reference.md`
    - prefab：`aibridge-prefab-patch/references/prefab-reference.md`
    - inspector：`aibridge/references/inspector-property-reference.md`
+   - unity yaml：`unity-yaml-editing/references/unity-yaml-reference.md`
 7. 未实现 `ICommandSkillDocProvider` 的旧命令继续使用 `ICommand.SkillDescription`，并写入默认 reference
-8. 面向 AI 的 Skill / SkillDescription / command reference 必须精简凝练，只保留调用方式、关键约束和必要决策规则，避免冗余解释性说明
-9. 面向用户的编辑器面板、README、HelpBox、Tooltip 可以解释功能影响、默认行为和使用说明；不要把这类用户说明混入面向 AI 的提示词
+8. Skill 安装索引由 `SkillInstaller` 扫描 `Skill~/SKILL.md` 和 `Skill~/*/SKILL.md` 自动生成；新增 Skill 不要为索引修改安装器脚本
+9. 面向 AI 的 Skill / SkillDescription / command reference 必须精简凝练，只保留调用方式、关键约束和必要决策规则，避免冗余解释性说明
+10. 面向用户的编辑器面板、README、HelpBox、Tooltip 可以解释功能影响、默认行为和使用说明；不要把这类用户说明混入面向 AI 的提示词
 
 ## 模板维护规则
 1. `Templates~/ProjectRules/AGENTS.zh-CN.md` 和 `Templates~/ProjectRules/AGENTS.en-US.md` 是安装到 Unity 项目的示例文件
