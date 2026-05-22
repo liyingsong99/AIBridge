@@ -17,6 +17,7 @@ namespace AIBridge.Editor
     {
         private const string AssetsPathPrefix = "Assets/";
         private const string PackagesPathPrefix = "Packages/";
+        private const string LibraryPathPrefix = "Library/";
         private const string PrefabExtension = ".prefab";
         private const int Vector2ElementCount = 2;
         private const int Vector3ElementCount = 3;

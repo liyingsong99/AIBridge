@@ -27,9 +27,9 @@ namespace AIBridge.Editor
                     return false;
                 }
 
-                if (forWrite && assetPath.StartsWith(PackagesPathPrefix, StringComparison.OrdinalIgnoreCase))
+                if (forWrite && IsResolvedUnderProjectLibrary(assetPath))
                 {
-                    error = "Editing package assets is not supported. Copy the asset into Assets/ first.";
+                    error = "Editing assets resolved under the project Library directory is not supported.";
                     return false;
                 }
 
@@ -268,6 +268,58 @@ namespace AIBridge.Editor
         {
             return assetPath.StartsWith(AssetsPathPrefix, StringComparison.OrdinalIgnoreCase)
                    || assetPath.StartsWith(PackagesPathPrefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsResolvedUnderProjectLibrary(string assetPath)
+        {
+            if (string.IsNullOrEmpty(assetPath))
+            {
+                return false;
+            }
+
+            var projectRoot = Path.GetDirectoryName(Application.dataPath);
+            if (string.IsNullOrEmpty(projectRoot))
+            {
+                return false;
+            }
+
+            var resolvedFullPath = ResolveAssetFullPath(projectRoot, assetPath);
+            var libraryRoot = Path.GetFullPath(Path.Combine(projectRoot, LibraryPathPrefix));
+            return IsSameOrChildPath(libraryRoot, resolvedFullPath);
+        }
+
+        // Packages/ 是 Unity 逻辑路径，真实位置可能在 Library/PackageCache；写入门控必须按真实路径判断。
+        private static string ResolveAssetFullPath(string projectRoot, string assetPath)
+        {
+            if (assetPath.StartsWith(PackagesPathPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath(assetPath);
+                if (packageInfo != null && !string.IsNullOrEmpty(packageInfo.resolvedPath))
+                {
+                    return Path.GetFullPath(packageInfo.resolvedPath);
+                }
+            }
+
+            var normalizedAssetPath = assetPath.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
+            return Path.GetFullPath(Path.Combine(projectRoot, normalizedAssetPath));
+        }
+
+        private static bool IsSameOrChildPath(string rootDirectory, string fullPath)
+        {
+            if (string.IsNullOrEmpty(rootDirectory) || string.IsNullOrEmpty(fullPath))
+            {
+                return false;
+            }
+
+            var normalizedRoot = Path.GetFullPath(rootDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var normalizedPath = Path.GetFullPath(fullPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (string.Equals(normalizedRoot, normalizedPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return normalizedPath.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                   || normalizedPath.StartsWith(normalizedRoot + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
         }
 
         private static GameObject ResolvePrefabObject(GameObject root, string objectPath)
