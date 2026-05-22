@@ -5,6 +5,7 @@
 - Unity 2019.4 Manual - UnityYAML: https://docs.unity.cn/cn/2019.4/Manual/UnityYAML.html
 - Unity 2019.4 Manual - 文本场景格式: https://docs.unity.cn/cn/2019.4/Manual/TextSceneFormat.html
 - Unity 2019.4 Manual - 脚本序列化: https://docs.unity.cn/cn/2019.4/Manual/script-Serialization.html
+- Unity 2019.4 Manual - ClassId索引: https://docs.unity.cn/cn/2019.4/Manual/ClassIDReference.html
 
 Unity 官方说明：UnityYAML 是 Unity 为资源序列化定制的 YAML 子集，外部工具不应生成或编辑它。实际必须手改时，把它当作危险兜底流程，尽量小改并让 Unity 重新导入验证。
 
