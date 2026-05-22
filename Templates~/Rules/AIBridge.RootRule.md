@@ -1,7 +1,7 @@
 ---
 templateId: unity-integration
-assistant: cline
-version: 5
+assistant: aibridge
+version: 6
 target: root-rule
 ---
 ## AIBridge Bootstrap
@@ -20,5 +20,6 @@ $CLI editor log --message "Hello" --logType Warning
 - {{DEVELOPMENT_TASK_RULE}}
 - {{WORKFLOW_SKILL_RULE}}
 
-**{{SKILL_INDEX_TITLE}}**:
-{{SKILL_INDEX}}
+**{{SKILL_LOADING_TITLE}}**:
+- {{WORKFLOW_SKILL_ENTRY}}
+- {{SKILL_ROOT_RULE}}

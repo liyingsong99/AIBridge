@@ -86,17 +86,21 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void SkillInstallerIndexEntriesIncludeScannedSiblingSkills()
+        public void AssistantTargetsUseSharedRootRuleTemplate()
         {
-            AIBridgeProjectSettings.Instance.SkillRootDirectory = ".skill";
-            var target = CreateTarget("codex", ".codex/skills/aibridge");
+            var targets = AssistantIntegrationRegistry.GetTargets();
 
-            var entries = SkillInstaller.GetSkillIndexEntriesForTests(_projectRoot, target, "/.skill/aibridge/SKILL.md");
+            Assert.IsTrue(targets.All(target => target.RootRuleTemplateRelativePath == "Templates~/Rules/AIBridge.RootRule.md"));
+        }
 
-            Assert.IsTrue(entries.Any(entry => entry.Name == "unity-yaml-editing"));
-            var yamlEntry = entries.First(entry => entry.Name == "unity-yaml-editing");
-            Assert.AreEqual("/.skill/unity-yaml-editing/SKILL.md", yamlEntry.DocumentPath);
-            StringAssert.Contains("Unity YAML", yamlEntry.Description);
+        [Test]
+        public void SharedRootRuleTemplateRoutesThroughWorkflowWithoutSkillIndex()
+        {
+            var template = RuleTemplateLoader.Load(_projectRoot, "Templates~/Rules/AIBridge.RootRule.md");
+
+            StringAssert.Contains("{{WORKFLOW_SKILL_ENTRY}}", template.Body);
+            StringAssert.Contains("{{SKILL_ROOT_RULE}}", template.Body);
+            Assert.IsFalse(template.Body.Contains("{{SKILL_INDEX}}"));
         }
 
         [Test]

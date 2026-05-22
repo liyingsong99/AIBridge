@@ -44,13 +44,13 @@
    - inspector：`aibridge/references/inspector-property-reference.md`
    - unity yaml：`unity-yaml-editing/references/unity-yaml-reference.md`
 7. 未实现 `ICommandSkillDocProvider` 的旧命令继续使用 `ICommand.SkillDescription`，并写入默认 reference
-8. Skill 安装索引由 `SkillInstaller` 扫描 `Skill~/SKILL.md` 和 `Skill~/*/SKILL.md` 自动生成；新增 Skill 不要为索引修改安装器脚本
+8. SkillInstaller 自动安装 `Skill~/SKILL.md` 和 `Skill~/*/SKILL.md`；新增 Skill 不要修改 RootRule 索引或安装器路由
 9. 面向 AI 的 Skill / SkillDescription / command reference 必须精简凝练，只保留调用方式、关键约束和必要决策规则，避免冗余解释性说明
 10. 面向用户的编辑器面板、README、HelpBox、Tooltip 可以解释功能影响、默认行为和使用说明；不要把这类用户说明混入面向 AI 的提示词
 
 ## 模板维护规则
 1. `Templates~/ProjectRules/AGENTS.zh-CN.md` 和 `Templates~/ProjectRules/AGENTS.en-US.md` 是安装到 Unity 项目的示例文件
-2. `Templates~/Rules/*.RootRule.md` 是注入到已有规则文件的最小引导块
-3. RootRule 只放 CLI 路径、常用命令、Skill 索引和“开发任务先加载工作流”的路由规则
+2. `Templates~/Rules/AIBridge.RootRule.md` 是注入到已有规则文件的通用最小引导块
+3. RootRule 只放 CLI 路径、常用命令、Skill 根目录提示和“开发任务先加载工作流”的路由规则
 4. 完整行为规范必须放在 `aibridge-development-workflow`
 5. CLI 详细命令说明必须放在对应 Skill 的 `references/*.md`

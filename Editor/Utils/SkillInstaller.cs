@@ -557,31 +557,19 @@ namespace AIBridge.Editor
         {
             var cliExeName = GetCliExecutableName();
             var language = AIBridgeProjectSettings.Instance.EditorLanguage;
-            var skillDocPath = target.SupportsSkillDirectory
-                ? "/" + target.GetResolvedSkillFileRelativePath(projectRoot)
-                : "/Packages/" + PACKAGE_NAME + "/Skill~/" + SKILL_FILE_NAME;
-            var prefabPatchSkillDocPath = GetSkillDocumentPath(projectRoot, target, "aibridge-prefab-patch");
             var workflowSkillDocPath = GetSkillDocumentPath(projectRoot, target, "aibridge-development-workflow");
-            var batchScriptSkillDocPath = GetSkillDocumentPath(projectRoot, target, "aibridge-batch-script");
+            var skillRootPath = GetSkillRootDocumentPath(projectRoot, target);
             return new Dictionary<string, string>
             {
                 { "CLI_PATH", "./" + CLI_CACHE_FOLDER + "/" + cliExeName },
-                { "CLI_EXE_NAME", cliExeName },
-                { "CLI_CACHE_DIR", CLI_CACHE_FOLDER },
-                { "SKILL_DOC_PATH", skillDocPath },
-                { "PREFAB_PATCH_SKILL_DOC_PATH", prefabPatchSkillDocPath },
-                { "WORKFLOW_SKILL_DOC_PATH", workflowSkillDocPath },
-                { "BATCH_SCRIPT_SKILL_DOC_PATH", batchScriptSkillDocPath },
-                { "SKILL_INDEX", BuildSkillIndex(projectRoot, target, language, skillDocPath) },
                 { "COMMON_COMMANDS_TITLE", AIBridgeEditorText.For(language, "Common Commands", "常用命令") },
                 { "ROUTING_TITLE", AIBridgeEditorText.For(language, "Routing Rules", "路由原则") },
                 { "QUICK_TASK_RULE", AIBridgeEditorText.For(language, "Quick tasks: answer or execute directly for pure Q&A, code explanation, search/display, or tasks with no code or asset changes.", "快速任务：纯问答、代码解释、查找、显示、无代码或资源修改，直接回答或执行。") },
                 { "DEVELOPMENT_TASK_RULE", AIBridgeEditorText.For(language, "Development tasks: creating, modifying, fixing, refactoring C# code, Unity assets, Prefabs, Editor tools, package structure, tests, AGENTS.md, or Skills must load `aibridge-development-workflow` first.", "开发任务：创建、修改、修复、重构 C# 代码、Unity 资源、Prefab、Editor 工具、包结构、测试、AGENTS.md 或 Skills，必须优先加载 `aibridge-development-workflow`。") },
                 { "WORKFLOW_SKILL_RULE", AIBridgeEditorText.For(language, "After entering the standard development workflow, `aibridge-development-workflow` decides whether to load additional Skills in Skills matching mode.", "进入标准开发工作流后，由 `aibridge-development-workflow` 在 `【Skills 匹配模式】` 决定是否继续加载其它 Skill。") },
-                { "SKILL_INDEX_TITLE", AIBridgeEditorText.For(language, "Skill Index", "Skill 索引") },
-                { "PROJECT_ROOT_RULE_FILE", target.RootRuleFileName },
-                { "ASSISTANT_NAME", target.DisplayName },
-                { "PROJECT_ROOT", projectRoot }
+                { "SKILL_LOADING_TITLE", AIBridgeEditorText.For(language, "Skill Loading", "Skill 加载") },
+                { "WORKFLOW_SKILL_ENTRY", AIBridgeEditorText.For(language, "Load `aibridge-development-workflow` from `" + workflowSkillDocPath + "` before development tasks.", "开发任务先加载 `" + workflowSkillDocPath + "` 中的 `aibridge-development-workflow`。") },
+                { "SKILL_ROOT_RULE", AIBridgeEditorText.For(language, "AIBridge Skills are installed under `" + skillRootPath + "/<skill-name>/SKILL.md`; load sibling Skills from that directory only when the workflow requires them.", "AIBridge Skills 安装在 `" + skillRootPath + "/<skill-name>/SKILL.md`；仅在工作流要求时从该目录加载同级 Skill。") }
             };
         }
 
@@ -592,199 +580,18 @@ namespace AIBridge.Editor
                 : "/Packages/" + PACKAGE_NAME + "/Skill~/" + skillName + "/" + SKILL_FILE_NAME;
         }
 
-        private static string BuildSkillIndex(string projectRoot, AssistantIntegrationTarget target, AIBridgeEditorLanguage language, string mainSkillDocPath)
+        private static string GetSkillRootDocumentPath(string projectRoot, AssistantIntegrationTarget target)
         {
-            var builder = new StringBuilder();
-            builder.AppendLine(AIBridgeEditorText.For(language, "| Skill | Keywords | Document |", "| Skill | 匹配关键词 | 文档 |"));
-            builder.AppendLine("|---|---|---|");
-
-            foreach (var entry in GetSkillIndexEntries(projectRoot, target, mainSkillDocPath))
+            if (target.SupportsSkillDirectory)
             {
-                builder.AppendLine("| `" + EscapeMarkdownTableCell(entry.Name) + "` | " + EscapeMarkdownTableCell(entry.Description) + " | `" + entry.DocumentPath + "` |");
-            }
-
-            return builder.ToString().TrimEnd();
-        }
-
-        internal static List<SkillIndexEntry> GetSkillIndexEntriesForTests(string projectRoot, AssistantIntegrationTarget target, string mainSkillDocPath)
-        {
-            return GetSkillIndexEntries(projectRoot, target, mainSkillDocPath);
-        }
-
-        private static List<SkillIndexEntry> GetSkillIndexEntries(string projectRoot, AssistantIntegrationTarget target, string mainSkillDocPath)
-        {
-            var entries = new List<SkillIndexEntry>();
-            var sourceSkillPath = GetSourceSkillPath();
-            if (!string.IsNullOrEmpty(sourceSkillPath) && File.Exists(sourceSkillPath))
-            {
-                var entry = ReadSkillIndexEntry(sourceSkillPath, "aibridge", mainSkillDocPath, 0);
-                if (entry != null)
+                var skillRoot = target.GetResolvedSkillRootDirectoryRelativePath(projectRoot);
+                if (!string.IsNullOrEmpty(skillRoot))
                 {
-                    entries.Add(entry);
+                    return "/" + skillRoot.Replace('\\', '/').Trim('/');
                 }
             }
 
-            var sourceSkillRoot = GetSourceSkillRootPath();
-            if (!string.IsNullOrEmpty(sourceSkillRoot) && Directory.Exists(sourceSkillRoot))
-            {
-                var order = 1;
-                foreach (var sourceSkillDir in Directory.GetDirectories(sourceSkillRoot).OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase))
-                {
-                    var sourceSkillFile = Path.Combine(sourceSkillDir, SKILL_FILE_NAME);
-                    if (!File.Exists(sourceSkillFile))
-                    {
-                        continue;
-                    }
-
-                    var skillName = Path.GetFileName(sourceSkillDir);
-                    var documentPath = GetSkillDocumentPath(projectRoot, target, skillName);
-                    var entry = ReadSkillIndexEntry(sourceSkillFile, skillName, documentPath, order);
-                    if (entry != null)
-                    {
-                        entries.Add(entry);
-                    }
-
-                    order++;
-                }
-            }
-
-            return entries
-                .GroupBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(group => group.OrderBy(entry => entry.Order).First())
-                .OrderBy(entry => GetSkillIndexSortOrder(entry.Name))
-                .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
-
-        private static SkillIndexEntry ReadSkillIndexEntry(string skillFilePath, string fallbackName, string documentPath, int order)
-        {
-            var content = File.ReadAllText(skillFilePath, Encoding.UTF8);
-            var name = ReadSkillFrontmatterValue(content, "name");
-            var description = ReadSkillFrontmatterValue(content, "description");
-
-            if (string.IsNullOrEmpty(name))
-            {
-                name = fallbackName;
-            }
-
-            if (string.IsNullOrEmpty(description))
-            {
-                description = name;
-            }
-
-            return new SkillIndexEntry(name, SummarizeSkillDescription(description), documentPath, order);
-        }
-
-        private static string ReadSkillFrontmatterValue(string content, string key)
-        {
-            if (string.IsNullOrEmpty(content) || !content.StartsWith("---", StringComparison.Ordinal))
-            {
-                return null;
-            }
-
-            using (var reader = new StringReader(content))
-            {
-                var firstLine = reader.ReadLine();
-                if (!string.Equals(firstLine, "---", StringComparison.Ordinal))
-                {
-                    return null;
-                }
-
-                string line;
-                while ((line = reader.ReadLine()) != null)
-                {
-                    if (string.Equals(line.Trim(), "---", StringComparison.Ordinal))
-                    {
-                        break;
-                    }
-
-                    var separatorIndex = line.IndexOf(':');
-                    if (separatorIndex <= 0)
-                    {
-                        continue;
-                    }
-
-                    var currentKey = line.Substring(0, separatorIndex).Trim();
-                    if (!string.Equals(currentKey, key, StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
-
-                    var value = line.Substring(separatorIndex + 1).Trim();
-                    return TrimYamlScalar(value);
-                }
-            }
-
-            return null;
-        }
-
-        private static string TrimYamlScalar(string value)
-        {
-            if (string.IsNullOrEmpty(value))
-            {
-                return string.Empty;
-            }
-
-            if ((value.StartsWith("\"", StringComparison.Ordinal) && value.EndsWith("\"", StringComparison.Ordinal))
-                || (value.StartsWith("'", StringComparison.Ordinal) && value.EndsWith("'", StringComparison.Ordinal)))
-            {
-                return value.Substring(1, value.Length - 2);
-            }
-
-            return value;
-        }
-
-        private static string SummarizeSkillDescription(string description)
-        {
-            if (string.IsNullOrWhiteSpace(description))
-            {
-                return string.Empty;
-            }
-
-            var normalized = description.Replace("\r", " ").Replace("\n", " ").Trim();
-            const int maxLength = 180;
-            if (normalized.Length <= maxLength)
-            {
-                return normalized;
-            }
-
-            return normalized.Substring(0, maxLength).TrimEnd() + "...";
-        }
-
-        private static int GetSkillIndexSortOrder(string skillName)
-        {
-            if (string.Equals(skillName, "aibridge-development-workflow", StringComparison.OrdinalIgnoreCase))
-            {
-                return 0;
-            }
-
-            if (string.Equals(skillName, "aibridge", StringComparison.OrdinalIgnoreCase))
-            {
-                return 1;
-            }
-
-            return 10;
-        }
-
-        private static string EscapeMarkdownTableCell(string value)
-        {
-            return string.IsNullOrEmpty(value) ? string.Empty : value.Replace("|", "\\|");
-        }
-
-        internal sealed class SkillIndexEntry
-        {
-            public SkillIndexEntry(string name, string description, string documentPath, int order)
-            {
-                Name = name;
-                Description = description;
-                DocumentPath = documentPath;
-                Order = order;
-            }
-
-            public string Name { get; private set; }
-            public string Description { get; private set; }
-            public string DocumentPath { get; private set; }
-            public int Order { get; private set; }
+            return "/Packages/" + PACKAGE_NAME + "/Skill~";
         }
 
         private static List<AssistantIntegrationTarget> GetSelectedTargets(string projectRoot)
