@@ -212,9 +212,9 @@ fileFormatVersion: 2
 guid: <unique-32-hex-guid>
 PrefabImporter:
   externalObjects: {}
-  userData: 
-  assetBundleName: 
-  assetBundleVariant: 
+  userData:
+  assetBundleName:
+  assetBundleVariant:
 ```
 
 创建后必须导入并确认：
