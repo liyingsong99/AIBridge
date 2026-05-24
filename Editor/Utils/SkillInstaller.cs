@@ -9,7 +9,7 @@ using UnityEngine;
 namespace AIBridge.Editor
 {
     /// <summary>
-    /// Automatically installs the AIBridge skill documentation to the project shared skills directory.
+    /// Automatically installs the AIBridge skill documentation to each selected tool's skills directory.
     /// This allows AI assistants to discover and use the skill for Unity Editor operations.
     /// </summary>
     [InitializeOnLoad]
@@ -689,7 +689,7 @@ namespace AIBridge.Editor
                         AIBridgeLogger.LogInfo($"[SkillInstaller] Removed AIBridge block from {target.DisplayName}: {ruleFilePath}");
                     }
 
-                    // 共享 skills 根目录可能被多个工具复用，只有没有任何已选工具仍引用时才清理。
+                    // 自定义 skills 根目录可能被多个工具复用，只有没有任何已选工具仍引用时才清理。
                     if (target.SupportsSkillDirectory
                         && !string.IsNullOrEmpty(target.SkillDirectoryRelativePath)
                         && !IsSkillRootUsedByAnySelectedTarget(projectRoot, target, selectedTargets))

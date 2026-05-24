@@ -61,8 +61,14 @@ namespace AIBridge.Editor
                 return null;
             }
 
-            // 默认使用项目级共享 Skill 根目录，避免同一 Skill 在不同 AI 工具目录重复安装。
-            return AIBridgeProjectSettings.Instance.SkillRootDirectory;
+            var customSkillRootDirectory = AIBridgeProjectSettings.Instance.SkillRootDirectory;
+            if (!string.IsNullOrEmpty(customSkillRootDirectory))
+            {
+                return customSkillRootDirectory;
+            }
+
+            // 默认使用各工具自己的 Skills 根目录，保证 Codex/Cursor/Claude 能按原生规则发现 Skill。
+            return GetDefaultSkillRootDirectoryRelativePath();
         }
 
         public string GetResolvedSkillDirectoryRelativePath(string projectRoot)

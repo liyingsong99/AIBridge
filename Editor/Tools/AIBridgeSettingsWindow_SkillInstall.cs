@@ -15,8 +15,8 @@ namespace AIBridge.Editor
             EditorGUILayout.LabelField(AIBridgeEditorText.T("Skill Installation", "Skills 安装"), EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 AIBridgeEditorText.T(
-                    "Select which supported AI tool should receive the AIBridge integration. On first use, AIBridge selects one recommended tool based on existing project signals.",
-                    "选择要安装 AIBridge 适配层的 AI 工具。AIBridge Skill 默认统一安装到项目根目录 .skills。首次使用时会根据项目已有信号默认选择一个推荐工具。"),
+                    "Select which supported AI tool should receive the AIBridge integration. By default, Skills are installed into each tool's native skills directory.",
+                    "选择要安装 AIBridge 适配层的 AI 工具。默认会将 Skill 安装到各工具自己的原生 skills 目录。"),
                 MessageType.Info);
 
             // 自动安装开关
@@ -28,7 +28,7 @@ namespace AIBridge.Editor
                 AIBridgeProjectSettings.Instance.SaveSettings();
             }
 
-            DrawSharedSkillRootDirectoryField();
+            DrawCustomSkillRootDirectoryField();
             EditorGUILayout.Space(5);
 
             if (_assistantIntegrationSelections == null)
@@ -132,43 +132,43 @@ namespace AIBridge.Editor
             }
         }
 
-        private void DrawSharedSkillRootDirectoryField()
+        private void DrawCustomSkillRootDirectoryField()
         {
             EditorGUILayout.Space(5);
-            EditorGUILayout.LabelField(AIBridgeEditorText.T("Shared Skills Directory", "共享 Skills 目录"), EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(AIBridgeEditorText.T("Custom Skills Directory", "自定义 Skills 目录"), EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 AIBridgeEditorText.T(
-                    "AIBridge and recommended third-party Skills are installed here. Tool-specific plugin adapters reference this shared directory instead of copying Skills.",
-                    "AIBridge 和推荐第三方 Skill 会安装到这里；不同工具的插件适配层会引用这个共享目录，而不是复制 Skill。"),
-                MessageType.None);
+                    "Leave this empty to install Skills into each selected tool's default directory, such as .codex/skills. Custom directories may not be discovered automatically by the AI tool.",
+                    "留空时会安装到各已选工具的默认目录，例如 .codex/skills。自定义目录可能无法被 AI 工具自动发现。"),
+                MessageType.Warning);
 
             EditorGUILayout.BeginHorizontal();
             EditorGUI.BeginChangeCheck();
             var newDirectory = EditorGUILayout.DelayedTextField(
-                AIBridgeEditorText.T("Skills Directory", "Skills 目录"),
+                AIBridgeEditorText.T("Custom Directory", "自定义目录"),
                 AIBridgeProjectSettings.Instance.SkillRootDirectory);
             if (EditorGUI.EndChangeCheck())
             {
-                SetSharedSkillRootDirectory(newDirectory);
+                SetCustomSkillRootDirectory(newDirectory);
             }
 
             if (GUILayout.Button(AIBridgeEditorText.T("Browse", "浏览"), GUILayout.Width(64)))
             {
-                BrowseSharedSkillRootDirectory();
+                BrowseCustomSkillRootDirectory();
             }
 
             if (GUILayout.Button(AIBridgeEditorText.T("Open", "打开"), GUILayout.Width(52)))
             {
-                OpenSharedSkillRootDirectoryFromInstallTab();
+                OpenCustomSkillRootDirectoryFromInstallTab();
             }
 
             if (GUILayout.Button(AIBridgeEditorText.T("Reset", "重置"), GUILayout.Width(52)))
             {
-                ResetSharedSkillRootDirectory();
+                ResetCustomSkillRootDirectory();
             }
 
             EditorGUILayout.EndHorizontal();
-            EditorGUILayout.LabelField(AIBridgeEditorText.T("Current root: ", "当前根目录：") + AIBridgeProjectSettings.Instance.SkillRootDirectory, EditorStyles.miniLabel);
+            EditorGUILayout.LabelField(AIBridgeEditorText.T("Current mode: ", "当前模式：") + GetSkillRootModeText(), EditorStyles.miniLabel);
         }
 
         private void DrawSkillInstallPreview(AssistantIntegrationSelectionState selection)
@@ -181,15 +181,11 @@ namespace AIBridge.Editor
             EditorGUILayout.LabelField(AIBridgeEditorText.T("AIBridge Skill path: ", "AIBridge Skill 路径：") + BuildSkillInstallPreview(selection), EditorStyles.miniLabel);
         }
 
-        private void SetSharedSkillRootDirectory(string directory)
+        private void SetCustomSkillRootDirectory(string directory)
         {
+            var previousDirectory = AIBridgeProjectSettings.Instance.SkillRootDirectory;
             var normalized = NormalizeProjectRelativeDirectory(directory);
-            if (string.IsNullOrEmpty(normalized))
-            {
-                normalized = AIBridgeProjectSettings.DefaultSkillRootDirectory;
-            }
-
-            if (!IsValidProjectRelativeDirectory(normalized))
+            if (!string.IsNullOrEmpty(normalized) && !IsValidProjectRelativeDirectory(normalized))
             {
                 EditorUtility.DisplayDialog(
                     AIBridgeEditorText.T("Invalid Directory", "无效目录"),
@@ -203,13 +199,21 @@ namespace AIBridge.Editor
                 AIBridgeProjectSettings.Instance.SkillRootDirectory = normalized;
                 AIBridgeProjectSettings.Instance.SaveSettings();
                 RefreshAssistantIntegrationSkillRoots();
+                SkillPluginAdapter.CleanupSkillRootForTargets(GetProjectRoot(), AssistantIntegrationRegistry.GetTargets(), previousDirectory);
+                SkillPluginAdapter.GenerateSelected(GetProjectRoot());
             }
         }
 
-        private void BrowseSharedSkillRootDirectory()
+        private void BrowseCustomSkillRootDirectory()
         {
             var projectRoot = GetProjectRoot();
-            var currentDirectory = Path.Combine(projectRoot, AIBridgeProjectSettings.Instance.SkillRootDirectory.Replace('/', Path.DirectorySeparatorChar));
+            var currentRoot = AIBridgeProjectSettings.Instance.SkillRootDirectory;
+            if (string.IsNullOrEmpty(currentRoot))
+            {
+                currentRoot = AIBridgeProjectSettings.LegacySharedSkillRootDirectory;
+            }
+
+            var currentDirectory = Path.Combine(projectRoot, currentRoot.Replace('/', Path.DirectorySeparatorChar));
             var selectedDirectory = EditorUtility.OpenFolderPanel(AIBridgeEditorText.T("Select Skills Directory", "选择 Skills 目录"), currentDirectory, string.Empty);
             if (string.IsNullOrEmpty(selectedDirectory))
             {
@@ -226,24 +230,26 @@ namespace AIBridge.Editor
                 return;
             }
 
-            SetSharedSkillRootDirectory(relativeDirectory);
+            SetCustomSkillRootDirectory(relativeDirectory);
         }
 
-        private void OpenSharedSkillRootDirectoryFromInstallTab()
+        private void OpenCustomSkillRootDirectoryFromInstallTab()
         {
             var projectRoot = GetProjectRoot();
-            var directory = Path.Combine(projectRoot, AIBridgeProjectSettings.Instance.SkillRootDirectory.Replace('/', Path.DirectorySeparatorChar));
-            if (!Directory.Exists(directory))
+            var root = AIBridgeProjectSettings.Instance.SkillRootDirectory;
+            if (string.IsNullOrEmpty(root))
             {
-                Directory.CreateDirectory(directory);
+                root = RecommendedSkillInstaller.GetPrimaryInstallRootDirectory(projectRoot);
             }
 
+            var directory = Path.Combine(projectRoot, root.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(directory);
             EditorUtility.RevealInFinder(directory);
         }
 
-        private void ResetSharedSkillRootDirectory()
+        private void ResetCustomSkillRootDirectory()
         {
-            SetSharedSkillRootDirectory(AIBridgeProjectSettings.DefaultSkillRootDirectory);
+            SetCustomSkillRootDirectory(AIBridgeProjectSettings.DefaultSkillRootDirectory);
         }
 
         private void RefreshAssistantIntegrationSkillRoots()
@@ -270,6 +276,17 @@ namespace AIBridge.Editor
 
             // 面板选择的是 Skills 根目录，实际安装时每个 Skill 会落到根目录下的独立子目录。
             return selection.SkillRootDirectory.TrimEnd('/', '\\') + "/" + skillDirectoryName;
+        }
+
+        private string GetSkillRootModeText()
+        {
+            var customRoot = AIBridgeProjectSettings.Instance.SkillRootDirectory;
+            if (!string.IsNullOrEmpty(customRoot))
+            {
+                return AIBridgeEditorText.T("Custom: ", "自定义：") + customRoot;
+            }
+
+            return AIBridgeEditorText.T("Automatic per tool default directories", "自动使用各工具默认目录");
         }
 
         private static string GetProjectRoot()

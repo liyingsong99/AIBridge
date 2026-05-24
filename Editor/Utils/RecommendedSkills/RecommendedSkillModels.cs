@@ -48,6 +48,7 @@ namespace AIBridge.Editor
         public string SourceRelativePath;
         public string BranchOrTag;
         public string Commit;
+        public string InstallRootDirectory;
         public long InstalledAtUtcTicks;
     }
 

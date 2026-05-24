@@ -6,7 +6,7 @@ namespace AIBridge.Editor
     /// AI 助手集成目标注册表
     /// 
     /// Skills 目录支持说明：
-    /// - AIBridge 默认统一安装到项目根目录 .skills/，不同工具只写入规则或插件适配层。
+    /// - AIBridge 默认安装到各工具自己的 skills 根目录，自定义目录仅作为高级覆盖项。
     /// </summary>
     internal static class AssistantIntegrationRegistry
     {

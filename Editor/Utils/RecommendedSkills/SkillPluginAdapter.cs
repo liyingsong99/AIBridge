@@ -76,6 +76,37 @@ namespace AIBridge.Editor
             }
         }
 
+        public static void CleanupSkillRootForTargets(string projectRoot, IEnumerable<AssistantIntegrationTarget> targets, string skillRootDirectory)
+        {
+            var skillPluginPath = GetSkillPluginPath(skillRootDirectory);
+            if (string.IsNullOrEmpty(skillPluginPath))
+            {
+                return;
+            }
+
+            foreach (var target in targets)
+            {
+                if (target == null)
+                {
+                    continue;
+                }
+
+                if (string.Equals(target.Id, "claude", StringComparison.OrdinalIgnoreCase))
+                {
+                    CleanupPluginManifest(projectRoot, ClaudePluginDirectoryName, skillPluginPath);
+                }
+                else if (string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase))
+                {
+                    CleanupPluginManifest(projectRoot, CodexPluginDirectoryName, skillPluginPath);
+                    CleanupLegacyCodexPlugin(projectRoot);
+                }
+                else if (string.Equals(target.Id, "cursor", StringComparison.OrdinalIgnoreCase))
+                {
+                    CleanupPluginManifest(projectRoot, CursorPluginDirectoryName, skillPluginPath);
+                }
+            }
+        }
+
         private static void GenerateClaudePlugin(string projectRoot)
         {
             GeneratePluginManifest(
@@ -106,11 +137,17 @@ namespace AIBridge.Editor
 
         private static void GeneratePluginManifest(string projectRoot, string pluginDirectoryName, string description, bool cursorManifest)
         {
+            if (!UsesCustomSkillRoot())
+            {
+                CleanupPluginManifest(projectRoot, pluginDirectoryName);
+                return;
+            }
+
             var pluginRoot = Path.Combine(projectRoot, pluginDirectoryName);
             Directory.CreateDirectory(pluginRoot);
             var pluginJsonPath = Path.Combine(pluginRoot, PluginJsonFileName);
             var payload = LoadPluginPayload(pluginJsonPath);
-            var skillsPath = GetSharedSkillPluginPath();
+            var skillsPath = GetCustomSkillPluginPath();
 
             if (payload.Count == 0 || IsAIBridgePluginPayload(payload))
             {
@@ -125,7 +162,7 @@ namespace AIBridge.Editor
             }
             else
             {
-                // 已存在的第三方插件清单不能被 AIBridge 覆盖，只追加共享 Skill 根目录索引。
+                // 已存在的第三方插件清单不能被 AIBridge 覆盖，只追加自定义 Skill 根目录索引。
                 UpsertSkillPath(payload, skillsPath);
             }
 
@@ -133,6 +170,11 @@ namespace AIBridge.Editor
         }
 
         private static void CleanupPluginManifest(string projectRoot, string pluginDirectoryName)
+        {
+            CleanupPluginManifest(projectRoot, pluginDirectoryName, GetCustomSkillPluginPath());
+        }
+
+        private static void CleanupPluginManifest(string projectRoot, string pluginDirectoryName, string skillPluginPath)
         {
             var pluginRoot = Path.Combine(projectRoot, pluginDirectoryName);
             var pluginJsonPath = Path.Combine(pluginRoot, PluginJsonFileName);
@@ -149,7 +191,7 @@ namespace AIBridge.Editor
                 return;
             }
 
-            if (RemoveSkillPath(payload, GetSharedSkillPluginPath()))
+            if (RemoveSkillPath(payload, skillPluginPath))
             {
                 File.WriteAllText(pluginJsonPath, AIBridgeJson.Serialize(payload, pretty: true));
             }
@@ -406,21 +448,30 @@ namespace AIBridge.Editor
             return normalized;
         }
 
-        private static string GetSharedSkillPluginPath()
+        private static string GetCustomSkillPluginPath()
         {
-            var skillRootDirectory = AIBridgeProjectSettings.Instance.SkillRootDirectory;
+            return GetSkillPluginPath(AIBridgeProjectSettings.Instance.SkillRootDirectory);
+        }
+
+        private static string GetSkillPluginPath(string skillRootDirectory)
+        {
             if (string.IsNullOrEmpty(skillRootDirectory))
             {
-                skillRootDirectory = AIBridgeProjectSettings.DefaultSkillRootDirectory;
+                skillRootDirectory = AIBridgeProjectSettings.LegacySharedSkillRootDirectory;
             }
 
             skillRootDirectory = skillRootDirectory.Replace('\\', '/').Trim('/');
             if (string.IsNullOrEmpty(skillRootDirectory))
             {
-                skillRootDirectory = AIBridgeProjectSettings.DefaultSkillRootDirectory.Trim('/');
+                skillRootDirectory = AIBridgeProjectSettings.LegacySharedSkillRootDirectory.Trim('/');
             }
 
             return "./" + skillRootDirectory + "/";
+        }
+
+        private static bool UsesCustomSkillRoot()
+        {
+            return !string.IsNullOrEmpty(AIBridgeProjectSettings.Instance.SkillRootDirectory);
         }
 
         private static string GetString(Dictionary<string, object> payload, string key, string defaultValue)

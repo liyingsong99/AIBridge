@@ -129,6 +129,7 @@ namespace AIBridge.Editor
                     SourceRelativePath = GetString(map, "SourceRelativePath", "sourceRelativePath"),
                     BranchOrTag = GetString(map, "BranchOrTag", "branchOrTag"),
                     Commit = GetString(map, "Commit", "commit"),
+                    InstallRootDirectory = GetString(map, "InstallRootDirectory", "installRootDirectory"),
                     InstalledAtUtcTicks = GetLong(map, "InstalledAtUtcTicks", "installedAtUtcTicks")
                 });
             }

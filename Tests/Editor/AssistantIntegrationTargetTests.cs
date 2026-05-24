@@ -18,6 +18,7 @@ namespace AIBridge.Editor.Tests
             RecommendedSkillGitClient.GitExecutablePathForTests = "git";
             AIBridgeProjectSettings.Instance.ClearAssistantSkillRootDirectory("codex");
             AIBridgeProjectSettings.Instance.ClearAssistantSkillRootDirectory("claude");
+            AIBridgeProjectSettings.Instance.ClearAssistantSkillRootDirectory("cursor");
             ClearAssistantSelections();
             AIBridgeProjectSettings.Instance.SkillRootDirectory = AIBridgeProjectSettings.DefaultSkillRootDirectory;
             AIBridgeProjectSettings.Instance.EditorLanguage = AIBridgeEditorLanguage.English;
@@ -29,6 +30,7 @@ namespace AIBridge.Editor.Tests
         {
             AIBridgeProjectSettings.Instance.ClearAssistantSkillRootDirectory("codex");
             AIBridgeProjectSettings.Instance.ClearAssistantSkillRootDirectory("claude");
+            AIBridgeProjectSettings.Instance.ClearAssistantSkillRootDirectory("cursor");
             ClearAssistantSelections();
             AIBridgeProjectSettings.Instance.SkillRootDirectory = AIBridgeProjectSettings.DefaultSkillRootDirectory;
             AIBridgeProjectSettings.Instance.EditorLanguage = AIBridgeEditorLanguage.English;
@@ -42,40 +44,40 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void CodexSkillRootUsesSharedSkillsWhenAgentsDirectoryExists()
+        public void CodexSkillRootUsesToolDefaultWhenAgentsDirectoryExists()
         {
             Directory.CreateDirectory(Path.Combine(_projectRoot, ".agents"));
             var target = CreateTarget("codex", ".codex/skills/aibridge");
 
-            Assert.AreEqual(".skills", target.GetResolvedSkillRootDirectoryRelativePath(_projectRoot));
-            Assert.AreEqual(".skills/aibridge", target.GetResolvedSkillDirectoryRelativePath(_projectRoot));
-            Assert.AreEqual(".skills/aibridge/SKILL.md", target.GetResolvedSkillFileRelativePath(_projectRoot));
-            Assert.AreEqual(".skills/aibridge-prefab-patch/SKILL.md", target.GetResolvedSiblingSkillFileRelativePath(_projectRoot, "aibridge-prefab-patch"));
+            Assert.AreEqual(".codex/skills", target.GetResolvedSkillRootDirectoryRelativePath(_projectRoot));
+            Assert.AreEqual(".codex/skills/aibridge", target.GetResolvedSkillDirectoryRelativePath(_projectRoot));
+            Assert.AreEqual(".codex/skills/aibridge/SKILL.md", target.GetResolvedSkillFileRelativePath(_projectRoot));
+            Assert.AreEqual(".codex/skills/aibridge-prefab-patch/SKILL.md", target.GetResolvedSiblingSkillFileRelativePath(_projectRoot, "aibridge-prefab-patch"));
         }
 
         [Test]
-        public void CodexSkillRootUsesSharedSkillsWhenAgentsDirectoryIsMissing()
+        public void CodexSkillRootUsesToolDefaultWhenAgentsDirectoryIsMissing()
         {
             var target = CreateTarget("codex", ".codex/skills/aibridge");
 
-            Assert.AreEqual(".skills", target.GetResolvedSkillRootDirectoryRelativePath(_projectRoot));
-            Assert.AreEqual(".skills/aibridge", target.GetResolvedSkillDirectoryRelativePath(_projectRoot));
+            Assert.AreEqual(".codex/skills", target.GetResolvedSkillRootDirectoryRelativePath(_projectRoot));
+            Assert.AreEqual(".codex/skills/aibridge", target.GetResolvedSkillDirectoryRelativePath(_projectRoot));
         }
 
         [Test]
-        public void LegacyPerAssistantSkillRootDoesNotOverrideSharedDirectory()
+        public void LegacyPerAssistantSkillRootDoesNotOverrideToolDefaultDirectory()
         {
             Directory.CreateDirectory(Path.Combine(_projectRoot, ".agents"));
             AIBridgeProjectSettings.Instance.SetAssistantSkillRootDirectory("codex", ".legacy-skills");
             var target = CreateTarget("codex", ".codex/skills/aibridge");
 
-            Assert.AreEqual(".skills", target.GetResolvedSkillRootDirectoryRelativePath(_projectRoot));
-            Assert.AreEqual(".skills/aibridge", target.GetResolvedSkillDirectoryRelativePath(_projectRoot));
-            Assert.AreEqual(".skills/aibridge-prefab-patch/SKILL.md", target.GetResolvedSiblingSkillFileRelativePath(_projectRoot, "aibridge-prefab-patch"));
+            Assert.AreEqual(".codex/skills", target.GetResolvedSkillRootDirectoryRelativePath(_projectRoot));
+            Assert.AreEqual(".codex/skills/aibridge", target.GetResolvedSkillDirectoryRelativePath(_projectRoot));
+            Assert.AreEqual(".codex/skills/aibridge-prefab-patch/SKILL.md", target.GetResolvedSiblingSkillFileRelativePath(_projectRoot, "aibridge-prefab-patch"));
         }
 
         [Test]
-        public void ProjectSkillRootDirectoryCanUseCustomSharedDirectory()
+        public void ProjectSkillRootDirectoryCanUseCustomDirectory()
         {
             AIBridgeProjectSettings.Instance.SkillRootDirectory = ".skill";
             var target = CreateTarget("claude", ".claude/skills/aibridge");
@@ -104,13 +106,13 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void NonCodexSkillRootUsesSharedSkillsDirectory()
+        public void NonCodexSkillRootUsesToolDefaultDirectory()
         {
             Directory.CreateDirectory(Path.Combine(_projectRoot, ".agents"));
             var target = CreateTarget("claude", ".claude/skills/aibridge");
 
-            Assert.AreEqual(".skills", target.GetResolvedSkillRootDirectoryRelativePath(_projectRoot));
-            Assert.AreEqual(".skills/aibridge", target.GetResolvedSkillDirectoryRelativePath(_projectRoot));
+            Assert.AreEqual(".claude/skills", target.GetResolvedSkillRootDirectoryRelativePath(_projectRoot));
+            Assert.AreEqual(".claude/skills/aibridge", target.GetResolvedSkillDirectoryRelativePath(_projectRoot));
         }
 
         private static AssistantIntegrationTarget CreateTarget(string id, string skillDirectoryRelativePath)
@@ -226,7 +228,7 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void SharedSkillDirectoryDoesNotDetectEveryAssistant()
+        public void LegacySharedSkillDirectoryDoesNotDetectEveryAssistant()
         {
             var sharedSkillDirectory = Path.Combine(_projectRoot, ".skills", "aibridge");
             Directory.CreateDirectory(sharedSkillDirectory);
@@ -436,29 +438,32 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void SkillPluginAdapterReferencesSharedSkillDirectoryForClaudePlugin()
+        public void SkillPluginAdapterDoesNotGeneratePluginIndexForDefaultToolDirectories()
         {
             SkillPluginAdapter.GenerateAll(_projectRoot);
 
-            var claudePluginJson = File.ReadAllText(Path.Combine(_projectRoot, ".claude-plugin", "plugin.json"));
-            StringAssert.Contains("\"skills\": \"./.skills/\"", claudePluginJson);
-            Assert.IsFalse(Directory.Exists(Path.Combine(_projectRoot, "skills")));
+            Assert.IsFalse(File.Exists(Path.Combine(_projectRoot, ".claude-plugin", "plugin.json")));
+            Assert.IsFalse(File.Exists(Path.Combine(_projectRoot, ".codex-plugin", "plugin.json")));
+            Assert.IsFalse(File.Exists(Path.Combine(_projectRoot, ".cursor-plugin", "plugin.json")));
         }
 
         [Test]
-        public void SkillPluginAdapterGeneratesRootCursorPluginIndex()
+        public void SkillPluginAdapterGeneratesRootCursorPluginIndexForCustomDirectory()
         {
+            AIBridgeProjectSettings.Instance.SkillRootDirectory = ".skill";
+
             SkillPluginAdapter.GenerateAll(_projectRoot);
 
             var cursorPluginJson = File.ReadAllText(Path.Combine(_projectRoot, ".cursor-plugin", "plugin.json"));
             StringAssert.Contains("\"name\": \"aibridge-skills\"", cursorPluginJson);
             StringAssert.Contains("\"displayName\": \"AIBridge Skills\"", cursorPluginJson);
-            StringAssert.Contains("\"skills\": \"./.skills/\"", cursorPluginJson);
+            StringAssert.Contains("\"skills\": \"./.skill/\"", cursorPluginJson);
         }
 
         [Test]
-        public void SkillPluginAdapterAppendsSharedSkillDirectoryToExistingPluginIndex()
+        public void SkillPluginAdapterAppendsCustomSkillDirectoryToExistingPluginIndex()
         {
+            AIBridgeProjectSettings.Instance.SkillRootDirectory = ".skill";
             var manifestDirectory = Path.Combine(_projectRoot, ".codex-plugin");
             Directory.CreateDirectory(manifestDirectory);
             File.WriteAllText(
@@ -471,12 +476,30 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("\"name\": \"existing\"", codexPluginJson);
             StringAssert.Contains("\"custom\": true", codexPluginJson);
             StringAssert.Contains("\"./vendor-skills/\"", codexPluginJson);
-            StringAssert.Contains("\"./.skills/\"", codexPluginJson);
+            StringAssert.Contains("\"./.skill/\"", codexPluginJson);
+        }
+
+        [Test]
+        public void SkillPluginAdapterCanRemovePreviousCustomSkillDirectoryFromExistingPluginIndex()
+        {
+            var manifestDirectory = Path.Combine(_projectRoot, ".codex-plugin");
+            Directory.CreateDirectory(manifestDirectory);
+            File.WriteAllText(
+                Path.Combine(manifestDirectory, "plugin.json"),
+                "{ \"name\": \"existing\", \"skills\": [\"./vendor-skills/\", \"./.skill/\"], \"custom\": true }");
+            var codexTarget = AssistantIntegrationRegistry.GetTargets().First(target => target.Id == "codex");
+
+            SkillPluginAdapter.CleanupSkillRootForTargets(_projectRoot, new[] { codexTarget }, ".skill");
+
+            var codexPluginJson = File.ReadAllText(Path.Combine(manifestDirectory, "plugin.json"));
+            StringAssert.Contains("\"./vendor-skills/\"", codexPluginJson);
+            Assert.IsFalse(codexPluginJson.Contains("\"./.skill/\""));
         }
 
         [Test]
         public void SkillPluginAdapterCleanupRemovesOnlyAIBridgePluginIndex()
         {
+            AIBridgeProjectSettings.Instance.SkillRootDirectory = ".skills";
             var marketplaceDirectory = Path.Combine(_projectRoot, ".agents", "plugins");
             Directory.CreateDirectory(marketplaceDirectory);
             File.WriteAllText(
@@ -507,7 +530,8 @@ namespace AIBridge.Editor.Tests
         [Test]
         public void RecommendedSkillRemoveDeletesDirectoryAndInstallRecord()
         {
-            var skillDirectory = Path.Combine(_projectRoot, ".skills", "tdd");
+            AssistantIntegrationSelectionSettings.SetSelected("codex", true);
+            var skillDirectory = Path.Combine(_projectRoot, ".codex", "skills", "tdd");
             Directory.CreateDirectory(skillDirectory);
             File.WriteAllText(Path.Combine(skillDirectory, "SKILL.md"), "---\nname: tdd\n---\n# TDD");
             RecommendedSkillInstallRegistry.Upsert(_projectRoot, new InstalledSkillRecord
@@ -518,6 +542,7 @@ namespace AIBridge.Editor.Tests
                 SourceRelativePath = "skills/tdd",
                 BranchOrTag = "main",
                 Commit = "abc123",
+                InstallRootDirectory = ".codex/skills",
                 InstalledAtUtcTicks = 1
             });
 
@@ -526,6 +551,55 @@ namespace AIBridge.Editor.Tests
             Assert.IsTrue(result.Success);
             Assert.IsFalse(Directory.Exists(skillDirectory));
             Assert.IsNull(RecommendedSkillInstallRegistry.Find(_projectRoot, "tdd"));
+        }
+
+        [Test]
+        public void RecommendedSkillInstallerUsesSelectedToolSkillRoots()
+        {
+            AssistantIntegrationSelectionSettings.SetSelected("codex", true);
+            AssistantIntegrationSelectionSettings.SetSelected("cursor", true);
+            var repositoryRoot = Path.Combine(_projectRoot, "repo");
+            var sourceSkillDirectory = Path.Combine(repositoryRoot, "skills", "tdd");
+            Directory.CreateDirectory(sourceSkillDirectory);
+            File.WriteAllText(Path.Combine(sourceSkillDirectory, "SKILL.md"), "---\nname: tdd\n---\n# TDD");
+            RunGit(repositoryRoot, "init");
+            RunGit(repositoryRoot, "checkout -B main");
+            RunGit(repositoryRoot, "config user.email test@example.com");
+            RunGit(repositoryRoot, "config user.name Test");
+            RunGit(repositoryRoot, "add .");
+            RunGit(repositoryRoot, "commit -m init");
+            var repository = new RecommendedSkillRepository
+            {
+                Id = "local",
+                RepositoryUrl = repositoryRoot,
+                BranchOrTag = "main",
+                ScanRootRelativePath = "skills"
+            };
+            var skill = new RecommendedSkillInfo
+            {
+                Name = "tdd",
+                SourceRelativePath = "skills/tdd"
+            };
+
+            var result = RecommendedSkillInstaller.Install(_projectRoot, repository, skill, true);
+
+            Assert.IsTrue(result.Success);
+            Assert.IsTrue(File.Exists(Path.Combine(_projectRoot, ".codex", "skills", "tdd", "SKILL.md")));
+            Assert.IsTrue(File.Exists(Path.Combine(_projectRoot, ".cursor", "skills", "tdd", "SKILL.md")));
+            Assert.IsFalse(Directory.Exists(Path.Combine(_projectRoot, ".skills", "tdd")));
+        }
+
+        [Test]
+        public void RecommendedSkillInstallerFallsBackToCodexSkillRootWhenNoToolIsSelected()
+        {
+            foreach (var target in AssistantIntegrationRegistry.GetTargets())
+            {
+                AssistantIntegrationSelectionSettings.SetSelected(target.Id, false);
+            }
+
+            var roots = RecommendedSkillInstaller.GetSelectedInstallRootDirectories(_projectRoot);
+
+            CollectionAssert.AreEqual(new[] { ".codex/skills" }, roots);
         }
 
         [Test]
@@ -569,6 +643,19 @@ namespace AIBridge.Editor.Tests
                 ManifestRelativePath = ".claude-plugin/plugin.json",
                 ScanRootRelativePath = "skills"
             };
+        }
+
+        private static void RunGit(string workingDirectory, string arguments)
+        {
+            var process = new System.Diagnostics.Process();
+            process.StartInfo.FileName = "git";
+            process.StartInfo.Arguments = arguments;
+            process.StartInfo.WorkingDirectory = workingDirectory;
+            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.CreateNoWindow = true;
+            process.Start();
+            process.WaitForExit();
+            Assert.AreEqual(0, process.ExitCode);
         }
     }
 }

@@ -54,9 +54,10 @@ namespace AIBridge.Editor
             public string SkillRootDirectory;
         }
 
-        public const int CurrentDataVersion = 6;
+        public const int CurrentDataVersion = 7;
         public const string DefaultEditorLanguage = "English";
-        public const string DefaultSkillRootDirectory = ".skills";
+        public const string LegacySharedSkillRootDirectory = ".skills";
+        public const string DefaultSkillRootDirectory = "";
         public const int DefaultGifFrameCount = 50;
         public const int DefaultGifFps = 20;
         public const float DefaultGifScale = 0.5f;
@@ -136,11 +137,22 @@ namespace AIBridge.Editor
             get
             {
                 var normalized = NormalizeSkillRootDirectory(skillRootDirectory);
+                if (string.IsNullOrEmpty(normalized))
+                {
+                    return DefaultSkillRootDirectory;
+                }
+
                 return IsValidSkillRootDirectory(normalized) ? normalized : DefaultSkillRootDirectory;
             }
             set
             {
                 var normalized = NormalizeSkillRootDirectory(value);
+                if (string.IsNullOrEmpty(normalized))
+                {
+                    skillRootDirectory = DefaultSkillRootDirectory;
+                    return;
+                }
+
                 skillRootDirectory = IsValidSkillRootDirectory(normalized) ? normalized : DefaultSkillRootDirectory;
             }
         }
@@ -442,6 +454,7 @@ namespace AIBridge.Editor
             var objects = InternalEditorUtility.LoadSerializedFileAndForget(SettingsFilePath);
             var loadedSettings = objects.Length > 0 ? objects[0] as AIBridgeProjectSettings : null;
             _instance = loadedSettings ?? _instance ?? CreateInstance<AIBridgeProjectSettings>();
+            _instance.MigrateDataIfNeeded();
             return _instance;
         }
 
@@ -450,10 +463,7 @@ namespace AIBridge.Editor
         /// </summary>
         public void SaveSettings()
         {
-            if (dataVersion != CurrentDataVersion)
-            {
-                dataVersion = CurrentDataVersion;
-            }
+            MigrateDataIfNeeded();
 
             editorLanguage = EditorLanguage.ToString();
             skillRootDirectory = SkillRootDirectory;
@@ -468,6 +478,20 @@ namespace AIBridge.Editor
                 new UnityEngine.Object[] { this },
                 SettingsFilePath,
                 true);
+        }
+
+        private void MigrateDataIfNeeded()
+        {
+            if (dataVersion < 7
+                && string.Equals(NormalizeSkillRootDirectory(skillRootDirectory), LegacySharedSkillRootDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                skillRootDirectory = DefaultSkillRootDirectory;
+            }
+
+            if (dataVersion != CurrentDataVersion)
+            {
+                dataVersion = CurrentDataVersion;
+            }
         }
     }
 }

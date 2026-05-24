@@ -16,12 +16,12 @@ namespace AIBridge.Editor
             EditorGUILayout.LabelField(AIBridgeEditorText.T("Recommended Skill Library", "推荐 Skill 库"), EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 AIBridgeEditorText.T(
-                    "Install third-party skills into the shared project Skill directory. Review third-party skill content before use.",
-                    "将第三方 Skill 安装到项目共享 Skill 目录。使用前请自行确认第三方 Skill 内容。"),
+                    "Install third-party skills into the selected tools' skills directories. Review third-party skill content before use.",
+                    "将第三方 Skill 安装到已选工具的 skills 目录。使用前请自行确认第三方 Skill 内容。"),
                 MessageType.Info);
 
             EditorGUILayout.LabelField(
-                AIBridgeEditorText.T("Install Root: ", "安装根目录：") + AIBridgeProjectSettings.Instance.SkillRootDirectory,
+                AIBridgeEditorText.T("Install Root: ", "安装根目录：") + GetRecommendedSkillInstallRootSummary(),
                 EditorStyles.miniLabel);
 
             var repositoryNames = repositories.Select(item => item.DisplayName).ToArray();
@@ -49,7 +49,7 @@ namespace AIBridge.Editor
 
             if (GUILayout.Button(AIBridgeEditorText.T("Open Install Root", "打开安装目录"), GUILayout.Height(28)))
             {
-                OpenSharedSkillRootDirectory();
+                OpenRecommendedSkillRootDirectory();
             }
             EditorGUILayout.EndHorizontal();
 
@@ -123,7 +123,7 @@ namespace AIBridge.Editor
 
         private void InstallRecommendedSkill(RecommendedSkillRepository repository, RecommendedSkillInfo skill)
         {
-            var targetDirectory = Path.Combine(GetProjectRoot(), AIBridgeProjectSettings.Instance.SkillRootDirectory, skill.Name);
+            var targetDirectory = Path.Combine(GetProjectRoot(), RecommendedSkillInstaller.GetPrimaryInstallRootDirectory(GetProjectRoot()), skill.Name);
             var overwrite = true;
             if (Directory.Exists(targetDirectory))
             {
@@ -159,7 +159,7 @@ namespace AIBridge.Editor
 
         private void RemoveRecommendedSkill(RecommendedSkillRepository repository, RecommendedSkillInfo skill)
         {
-            var targetDirectory = Path.Combine(GetProjectRoot(), AIBridgeProjectSettings.Instance.SkillRootDirectory, skill.Name);
+            var targetDirectory = Path.Combine(GetProjectRoot(), RecommendedSkillInstaller.GetPrimaryInstallRootDirectory(GetProjectRoot()), skill.Name);
             if (!EditorUtility.DisplayDialog(
                 AIBridgeEditorText.T("Confirm Remove", "确认移除"),
                 AIBridgeEditorText.T(
@@ -187,15 +187,21 @@ namespace AIBridge.Editor
                 AIBridgeEditorText.T("OK", "确定"));
         }
 
-        private void OpenSharedSkillRootDirectory()
+        private void OpenRecommendedSkillRootDirectory()
         {
-            var directory = Path.Combine(GetProjectRoot(), AIBridgeProjectSettings.Instance.SkillRootDirectory);
+            var directory = Path.Combine(GetProjectRoot(), RecommendedSkillInstaller.GetPrimaryInstallRootDirectory(GetProjectRoot()));
             if (!Directory.Exists(directory))
             {
                 Directory.CreateDirectory(directory);
             }
 
             EditorUtility.RevealInFinder(directory);
+        }
+
+        private string GetRecommendedSkillInstallRootSummary()
+        {
+            var roots = RecommendedSkillInstaller.GetSelectedInstallRootDirectories(GetProjectRoot());
+            return string.Join("; ", roots.ToArray());
         }
 
         private static void OpenRepositoryWebPage(RecommendedSkillRepository repository)

@@ -59,7 +59,7 @@ namespace AIBridge.Editor
                 }
             }
 
-            // 共享 .skills 目录只表示 AIBridge Skill 已存在，不能作为 Claude/Codex 等具体工具的默认勾选依据。
+            // 历史共享 .skills 目录只表示 AIBridge Skill 已存在，不能作为具体工具的默认勾选依据。
             return new AssistantIntegrationDetection
             {
                 TargetId = target.Id,

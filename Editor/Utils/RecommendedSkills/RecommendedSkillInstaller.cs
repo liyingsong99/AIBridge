@@ -9,6 +9,35 @@ namespace AIBridge.Editor
     {
         private const string SkillFileName = "SKILL.md";
 
+        public static string GetPrimaryInstallRootDirectory(string projectRoot)
+        {
+            var roots = GetSelectedInstallRootDirectories(projectRoot);
+            return roots.Count > 0 ? roots[0] : GetFallbackInstallRootDirectory(projectRoot);
+        }
+
+        public static List<string> GetSelectedInstallRootDirectories(string projectRoot)
+        {
+            var result = new List<string>();
+            var targets = SkillInstaller.GetSelectedTargetsForPluginGeneration(projectRoot);
+            foreach (var target in targets)
+            {
+                if (target == null || !target.SupportsSkillDirectory)
+                {
+                    continue;
+                }
+
+                var root = target.GetResolvedSkillRootDirectoryRelativePath(projectRoot);
+                AddUniqueRoot(result, root);
+            }
+
+            if (result.Count == 0)
+            {
+                AddUniqueRoot(result, GetFallbackInstallRootDirectory(projectRoot));
+            }
+
+            return result;
+        }
+
         public static List<RecommendedSkillInfo> RefreshRepository(string projectRoot, RecommendedSkillRepository repository)
         {
             var repositoryDirectory = RecommendedSkillGitClient.EnsureRepository(projectRoot, repository);
@@ -43,24 +72,29 @@ namespace AIBridge.Editor
                     };
                 }
 
-                var skillRootDirectory = AIBridgeProjectSettings.Instance.SkillRootDirectory;
-                var targetDirectory = Path.Combine(projectRoot, skillRootDirectory, skill.Name);
-                if (Directory.Exists(targetDirectory) && !overwrite)
+                var installRootDirectories = GetSelectedInstallRootDirectories(projectRoot);
+                var primaryTargetDirectory = Path.Combine(projectRoot, installRootDirectories[0], skill.Name);
+                if (installRootDirectories.Exists(root => Directory.Exists(Path.Combine(projectRoot, root, skill.Name))) && !overwrite)
                 {
                     return new RecommendedSkillInstallResult
                     {
                         Success = false,
-                        InstalledDirectory = targetDirectory,
+                        InstalledDirectory = primaryTargetDirectory,
                         Message = AIBridgeEditorText.T("Target skill already exists.", "目标 Skill 已存在。")
                     };
                 }
 
-                if (Directory.Exists(targetDirectory))
+                foreach (var installRootDirectory in installRootDirectories)
                 {
-                    Directory.Delete(targetDirectory, true);
+                    var targetDirectory = Path.Combine(projectRoot, installRootDirectory, skill.Name);
+                    if (Directory.Exists(targetDirectory))
+                    {
+                        Directory.Delete(targetDirectory, true);
+                    }
+
+                    CopyDirectory(sourceDirectory, targetDirectory);
                 }
 
-                CopyDirectory(sourceDirectory, targetDirectory);
                 RecommendedSkillInstallRegistry.Upsert(projectRoot, new InstalledSkillRecord
                 {
                     Name = skill.Name,
@@ -69,6 +103,7 @@ namespace AIBridge.Editor
                     SourceRelativePath = skill.SourceRelativePath,
                     BranchOrTag = repository.BranchOrTag,
                     Commit = commit,
+                    InstallRootDirectory = string.Join(";", installRootDirectories.ToArray()),
                     InstalledAtUtcTicks = DateTime.UtcNow.Ticks
                 });
 
@@ -76,7 +111,7 @@ namespace AIBridge.Editor
                 return new RecommendedSkillInstallResult
                 {
                     Success = true,
-                    InstalledDirectory = targetDirectory,
+                    InstalledDirectory = string.Join(";", installRootDirectories.ConvertAll(root => Path.Combine(projectRoot, root, skill.Name)).ToArray()),
                     Message = AIBridgeEditorText.T("Skill installed.", "Skill 已安装。")
                 };
             }
@@ -103,8 +138,9 @@ namespace AIBridge.Editor
                     };
                 }
 
-                var targetDirectory = Path.Combine(projectRoot, AIBridgeProjectSettings.Instance.SkillRootDirectory, skill.Name);
-                if (!IsInsideDirectory(Path.Combine(projectRoot, AIBridgeProjectSettings.Instance.SkillRootDirectory), targetDirectory))
+                var installRootDirectories = GetInstallRootDirectoriesForRemoval(projectRoot, skill.Name);
+                var primaryTargetDirectory = Path.Combine(projectRoot, installRootDirectories[0], skill.Name);
+                if (installRootDirectories.Exists(root => !IsInsideDirectory(Path.Combine(projectRoot, root), Path.Combine(projectRoot, root, skill.Name))))
                 {
                     return new RecommendedSkillInstallResult
                     {
@@ -113,9 +149,13 @@ namespace AIBridge.Editor
                     };
                 }
 
-                if (Directory.Exists(targetDirectory))
+                foreach (var installRootDirectory in installRootDirectories)
                 {
-                    Directory.Delete(targetDirectory, true);
+                    var targetDirectory = Path.Combine(projectRoot, installRootDirectory, skill.Name);
+                    if (Directory.Exists(targetDirectory))
+                    {
+                        Directory.Delete(targetDirectory, true);
+                    }
                 }
 
                 RecommendedSkillInstallRegistry.Remove(projectRoot, skill.Name);
@@ -123,7 +163,7 @@ namespace AIBridge.Editor
                 return new RecommendedSkillInstallResult
                 {
                     Success = true,
-                    InstalledDirectory = targetDirectory,
+                    InstalledDirectory = primaryTargetDirectory,
                     Message = AIBridgeEditorText.T("Skill removed.", "Skill 已移除。")
                 };
             }
@@ -139,10 +179,10 @@ namespace AIBridge.Editor
 
         public static void ApplyInstallStates(string projectRoot, IEnumerable<RecommendedSkillInfo> skills)
         {
+            var installRootDirectories = GetSelectedInstallRootDirectories(projectRoot);
             foreach (var skill in skills)
             {
-                var targetDirectory = Path.Combine(projectRoot, AIBridgeProjectSettings.Instance.SkillRootDirectory, skill.Name);
-                if (!Directory.Exists(targetDirectory))
+                if (!installRootDirectories.Exists(root => Directory.Exists(Path.Combine(projectRoot, root, skill.Name))))
                 {
                     skill.InstallState = RecommendedSkillInstallState.NotInstalled;
                     continue;
@@ -155,6 +195,85 @@ namespace AIBridge.Editor
                         ? RecommendedSkillInstallState.Installed
                         : RecommendedSkillInstallState.UpdateAvailable;
             }
+        }
+
+        private static List<string> GetInstallRootDirectoriesForRemoval(string projectRoot, string skillName)
+        {
+            var result = new List<string>();
+            var record = RecommendedSkillInstallRegistry.Find(projectRoot, skillName);
+            if (record != null && !string.IsNullOrEmpty(record.InstallRootDirectory))
+            {
+                foreach (var root in record.InstallRootDirectory.Split(';'))
+                {
+                    AddUniqueRoot(result, root);
+                }
+            }
+
+            foreach (var root in GetSelectedInstallRootDirectories(projectRoot))
+            {
+                AddUniqueRoot(result, root);
+            }
+
+            AddUniqueRoot(result, AIBridgeProjectSettings.LegacySharedSkillRootDirectory);
+            return result;
+        }
+
+        private static string GetFallbackInstallRootDirectory(string projectRoot)
+        {
+            var customSkillRootDirectory = AIBridgeProjectSettings.Instance.SkillRootDirectory;
+            if (!string.IsNullOrEmpty(customSkillRootDirectory))
+            {
+                return customSkillRootDirectory;
+            }
+
+            foreach (var target in AssistantIntegrationRegistry.GetTargets())
+            {
+                if (target != null
+                    && string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase)
+                    && target.SupportsSkillDirectory)
+                {
+                    return target.GetResolvedSkillRootDirectoryRelativePath(projectRoot);
+                }
+            }
+
+            foreach (var target in AssistantIntegrationRegistry.GetTargets())
+            {
+                if (target != null && target.SupportsSkillDirectory)
+                {
+                    return target.GetResolvedSkillRootDirectoryRelativePath(projectRoot);
+                }
+            }
+
+            return AIBridgeProjectSettings.LegacySharedSkillRootDirectory;
+        }
+
+        private static void AddUniqueRoot(List<string> roots, string root)
+        {
+            if (string.IsNullOrEmpty(root))
+            {
+                return;
+            }
+
+            var normalized = root.Replace('\\', '/').Trim('/');
+            if (string.IsNullOrEmpty(normalized))
+            {
+                return;
+            }
+
+            if (Path.IsPathRooted(normalized) || normalized.Split('/').Any(part => part == ".."))
+            {
+                return;
+            }
+
+            for (var i = 0; i < roots.Count; i++)
+            {
+                if (string.Equals(roots[i], normalized, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+            }
+
+            roots.Add(normalized);
         }
 
         private static void CopyDirectory(string sourceDir, string targetDir)
