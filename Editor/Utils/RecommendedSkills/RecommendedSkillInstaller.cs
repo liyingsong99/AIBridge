@@ -72,8 +72,7 @@ namespace AIBridge.Editor
                     InstalledAtUtcTicks = DateTime.UtcNow.Ticks
                 });
 
-                var targets = SkillInstaller.GetSelectedTargetsForPluginGeneration(projectRoot);
-                SkillPluginAdapter.GenerateForTargets(projectRoot, targets);
+                SkillPluginAdapter.GenerateSelected(projectRoot);
                 return new RecommendedSkillInstallResult
                 {
                     Success = true,
@@ -120,6 +119,7 @@ namespace AIBridge.Editor
                 }
 
                 RecommendedSkillInstallRegistry.Remove(projectRoot, skill.Name);
+                SkillPluginAdapter.GenerateSelected(projectRoot);
                 return new RecommendedSkillInstallResult
                 {
                     Success = true,
