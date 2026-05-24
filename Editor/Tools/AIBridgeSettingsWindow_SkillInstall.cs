@@ -138,8 +138,8 @@ namespace AIBridge.Editor
             EditorGUILayout.LabelField(AIBridgeEditorText.T("Shared Skills Directory", "共享 Skills 目录"), EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 AIBridgeEditorText.T(
-                    "AIBridge and recommended third-party Skills are installed here as the shared source. Tool-specific plugin adapters may mirror them to standard skills/ discovery directories.",
-                    "AIBridge 和推荐第三方 Skill 会安装到这里作为共享源目录；不同工具的插件适配层可能会镜像到标准 skills/ 扫描目录。"),
+                    "AIBridge and recommended third-party Skills are installed here. Tool-specific plugin adapters reference this shared directory instead of copying Skills.",
+                    "AIBridge 和推荐第三方 Skill 会安装到这里；不同工具的插件适配层会引用这个共享目录，而不是复制 Skill。"),
                 MessageType.None);
 
             EditorGUILayout.BeginHorizontal();

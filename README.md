@@ -52,7 +52,7 @@ You can also clone this repository into a Unity project's `Packages` folder.
 4. Click `Install Selected Integrations`.
 5. Optionally click `Install Unity Project AGENTS.md Template` to create a root `AGENTS.md`.
 
-Installed AIBridge Skills are written to the project-root `.skills/` directory by default. You can change that shared source directory in the Skills Installation tab, for example to `.skill`. For tools that discover Skills through plugin manifests, AIBridge also generates standard `skills/` mirror directories, such as `plugins/aibridge-skills/skills/` for Codex. Each AI tool only receives a minimal RootRule or plugin adapter. The RootRule only includes the fixed CLI path, common commands, shared Skill root, and `aibridge-development-workflow` entry point; full routing and checklists live in the workflow Skill. Command references are generated under each installed Skill's `references/` directory.
+Installed AIBridge Skills are written to the project-root `.skills/` directory by default. You can change that shared directory in the Skills Installation tab, for example to `.skill`. Each AI tool only receives a minimal RootRule or plugin adapter that references the shared Skill root. The RootRule only includes the fixed CLI path, common commands, shared Skill root, and `aibridge-development-workflow` entry point; full routing and checklists live in the workflow Skill. Command references are generated under each installed Skill's `references/` directory.
 
 You can also open the `Recommended Skill Library` tab, refresh the default `obra/superpowers` repository, and install third-party Skills into the same shared root.
 

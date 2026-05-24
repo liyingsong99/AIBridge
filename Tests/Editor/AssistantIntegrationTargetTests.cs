@@ -400,9 +400,6 @@ namespace AIBridge.Editor.Tests
         public void SkillPluginAdapterMergesCodexMarketplaceEntries()
         {
             AIBridgeProjectSettings.Instance.SkillRootDirectory = ".skill";
-            var sharedSkillDirectory = Path.Combine(_projectRoot, ".skill", "aibridge");
-            Directory.CreateDirectory(sharedSkillDirectory);
-            File.WriteAllText(Path.Combine(sharedSkillDirectory, "SKILL.md"), "---\nname: aibridge\n---\n# AIBridge");
             var marketplaceDirectory = Path.Combine(_projectRoot, ".agents", "plugins");
             Directory.CreateDirectory(marketplaceDirectory);
             File.WriteAllText(
@@ -416,56 +413,18 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("\"name\": \"aibridge-skills\"", marketplaceJson);
 
             var codexPluginJson = File.ReadAllText(Path.Combine(_projectRoot, "plugins", "aibridge-skills", ".codex-plugin", "plugin.json"));
-            StringAssert.Contains("\"skills\": \"./skills/\"", codexPluginJson);
-            Assert.IsTrue(File.Exists(Path.Combine(_projectRoot, "plugins", "aibridge-skills", "skills", "aibridge", "SKILL.md")));
+            StringAssert.Contains("\"skills\": \"./../../.skill/\"", codexPluginJson);
+            Assert.IsFalse(Directory.Exists(Path.Combine(_projectRoot, "plugins", "aibridge-skills", "skills")));
         }
 
         [Test]
-        public void SkillPluginAdapterGeneratesRootSkillsMirrorForClaudePlugin()
+        public void SkillPluginAdapterReferencesSharedSkillDirectoryForClaudePlugin()
         {
-            var sharedSkillDirectory = Path.Combine(_projectRoot, ".skills", "aibridge");
-            Directory.CreateDirectory(sharedSkillDirectory);
-            File.WriteAllText(Path.Combine(sharedSkillDirectory, "SKILL.md"), "---\nname: aibridge\n---\n# AIBridge");
-
             SkillPluginAdapter.GenerateAll(_projectRoot);
 
             var claudePluginJson = File.ReadAllText(Path.Combine(_projectRoot, ".claude-plugin", "plugin.json"));
-            StringAssert.Contains("\"skills\": \"./skills/\"", claudePluginJson);
-            Assert.IsTrue(File.Exists(Path.Combine(_projectRoot, "skills", "aibridge", "SKILL.md")));
-        }
-
-        [Test]
-        public void SkillPluginAdapterDoesNotOverwriteUserRootSkillsDirectory()
-        {
-            var sharedSkillDirectory = Path.Combine(_projectRoot, ".skills", "aibridge");
-            Directory.CreateDirectory(sharedSkillDirectory);
-            File.WriteAllText(Path.Combine(sharedSkillDirectory, "SKILL.md"), "---\nname: aibridge\n---\n# AIBridge");
-            var userSkillDirectory = Path.Combine(_projectRoot, "skills", "aibridge");
-            Directory.CreateDirectory(userSkillDirectory);
-            File.WriteAllText(Path.Combine(userSkillDirectory, "SKILL.md"), "# User Skill");
-
-            SkillPluginAdapter.GenerateAll(_projectRoot);
-
-            Assert.AreEqual("# User Skill", File.ReadAllText(Path.Combine(userSkillDirectory, "SKILL.md")));
-        }
-
-        [Test]
-        public void SkillPluginAdapterRemovesStaleMirroredSkills()
-        {
-            AssistantIntegrationSelectionSettings.SetSelected("codex", true);
-            var sharedSkillDirectory = Path.Combine(_projectRoot, ".skills", "tdd");
-            Directory.CreateDirectory(sharedSkillDirectory);
-            File.WriteAllText(Path.Combine(sharedSkillDirectory, "SKILL.md"), "---\nname: tdd\n---\n# TDD");
-
-            SkillPluginAdapter.GenerateSelected(_projectRoot);
-
-            var mirroredSkillFile = Path.Combine(_projectRoot, "plugins", "aibridge-skills", "skills", "tdd", "SKILL.md");
-            Assert.IsTrue(File.Exists(mirroredSkillFile));
-
-            Directory.Delete(sharedSkillDirectory, true);
-            SkillPluginAdapter.GenerateSelected(_projectRoot);
-
-            Assert.IsFalse(Directory.Exists(Path.Combine(_projectRoot, "plugins", "aibridge-skills", "skills", "tdd")));
+            StringAssert.Contains("\"skills\": \"./.skills/\"", claudePluginJson);
+            Assert.IsFalse(Directory.Exists(Path.Combine(_projectRoot, "skills")));
         }
 
         [Test]
@@ -480,8 +439,6 @@ namespace AIBridge.Editor.Tests
             File.WriteAllText(
                 Path.Combine(_projectRoot, "plugins", "aibridge-skills", ".codex-plugin", "plugin.json"),
                 "{ \"name\": \"aibridge-skills\" }");
-            Directory.CreateDirectory(Path.Combine(_projectRoot, "plugins", "aibridge-skills", "skills", "aibridge"));
-            File.WriteAllText(Path.Combine(_projectRoot, "plugins", "aibridge-skills", "skills", "aibridge", "SKILL.md"), "# AIBridge");
             Directory.CreateDirectory(Path.Combine(_projectRoot, ".skills", "aibridge"));
             File.WriteAllText(Path.Combine(_projectRoot, ".skills", "aibridge", "SKILL.md"), "# Shared AIBridge");
             var codexTarget = AssistantIntegrationRegistry.GetTargets().First(target => target.Id == "codex");
