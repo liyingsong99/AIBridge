@@ -8,18 +8,22 @@ namespace AIBridge.Editor
     internal static class SkillPluginAdapter
     {
         private const string AIBridgePluginName = "aibridge-skills";
-        private const string CodexPluginContainerDirectoryName = "plugins";
+        private const string PluginJsonFileName = "plugin.json";
+        private const string SkillsFieldName = "skills";
+        private const string ClaudePluginDirectoryName = ".claude-plugin";
+        private const string CodexPluginDirectoryName = ".codex-plugin";
+        private const string CursorPluginDirectoryName = ".cursor-plugin";
+        private const string LegacyCodexPluginContainerDirectoryName = "plugins";
 
         public static void GenerateAll(string projectRoot)
         {
             GenerateClaudePlugin(projectRoot);
             GenerateCodexPlugin(projectRoot);
-            GenerateCodexMarketplace(projectRoot);
+            GenerateCursorPlugin(projectRoot);
         }
 
         public static void GenerateForTargets(string projectRoot, IEnumerable<AssistantIntegrationTarget> targets)
         {
-            var generatedCodex = false;
             foreach (var target in targets)
             {
                 if (target == null)
@@ -31,11 +35,13 @@ namespace AIBridge.Editor
                 {
                     GenerateClaudePlugin(projectRoot);
                 }
-                else if (string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase) && !generatedCodex)
+                else if (string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase))
                 {
                     GenerateCodexPlugin(projectRoot);
-                    GenerateCodexMarketplace(projectRoot);
-                    generatedCodex = true;
+                }
+                else if (string.Equals(target.Id, "cursor", StringComparison.OrdinalIgnoreCase))
+                {
+                    GenerateCursorPlugin(projectRoot);
                 }
             }
         }
@@ -56,96 +62,109 @@ namespace AIBridge.Editor
 
                 if (string.Equals(target.Id, "claude", StringComparison.OrdinalIgnoreCase))
                 {
-                    CleanupClaudePlugin(projectRoot);
+                    CleanupPluginManifest(projectRoot, ClaudePluginDirectoryName);
                 }
                 else if (string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase))
                 {
-                    CleanupCodexPlugin(projectRoot);
-                    CleanupCodexMarketplace(projectRoot);
+                    CleanupPluginManifest(projectRoot, CodexPluginDirectoryName);
+                    CleanupLegacyCodexPlugin(projectRoot);
+                }
+                else if (string.Equals(target.Id, "cursor", StringComparison.OrdinalIgnoreCase))
+                {
+                    CleanupPluginManifest(projectRoot, CursorPluginDirectoryName);
                 }
             }
         }
 
         private static void GenerateClaudePlugin(string projectRoot)
         {
-            var pluginRoot = Path.Combine(projectRoot, ".claude-plugin");
-            Directory.CreateDirectory(pluginRoot);
-            var pluginJsonPath = Path.Combine(pluginRoot, "plugin.json");
-            var payload = LoadPluginPayload(pluginJsonPath);
-            ApplyPluginPayload(
-                payload,
-                AIBridgePluginName,
-                "AIBridge Skills",
+            GeneratePluginManifest(
+                projectRoot,
+                ClaudePluginDirectoryName,
                 "Expose project-root skills for Claude-compatible plugin discovery.",
-                "./" + AIBridgeProjectSettings.Instance.SkillRootDirectory + "/");
-            File.WriteAllText(pluginJsonPath, AIBridgeJson.Serialize(payload, pretty: true));
+                false);
         }
 
         private static void GenerateCodexPlugin(string projectRoot)
         {
-            var pluginRoot = Path.Combine(projectRoot, CodexPluginContainerDirectoryName, AIBridgePluginName);
-            var manifestDirectory = Path.Combine(pluginRoot, ".codex-plugin");
-            Directory.CreateDirectory(manifestDirectory);
-            var pluginJsonPath = Path.Combine(manifestDirectory, "plugin.json");
-            var payload = LoadPluginPayload(pluginJsonPath);
-            ApplyPluginPayload(
-                payload,
-                AIBridgePluginName,
-                "AIBridge Skills",
+            GeneratePluginManifest(
+                projectRoot,
+                CodexPluginDirectoryName,
                 "Expose project-root skills for Codex plugin discovery.",
-                "./../../" + AIBridgeProjectSettings.Instance.SkillRootDirectory + "/");
+                false);
+            CleanupLegacyCodexPlugin(projectRoot);
+        }
+
+        private static void GenerateCursorPlugin(string projectRoot)
+        {
+            GeneratePluginManifest(
+                projectRoot,
+                CursorPluginDirectoryName,
+                "Expose project-root skills for Cursor plugin discovery.",
+                true);
+        }
+
+        private static void GeneratePluginManifest(string projectRoot, string pluginDirectoryName, string description, bool cursorManifest)
+        {
+            var pluginRoot = Path.Combine(projectRoot, pluginDirectoryName);
+            Directory.CreateDirectory(pluginRoot);
+            var pluginJsonPath = Path.Combine(pluginRoot, PluginJsonFileName);
+            var payload = LoadPluginPayload(pluginJsonPath);
+            var skillsPath = GetSharedSkillPluginPath();
+
+            if (payload.Count == 0 || IsAIBridgePluginPayload(payload))
+            {
+                if (cursorManifest)
+                {
+                    ApplyCursorPluginPayload(payload, description, skillsPath);
+                }
+                else
+                {
+                    ApplyStandardPluginPayload(payload, description, skillsPath);
+                }
+            }
+            else
+            {
+                // 已存在的第三方插件清单不能被 AIBridge 覆盖，只追加共享 Skill 根目录索引。
+                UpsertSkillPath(payload, skillsPath);
+            }
+
             File.WriteAllText(pluginJsonPath, AIBridgeJson.Serialize(payload, pretty: true));
         }
 
-        private static void GenerateCodexMarketplace(string projectRoot)
+        private static void CleanupPluginManifest(string projectRoot, string pluginDirectoryName)
         {
-            var marketplacePath = Path.Combine(projectRoot, ".agents", "plugins", "marketplace.json");
-            var directory = Path.GetDirectoryName(marketplacePath);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            var payload = LoadMarketplacePayload(marketplacePath);
-            payload["name"] = GetString(payload, "name", "aibridge-project");
-            var interfacePayload = GetOrCreateObject(payload, "interface");
-            if (!interfacePayload.ContainsKey("displayName"))
-            {
-                interfacePayload["displayName"] = "AIBridge Project Plugins";
-            }
-
-            var plugins = GetOrCreatePluginList(payload);
-            UpsertMarketplacePlugin(plugins);
-
-            File.WriteAllText(marketplacePath, AIBridgeJson.Serialize(payload, pretty: true));
-        }
-
-        private static void CleanupClaudePlugin(string projectRoot)
-        {
-            var pluginRoot = Path.Combine(projectRoot, ".claude-plugin");
-            var pluginJsonPath = Path.Combine(pluginRoot, "plugin.json");
+            var pluginRoot = Path.Combine(projectRoot, pluginDirectoryName);
+            var pluginJsonPath = Path.Combine(pluginRoot, PluginJsonFileName);
             if (!File.Exists(pluginJsonPath))
             {
                 return;
             }
 
             var payload = LoadPluginPayload(pluginJsonPath);
-            if (!string.Equals(GetString(payload, "name", string.Empty), AIBridgePluginName, StringComparison.OrdinalIgnoreCase))
+            if (IsAIBridgePluginPayload(payload))
             {
+                File.Delete(pluginJsonPath);
+                TryDeleteDirectoryIfEmpty(pluginRoot);
                 return;
             }
 
-            File.Delete(pluginJsonPath);
-            TryDeleteDirectoryIfEmpty(pluginRoot);
+            if (RemoveSkillPath(payload, GetSharedSkillPluginPath()))
+            {
+                File.WriteAllText(pluginJsonPath, AIBridgeJson.Serialize(payload, pretty: true));
+            }
         }
 
-        private static void CleanupCodexPlugin(string projectRoot)
+        private static void CleanupLegacyCodexPlugin(string projectRoot)
         {
-            var pluginRoot = Path.Combine(projectRoot, CodexPluginContainerDirectoryName, AIBridgePluginName);
+            // 兼容清理旧实现生成的 plugins/aibridge-skills，新的 Codex 索引固定在项目根 .codex-plugin。
+            var pluginRoot = Path.Combine(projectRoot, LegacyCodexPluginContainerDirectoryName, AIBridgePluginName);
             if (Directory.Exists(pluginRoot))
             {
                 Directory.Delete(pluginRoot, true);
             }
+
+            CleanupCodexMarketplace(projectRoot);
         }
 
         private static void CleanupCodexMarketplace(string projectRoot)
@@ -188,60 +207,12 @@ namespace AIBridge.Editor
             }
         }
 
-        private static List<object> GetOrCreatePluginList(Dictionary<string, object> payload)
-        {
-            object pluginsValue;
-            if (!payload.TryGetValue("plugins", out pluginsValue) || !(pluginsValue is List<object>))
-            {
-                var newList = new List<object>();
-                payload["plugins"] = newList;
-                return newList;
-            }
-
-            return (List<object>)pluginsValue;
-        }
-
         private static List<object> GetPluginList(Dictionary<string, object> payload)
         {
             object pluginsValue;
             return payload.TryGetValue("plugins", out pluginsValue) && pluginsValue is List<object>
                 ? (List<object>)pluginsValue
                 : null;
-        }
-
-        private static void UpsertMarketplacePlugin(List<object> plugins)
-        {
-            for (var i = plugins.Count - 1; i >= 0; i--)
-            {
-                var map = plugins[i] as Dictionary<string, object>;
-                if (map != null && string.Equals(GetString(map, "name", string.Empty), AIBridgePluginName, StringComparison.OrdinalIgnoreCase))
-                {
-                    plugins.RemoveAt(i);
-                }
-            }
-
-            plugins.Add(
-                new Dictionary<string, object>
-                {
-                    { "name", AIBridgePluginName },
-                    {
-                        "source",
-                        new Dictionary<string, object>
-                        {
-                            { "source", "local" },
-                            { "path", "./plugins/" + AIBridgePluginName }
-                        }
-                    },
-                    {
-                        "policy",
-                        new Dictionary<string, object>
-                        {
-                            { "installation", "INSTALLED_BY_DEFAULT" },
-                            { "authentication", "ON_INSTALL" }
-                        }
-                    },
-                    { "category", "Productivity" }
-                });
         }
 
         private static bool RemoveMarketplacePlugin(List<object> plugins)
@@ -279,11 +250,35 @@ namespace AIBridge.Editor
             }
         }
 
-        private static void ApplyPluginPayload(Dictionary<string, object> payload, string name, string displayName, string description, string skillsPath)
+        private static void ApplyStandardPluginPayload(Dictionary<string, object> payload, string description, string skillsPath)
         {
-            payload["name"] = name;
+            payload["name"] = AIBridgePluginName;
             payload["version"] = GetString(payload, "version", "1.0.0");
             payload["description"] = description;
+            ApplyCommonPluginMetadata(payload, skillsPath);
+
+            var interfacePayload = GetOrCreateObject(payload, "interface");
+            interfacePayload["displayName"] = "AIBridge Skills";
+            interfacePayload["shortDescription"] = description;
+            interfacePayload["developerName"] = GetString(interfacePayload, "developerName", "AIBridge");
+            interfacePayload["category"] = GetString(interfacePayload, "category", "Productivity");
+            if (!interfacePayload.ContainsKey("capabilities"))
+            {
+                interfacePayload["capabilities"] = new List<object> { "Write", "Interactive" };
+            }
+        }
+
+        private static void ApplyCursorPluginPayload(Dictionary<string, object> payload, string description, string skillsPath)
+        {
+            payload["name"] = AIBridgePluginName;
+            payload["displayName"] = "AIBridge Skills";
+            payload["description"] = description;
+            payload["version"] = GetString(payload, "version", "1.0.0");
+            ApplyCommonPluginMetadata(payload, skillsPath);
+        }
+
+        private static void ApplyCommonPluginMetadata(Dictionary<string, object> payload, string skillsPath)
+        {
             if (!payload.ContainsKey("author"))
             {
                 payload["author"] = new Dictionary<string, object>
@@ -293,19 +288,139 @@ namespace AIBridge.Editor
                 };
             }
 
+            payload["homepage"] = GetString(payload, "homepage", "https://github.com/liyingsong99/AIBridge");
+            payload["repository"] = GetString(payload, "repository", "https://github.com/liyingsong99/AIBridge");
             payload["license"] = GetString(payload, "license", "MIT");
             payload["keywords"] = new List<object> { "aibridge", "unity", "skills" };
-            payload["skills"] = skillsPath;
+            payload[SkillsFieldName] = skillsPath;
+        }
 
-            var interfacePayload = GetOrCreateObject(payload, "interface");
-            interfacePayload["displayName"] = displayName;
-            interfacePayload["shortDescription"] = description;
-            interfacePayload["developerName"] = GetString(interfacePayload, "developerName", "AIBridge");
-            interfacePayload["category"] = GetString(interfacePayload, "category", "Productivity");
-            if (!interfacePayload.ContainsKey("capabilities"))
+        private static bool IsAIBridgePluginPayload(Dictionary<string, object> payload)
+        {
+            return string.Equals(GetString(payload, "name", string.Empty), AIBridgePluginName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static void UpsertSkillPath(Dictionary<string, object> payload, string skillPath)
+        {
+            object skillsValue;
+            if (!payload.TryGetValue(SkillsFieldName, out skillsValue))
             {
-                interfacePayload["capabilities"] = new List<object> { "Write", "Interactive" };
+                payload[SkillsFieldName] = skillPath;
+                return;
             }
+
+            var skillsString = skillsValue as string;
+            if (skillsString != null)
+            {
+                if (IsSamePluginPath(skillsString, skillPath))
+                {
+                    return;
+                }
+
+                payload[SkillsFieldName] = new List<object> { skillsString, skillPath };
+                return;
+            }
+
+            var skillsList = skillsValue as List<object>;
+            if (skillsList == null)
+            {
+                payload[SkillsFieldName] = skillPath;
+                return;
+            }
+
+            foreach (var entry in skillsList)
+            {
+                var entryString = entry as string;
+                if (entryString != null && IsSamePluginPath(entryString, skillPath))
+                {
+                    return;
+                }
+            }
+
+            skillsList.Add(skillPath);
+        }
+
+        private static bool RemoveSkillPath(Dictionary<string, object> payload, string skillPath)
+        {
+            object skillsValue;
+            if (!payload.TryGetValue(SkillsFieldName, out skillsValue))
+            {
+                return false;
+            }
+
+            var skillsString = skillsValue as string;
+            if (skillsString != null)
+            {
+                if (!IsSamePluginPath(skillsString, skillPath))
+                {
+                    return false;
+                }
+
+                payload.Remove(SkillsFieldName);
+                return true;
+            }
+
+            var skillsList = skillsValue as List<object>;
+            if (skillsList == null)
+            {
+                return false;
+            }
+
+            var changed = false;
+            for (var i = skillsList.Count - 1; i >= 0; i--)
+            {
+                var entryString = skillsList[i] as string;
+                if (entryString != null && IsSamePluginPath(entryString, skillPath))
+                {
+                    skillsList.RemoveAt(i);
+                    changed = true;
+                }
+            }
+
+            if (changed && skillsList.Count == 0)
+            {
+                payload.Remove(SkillsFieldName);
+            }
+
+            return changed;
+        }
+
+        private static bool IsSamePluginPath(string firstPath, string secondPath)
+        {
+            return string.Equals(NormalizePluginPath(firstPath), NormalizePluginPath(secondPath), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizePluginPath(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                return string.Empty;
+            }
+
+            var normalized = path.Replace('\\', '/').Trim().TrimEnd('/');
+            while (normalized.StartsWith("./", StringComparison.Ordinal))
+            {
+                normalized = normalized.Substring(2);
+            }
+
+            return normalized;
+        }
+
+        private static string GetSharedSkillPluginPath()
+        {
+            var skillRootDirectory = AIBridgeProjectSettings.Instance.SkillRootDirectory;
+            if (string.IsNullOrEmpty(skillRootDirectory))
+            {
+                skillRootDirectory = AIBridgeProjectSettings.DefaultSkillRootDirectory;
+            }
+
+            skillRootDirectory = skillRootDirectory.Replace('\\', '/').Trim('/');
+            if (string.IsNullOrEmpty(skillRootDirectory))
+            {
+                skillRootDirectory = AIBridgeProjectSettings.DefaultSkillRootDirectory.Trim('/');
+            }
+
+            return "./" + skillRootDirectory + "/";
         }
 
         private static string GetString(Dictionary<string, object> payload, string key, string defaultValue)

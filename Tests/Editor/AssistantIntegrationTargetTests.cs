@@ -186,6 +186,32 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
+        public void CodexPluginDirectoryDefaultsToSingleCodexSelection()
+        {
+            Directory.CreateDirectory(Path.Combine(_projectRoot, ".codex-plugin"));
+            var targets = AssistantIntegrationRegistry.GetTargets();
+
+            var selections = AssistantIntegrationSelectionSettings.LoadSelections(_projectRoot, targets);
+
+            Assert.AreEqual(1, CountSelectedTargets(selections));
+            Assert.IsTrue(selections["codex"]);
+            Assert.IsFalse(selections["claude"]);
+        }
+
+        [Test]
+        public void CursorPluginDirectoryDefaultsToSingleCursorSelection()
+        {
+            Directory.CreateDirectory(Path.Combine(_projectRoot, ".cursor-plugin"));
+            var targets = AssistantIntegrationRegistry.GetTargets();
+
+            var selections = AssistantIntegrationSelectionSettings.LoadSelections(_projectRoot, targets);
+
+            Assert.AreEqual(1, CountSelectedTargets(selections));
+            Assert.IsTrue(selections["cursor"]);
+            Assert.IsFalse(selections["codex"]);
+        }
+
+        [Test]
         public void CodexWinsWhenClaudeAndAgentsRootRulesBothExist()
         {
             File.WriteAllText(Path.Combine(_projectRoot, "CLAUDE.md"), "# Claude");
@@ -397,24 +423,16 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void SkillPluginAdapterMergesCodexMarketplaceEntries()
+        public void SkillPluginAdapterGeneratesRootCodexPluginIndex()
         {
             AIBridgeProjectSettings.Instance.SkillRootDirectory = ".skill";
-            var marketplaceDirectory = Path.Combine(_projectRoot, ".agents", "plugins");
-            Directory.CreateDirectory(marketplaceDirectory);
-            File.WriteAllText(
-                Path.Combine(marketplaceDirectory, "marketplace.json"),
-                "{ \"name\": \"existing\", \"plugins\": [{ \"name\": \"other\", \"source\": { \"source\": \"local\", \"path\": \"./plugins/other\" }, \"policy\": { \"installation\": \"AVAILABLE\", \"authentication\": \"ON_INSTALL\" }, \"category\": \"Productivity\" }] }");
 
             SkillPluginAdapter.GenerateAll(_projectRoot);
 
-            var marketplaceJson = File.ReadAllText(Path.Combine(marketplaceDirectory, "marketplace.json"));
-            StringAssert.Contains("\"name\": \"other\"", marketplaceJson);
-            StringAssert.Contains("\"name\": \"aibridge-skills\"", marketplaceJson);
-
-            var codexPluginJson = File.ReadAllText(Path.Combine(_projectRoot, "plugins", "aibridge-skills", ".codex-plugin", "plugin.json"));
-            StringAssert.Contains("\"skills\": \"./../../.skill/\"", codexPluginJson);
-            Assert.IsFalse(Directory.Exists(Path.Combine(_projectRoot, "plugins", "aibridge-skills", "skills")));
+            var codexPluginJson = File.ReadAllText(Path.Combine(_projectRoot, ".codex-plugin", "plugin.json"));
+            StringAssert.Contains("\"name\": \"aibridge-skills\"", codexPluginJson);
+            StringAssert.Contains("\"skills\": \"./.skill/\"", codexPluginJson);
+            Assert.IsFalse(Directory.Exists(Path.Combine(_projectRoot, "plugins", "aibridge-skills")));
         }
 
         [Test]
@@ -428,13 +446,46 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void SkillPluginAdapterCleanupRemovesOnlyAIBridgePluginEntries()
+        public void SkillPluginAdapterGeneratesRootCursorPluginIndex()
+        {
+            SkillPluginAdapter.GenerateAll(_projectRoot);
+
+            var cursorPluginJson = File.ReadAllText(Path.Combine(_projectRoot, ".cursor-plugin", "plugin.json"));
+            StringAssert.Contains("\"name\": \"aibridge-skills\"", cursorPluginJson);
+            StringAssert.Contains("\"displayName\": \"AIBridge Skills\"", cursorPluginJson);
+            StringAssert.Contains("\"skills\": \"./.skills/\"", cursorPluginJson);
+        }
+
+        [Test]
+        public void SkillPluginAdapterAppendsSharedSkillDirectoryToExistingPluginIndex()
+        {
+            var manifestDirectory = Path.Combine(_projectRoot, ".codex-plugin");
+            Directory.CreateDirectory(manifestDirectory);
+            File.WriteAllText(
+                Path.Combine(manifestDirectory, "plugin.json"),
+                "{ \"name\": \"existing\", \"skills\": \"./vendor-skills/\", \"custom\": true }");
+
+            SkillPluginAdapter.GenerateAll(_projectRoot);
+
+            var codexPluginJson = File.ReadAllText(Path.Combine(manifestDirectory, "plugin.json"));
+            StringAssert.Contains("\"name\": \"existing\"", codexPluginJson);
+            StringAssert.Contains("\"custom\": true", codexPluginJson);
+            StringAssert.Contains("\"./vendor-skills/\"", codexPluginJson);
+            StringAssert.Contains("\"./.skills/\"", codexPluginJson);
+        }
+
+        [Test]
+        public void SkillPluginAdapterCleanupRemovesOnlyAIBridgePluginIndex()
         {
             var marketplaceDirectory = Path.Combine(_projectRoot, ".agents", "plugins");
             Directory.CreateDirectory(marketplaceDirectory);
             File.WriteAllText(
                 Path.Combine(marketplaceDirectory, "marketplace.json"),
                 "{ \"name\": \"existing\", \"plugins\": [{ \"name\": \"other\", \"source\": { \"source\": \"local\", \"path\": \"./plugins/other\" } }, { \"name\": \"aibridge-skills\", \"source\": { \"source\": \"local\", \"path\": \"./plugins/aibridge-skills\" } }] }");
+            Directory.CreateDirectory(Path.Combine(_projectRoot, ".codex-plugin"));
+            File.WriteAllText(
+                Path.Combine(_projectRoot, ".codex-plugin", "plugin.json"),
+                "{ \"name\": \"aibridge-skills\", \"skills\": \"./.skills/\" }");
             Directory.CreateDirectory(Path.Combine(_projectRoot, "plugins", "aibridge-skills", ".codex-plugin"));
             File.WriteAllText(
                 Path.Combine(_projectRoot, "plugins", "aibridge-skills", ".codex-plugin", "plugin.json"),
@@ -448,6 +499,7 @@ namespace AIBridge.Editor.Tests
             var marketplaceJson = File.ReadAllText(Path.Combine(marketplaceDirectory, "marketplace.json"));
             StringAssert.Contains("\"name\": \"other\"", marketplaceJson);
             Assert.IsFalse(marketplaceJson.Contains("\"name\": \"aibridge-skills\""));
+            Assert.IsFalse(Directory.Exists(Path.Combine(_projectRoot, ".codex-plugin")));
             Assert.IsFalse(Directory.Exists(Path.Combine(_projectRoot, "plugins", "aibridge-skills")));
             Assert.IsTrue(File.Exists(Path.Combine(_projectRoot, ".skills", "aibridge", "SKILL.md")));
         }

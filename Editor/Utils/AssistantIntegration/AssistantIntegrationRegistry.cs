@@ -36,7 +36,7 @@ namespace AIBridge.Editor
                     RootRuleFileName = "AGENTS.md",
                     SkillDirectoryRelativePath = ".codex/skills/aibridge",
                     SkillFileName = "SKILL.md",
-                    DetectionDirectoryRelativePaths = new[] { ".agents", ".codex" },
+                    DetectionDirectoryRelativePaths = new[] { ".agents", ".codex", ".codex-plugin" },
                     RootRuleTemplateRelativePath = SharedRootRuleTemplateRelativePath,
                     MissingRootRuleStrategy = MissingRootRuleStrategy.CreateWithInjectedBlock
                 },
@@ -48,7 +48,7 @@ namespace AIBridge.Editor
                     RootRuleFileName = ".cursor/rules/aibridge.mdc",
                     SkillDirectoryRelativePath = ".cursor/skills/aibridge",
                     SkillFileName = "SKILL.md",
-                    DetectionDirectoryRelativePaths = new[] { ".cursor" },
+                    DetectionDirectoryRelativePaths = new[] { ".cursor", ".cursor-plugin" },
                     RootRuleTemplateRelativePath = SharedRootRuleTemplateRelativePath,
                     MissingRootRuleStrategy = MissingRootRuleStrategy.CreateWithInjectedBlock
                 },
