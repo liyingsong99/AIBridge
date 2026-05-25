@@ -126,7 +126,7 @@ namespace AIBridge.Editor
                 case "BatchCommand":
                     return "Execute multiple commands in a single request";
                 case "CodeCommand":
-                    return "Experimental controlled temporary C# execution, disabled by default";
+                    return "Experimental controlled temporary C# execution, enabled by default in Unity settings";
                 case "HelpCommand":
                     return "Returns help information about available commands";
                 case "CompileCommand":
@@ -234,9 +234,9 @@ namespace AIBridge.Editor
                 case "code":
                     return new
                     {
-                        safety = "Disabled by default. Enable AIBridge/Settings -> Basic -> Enable Code Execution and pass --allow-experimental true.",
-                        file = new { type = "code", @params = new { action = "execute", file = ".aibridge/code/check.csx", allowExperimental = true, timeout = 5000 } },
-                        inline = new { type = "code", @params = new { action = "execute", code = "Debug.Log(\"hello\"); return 123;", allowExperimental = true, timeout = 5000 } },
+                        safety = "Enabled by default in AIBridge/Settings -> Basic -> Enable Code Execution. Disable the setting for untrusted projects or callers.",
+                        file = new { type = "code", @params = new { action = "execute", file = ".aibridge/code/check.csx", timeout = 5000 } },
+                        inline = new { type = "code", @params = new { action = "execute", code = "Debug.Log(\"hello\"); return 123;", timeout = 5000 } },
                         status = new { type = "code", @params = new { action = "status" } },
                         cancel = new { type = "code", @params = new { action = "cancel", requestId = "optional-active-request-id" } }
                     };

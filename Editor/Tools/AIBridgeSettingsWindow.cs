@@ -183,8 +183,8 @@ namespace AIBridge.Editor
             EditorGUILayout.LabelField(AIBridgeEditorText.T("Experimental", "实验功能"), EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 AIBridgeEditorText.T(
-                    "Code execution lets AI/CLI run temporary C# inside Unity Editor. Enable only for trusted projects and trusted callers.",
-                    "代码执行允许 AI/CLI 在 Unity Editor 内运行临时代码。仅在可信项目和可信调用方环境中启用。"),
+                    "Code execution is enabled by default and lets AI/CLI run temporary C# inside Unity Editor. Disable it for untrusted projects or callers.",
+                    "代码执行默认启用，允许 AI/CLI 在 Unity Editor 内运行临时代码。不可信项目或调用方环境中请关闭。"),
                 MessageType.Warning);
 
             var settings = AIBridgeProjectSettings.Instance;

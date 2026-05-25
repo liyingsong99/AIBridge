@@ -48,13 +48,29 @@ namespace AIBridge.Editor.Tests
         {
             var description = new CodeCommand().SkillDescription;
 
-            Assert.That(description, Does.Contain("disabled by default"));
-            Assert.That(description, Does.Contain("--allow-experimental true"));
+            Assert.That(description, Does.Contain("enabled by default"));
+            Assert.That(description, Does.Not.Contain("--allow-experimental"));
             Assert.That(description, Does.Contain(".aibridge/code"));
             Assert.That(description, Does.Contain("Runtime/Public API"));
             Assert.That(description, Does.Contain("prefab patch --dryRun true"));
             Assert.That(description, Does.Contain("code status"));
             Assert.That(description, Does.Contain("code cancel"));
+        }
+
+        [Test]
+        public void ProjectSettings_DefaultsToCodeExecutionEnabled()
+        {
+            var settings = ScriptableObject.CreateInstance<AIBridgeProjectSettings>();
+
+            try
+            {
+                Assert.That(settings.EnableCodeExecution, Is.True);
+                Assert.That(settings.CodeExecutionRiskAccepted, Is.True);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(settings);
+            }
         }
 
         [Test]
@@ -120,7 +136,7 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void Execute_WhenAllowExperimentalMissing_ReturnsFailureBeforeCompilation()
+        public void Execute_WhenAllowExperimentalMissing_ContinuesToSourceValidation()
         {
             var settings = AIBridgeProjectSettings.Instance;
             var previousEnabled = settings.EnableCodeExecution;
@@ -130,10 +146,18 @@ namespace AIBridge.Editor.Tests
 
             try
             {
-                var result = ExecuteInline("return 1;", false);
+                var result = new CodeCommand().Execute(new CommandRequest
+                {
+                    id = "code-without-allow-test",
+                    type = "code",
+                    @params = new Dictionary<string, object>
+                    {
+                        { "action", "execute" }
+                    }
+                });
 
                 Assert.That(result.success, Is.False);
-                Assert.That(result.error, Does.Contain("--allow-experimental true"));
+                Assert.That(result.error, Does.Contain("Provide exactly one source"));
             }
             finally
             {

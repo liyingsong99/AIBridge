@@ -66,6 +66,8 @@ namespace AIBridge.Editor
         public const int DefaultLogRetrievalCount = 50;
         public const string DefaultLogRetrievalType = "all";
         public const string DefaultScriptDirectory = "Assets/AIBridgeScripts";
+        public const bool DefaultEnableCodeExecution = true;
+        public const bool DefaultCodeExecutionRiskAccepted = true;
         public static readonly string[] SupportedLogRetrievalTypes = { "all", "Log", "Warning", "Error" };
 
         [SerializeField] private int dataVersion = CurrentDataVersion;
@@ -82,8 +84,8 @@ namespace AIBridge.Editor
         [SerializeField] private bool legacyGifMigrated;
         [SerializeField] private bool legacyScriptDirectoryMigrated;
         [SerializeField] private bool autoInstallSkills = true;
-        [SerializeField] private bool enableCodeExecution;
-        [SerializeField] private bool codeExecutionRiskAccepted;
+        [SerializeField] private bool enableCodeExecution = DefaultEnableCodeExecution;
+        [SerializeField] private bool codeExecutionRiskAccepted = DefaultCodeExecutionRiskAccepted;
 
         public static AIBridgeProjectSettings Instance
         {
@@ -504,7 +506,8 @@ namespace AIBridge.Editor
 
             if (dataVersion < 8)
             {
-                enableCodeExecution = false;
+                enableCodeExecution = DefaultEnableCodeExecution;
+                codeExecutionRiskAccepted = DefaultCodeExecutionRiskAccepted;
             }
 
             if (dataVersion != CurrentDataVersion)

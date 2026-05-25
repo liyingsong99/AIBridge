@@ -33,7 +33,7 @@ Many Unity automation tools depend on a live socket or MCP session. AIBridge use
 - **Unity asset and object inspection**: find assets, read scene hierarchies, inspect components and SerializedProperty values, then write through Unity-aware APIs.
 - **Prefab and scene automation**: use simple Inspector field edits, Prefab Patch dry-runs, multi-step batch scripts, and task continuation across domain reloads.
 - **UGUI runtime input simulation**: in Play Mode, the `input` command can click, click screen coordinates, drag, and long-press EventSystem UI for button, inventory, and runtime panel checks.
-- **Roslyn temporary C# execution**: controlled `code execute` runs `.aibridge/code/*.cs` or `.csx` temporary scripts inside Unity Editor for complex one-off asset generation, structured analysis, diagnostics, and Runtime/Public API calls. It is disabled by default and requires both the Settings toggle and `--allow-experimental true`.
+- **Roslyn temporary C# execution**: controlled `code execute` runs `.aibridge/code/*.cs` or `.csx` temporary scripts inside Unity Editor for complex one-off asset generation, structured analysis, diagnostics, and Runtime/Public API calls. It is enabled by default in Settings and can be disabled there for untrusted projects or callers.
 - **Visual and log validation**: capture Game view screenshots or GIFs, read Console logs, run Unity compilation, and invoke tests so agents can close the loop on changes.
 
 ## Requirements
@@ -239,11 +239,11 @@ Game view screenshots, GIF capture, and `input` commands require Play Mode. A ty
 
 `code execute` runs controlled temporary Editor C# for complex one-off tasks that declarative CLI commands cannot express cleanly, such as generated asset sets, structured diagnostics, reports, Runtime/Public API calls, or multi-step UnityEditor API orchestration. It is not a replacement for `compile unity` or `test run`.
 
-Before use, enable `Enable Code Execution` in `Tools > AIBridge Settings > Basic`, and pass `--allow-experimental true` from the CLI. File mode is limited to `.aibridge/code/*.cs` or `.aibridge/code/*.csx`, and complex scripts should use file mode. `code execute` is single-flight; after a timeout, use `code status` first and only use `code cancel` when you need to release AIBridge's waiting state.
+`Enable Code Execution` is enabled by default in `Tools > AIBridge Settings > Basic`; disable it there for untrusted projects or callers. File mode is limited to `.aibridge/code/*.cs` or `.aibridge/code/*.csx`, and complex scripts should use file mode. `code execute` is single-flight; after a timeout, use `code status` first and only use `code cancel` when you need to release AIBridge's waiting state.
 
 ```bash
-$CLI code execute --file ".aibridge/code/check.csx" --allow-experimental true --timeout 5000
-$CLI code execute --code "Debug.Log(\"hello\"); return 123;" --allow-experimental true
+$CLI code execute --file ".aibridge/code/check.csx" --timeout 5000
+$CLI code execute --code "Debug.Log(\"hello\"); return 123;"
 $CLI code status
 $CLI code cancel
 ```

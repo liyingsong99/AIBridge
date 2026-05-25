@@ -100,8 +100,8 @@ AIBridgeGeneration.RefreshAssets();
 ## 执行流程
 
 ```powershell
-$CLI code execute --code "return 1;" --allow-experimental true --timeout 5000
-$CLI code execute --file ".aibridge/code/my_effect.csx" --allow-experimental true --timeout 30000
+$CLI code execute --code "return 1;" --timeout 5000
+$CLI code execute --file ".aibridge/code/my_effect.csx" --timeout 30000
 $CLI code status
 $CLI code cancel
 $CLI compile unity --timeout 120000

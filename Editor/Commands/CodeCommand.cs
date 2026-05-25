@@ -17,7 +17,7 @@ using UnityEngine;
 namespace AIBridge.Editor
 {
     /// <summary>
-    /// 受控版临时代码执行命令。默认关闭，且必须由 CLI 显式传入 allowExperimental。
+    /// 受控版临时代码执行命令。由项目设置统一控制是否允许执行。
     /// </summary>
     public class CodeCommand : ICommand
     {
@@ -48,11 +48,11 @@ namespace AIBridge.Editor
 
         public string SkillDescription => @"### `code execute` - Controlled Temporary C# Execution
 
-Experimental and disabled by default. Enable it in **AIBridge/Settings -> Basic -> Enable Code Execution** before use. CLI calls must also pass `--allow-experimental true`.
+Experimental and enabled by default in project settings. Disable **AIBridge/Settings -> Basic -> Enable Code Execution** for untrusted projects or callers.
 
 ```bash
-$CLI code execute --file "".aibridge/code/check.csx"" --allow-experimental true --timeout 5000
-$CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experimental true
+$CLI code execute --file "".aibridge/code/check.csx"" --timeout 5000
+$CLI code execute --code ""Debug.Log(\""hello\""); return 123;""
 $CLI code status
 $CLI code cancel
 ```
@@ -107,18 +107,6 @@ $CLI code cancel
                     request.id,
                     "Code execution is disabled. Enable it in AIBridge/Settings -> Basic -> Enable Code Execution.",
                     BuildSettingsGateData(settings));
-            }
-
-            if (!request.GetParam("allowExperimental", false))
-            {
-                return FailureWithData(
-                    request.id,
-                    "code execute requires --allow-experimental true.",
-                    new
-                    {
-                        enabled = true,
-                        source = "none"
-                    });
             }
 
             if (_activeOperation != null)
