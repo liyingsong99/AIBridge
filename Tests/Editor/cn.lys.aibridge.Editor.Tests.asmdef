@@ -2,7 +2,8 @@
     "name": "cn.lys.aibridge.Editor.Tests",
     "rootNamespace": "AIBridge.Editor.Tests",
     "references": [
-        "cn.lys.aibridge.Editor"
+        "cn.lys.aibridge.Editor",
+        "UnityEngine.UI"
     ],
     "includePlatforms": [
         "Editor"

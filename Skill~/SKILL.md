@@ -1,6 +1,6 @@
 ---
 name: aibridge
-description: Unity Editor CLI integration for AIBridge. Use when Codex needs to compile Unity, inspect Console logs, search/read assets, manipulate GameObjects, Transforms, components, SerializedProperty values, scenes, screenshots/GIFs, editor focus/menu items/game view, or look up AIBridgeCLI command syntax. For batch/multi scripts use aibridge-batch-script. For complex prefab asset edits use aibridge-prefab-patch. For unsupported direct Unity YAML serialized asset edits use unity-yaml-editing.
+description: Unity Editor CLI integration for AIBridge. Use when Codex needs to compile Unity, inspect Console logs, search/read assets, manipulate GameObjects, Transforms, components, SerializedProperty values, scenes, screenshots/GIFs, simulate Play Mode runtime input, editor focus/menu items/game view, or look up AIBridgeCLI command syntax. For batch/multi scripts use aibridge-batch-script. For complex prefab asset edits use aibridge-prefab-patch. For unsupported direct Unity YAML serialized asset edits use unity-yaml-editing.
 ---
 
 # AI Bridge Unity Skill
@@ -44,6 +44,7 @@ Most Unity-side commands require an `action` such as `asset search` or `inspecto
 - For complex prefab asset edits, use the `aibridge-prefab-patch` skill and prefer `prefab patch --ops <file>` with dry-run first.
 - In PowerShell, avoid inline complex `--json`; build JSON in a variable, escape embedded quotes for native EXE argument passing, and pass command parameters directly, especially `inspector set_properties --values $values`.
 - `focus` is Windows CLI-only. `dialog` is CLI-only, uses Windows window APIs or macOS Accessibility permission, and omits dialog fields when no modal dialog is detected. `screenshot` requires Play Mode.
+- `input` requires Play Mode and an active EventSystem; use it with `gameview`, `screenshot`, and `get_logs` for UI interaction checks.
 
 ## Related Resources
 
@@ -83,6 +84,15 @@ Use `aibridge-batch-script` before writing long scripts or JSON-heavy `multi --s
 ```bash
 $CLI multi --cmd 'editor log --message Step1&gameobject create --name Cube --primitiveType Cube'
 $CLI multi --stdin
+```
+
+### `input` - Runtime Input Simulation
+
+Play Mode only. Use the generated command reference for all actions and parameters.
+
+```bash
+$CLI input click --path "Canvas/StartButton"
+$CLI input drag --path "Canvas/Item" --toPath "Canvas/Slot" --frames 12
 ```
 
 ---
