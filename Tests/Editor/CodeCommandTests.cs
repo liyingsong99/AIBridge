@@ -53,6 +53,46 @@ namespace AIBridge.Editor.Tests
             Assert.That(description, Does.Contain(".aibridge/code"));
             Assert.That(description, Does.Contain("Runtime/Public API"));
             Assert.That(description, Does.Contain("prefab patch --dryRun true"));
+            Assert.That(description, Does.Contain("code status"));
+            Assert.That(description, Does.Contain("code cancel"));
+        }
+
+        [Test]
+        public void Status_WhenNoExecution_ReturnsIdle()
+        {
+            var result = new CodeCommand().Execute(new CommandRequest
+            {
+                id = "code-status-test",
+                type = "code",
+                @params = new Dictionary<string, object>
+                {
+                    { "action", "status" }
+                }
+            });
+
+            Assert.That(result.success, Is.True);
+            var json = AIBridgeJson.Serialize(result.data, true);
+            StringAssert.Contains("\"active\": false", json);
+            StringAssert.Contains("\"status\": \"idle\"", json);
+        }
+
+        [Test]
+        public void Cancel_WhenNoExecution_ReturnsIdle()
+        {
+            var result = new CodeCommand().Execute(new CommandRequest
+            {
+                id = "code-cancel-idle-test",
+                type = "code",
+                @params = new Dictionary<string, object>
+                {
+                    { "action", "cancel" }
+                }
+            });
+
+            Assert.That(result.success, Is.True);
+            var json = AIBridgeJson.Serialize(result.data, true);
+            StringAssert.Contains("\"canceled\": false", json);
+            StringAssert.Contains("\"status\": \"idle\"", json);
         }
 
         [Test]
@@ -232,7 +272,35 @@ namespace AIBridge.Editor.Tests
         [Test]
         public void ResolveCompilerOutputEncoding_ReturnsEncoding()
         {
-            Assert.That(CodeCommand.ResolveCompilerOutputEncoding(), Is.Not.Null);
+            Assert.That(CodeCommand.ResolveCompilerOutputEncoding().WebName, Is.EqualTo("utf-8"));
+        }
+
+        [Test]
+        public void ShouldAppendFallbackReturn_DetectsTerminalReturnOrThrow()
+        {
+            Assert.That(CodeCommand.ShouldAppendFallbackReturn("return 1;"), Is.False);
+            Assert.That(CodeCommand.ShouldAppendFallbackReturn("Debug.Log(\"x\");\nreturn new { value = 1 }; // done"), Is.False);
+            Assert.That(CodeCommand.ShouldAppendFallbackReturn("throw new System.Exception(\"stop\");"), Is.False);
+            Assert.That(CodeCommand.ShouldAppendFallbackReturn("Debug.Log(\"x\");"), Is.True);
+            Assert.That(CodeCommand.ShouldAppendFallbackReturn("if (ready) return 1;"), Is.True);
+        }
+
+        [Test]
+        public void ParseCompilerDiagnostics_ExtractsStructuredFields()
+        {
+            var output = "Assets/Test.cs(12,34): error CS1002: ; expected\n"
+                         + "Assets/Test.cs(13,2): warning CS0162: Unreachable code detected";
+
+            var diagnostics = CodeCommand.ParseCompilerDiagnostics(output);
+
+            Assert.That(diagnostics.Count, Is.EqualTo(2));
+            Assert.That(diagnostics[0].file, Is.EqualTo("Assets/Test.cs"));
+            Assert.That(diagnostics[0].line, Is.EqualTo(12));
+            Assert.That(diagnostics[0].column, Is.EqualTo(34));
+            Assert.That(diagnostics[0].severity, Is.EqualTo("error"));
+            Assert.That(diagnostics[0].code, Is.EqualTo("CS1002"));
+            Assert.That(diagnostics[1].severity, Is.EqualTo("warning"));
+            Assert.That(diagnostics[1].code, Is.EqualTo("CS0162"));
         }
 
         private static CommandResult ExecuteInline(string code, bool allowExperimental)

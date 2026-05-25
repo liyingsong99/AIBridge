@@ -119,11 +119,21 @@ namespace AIBridgeCLI.Core
 
             try { File.Delete(commandFile); } catch { }
 
+            var timeoutError = $"Timeout waiting for result after {_timeout}ms. Make sure Unity Editor is running and AIBridge is active.";
+            if (request != null
+                && string.Equals(request.type, "code", StringComparison.OrdinalIgnoreCase)
+                && request.@params != null
+                && request.@params.TryGetValue("action", out var actionValue)
+                && string.Equals(actionValue?.ToString(), "execute", StringComparison.OrdinalIgnoreCase))
+            {
+                timeoutError += " The code may still be running in Unity; run `code status` to inspect it or `code cancel` to release AIBridge waiting state.";
+            }
+
             return new CommandResult
             {
                 id = request.id,
                 success = false,
-                error = $"Timeout waiting for result after {_timeout}ms. Make sure Unity Editor is running and AIBridge is active."
+                error = timeoutError
             };
         }
 

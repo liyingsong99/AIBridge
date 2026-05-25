@@ -8,6 +8,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using AIBridge.Internal.Json;
 using UnityEditor;
@@ -21,6 +22,8 @@ namespace AIBridge.Editor
     public class CodeCommand : ICommand
     {
         private const string ExecuteAction = "execute";
+        private const string StatusAction = "status";
+        private const string CancelAction = "cancel";
         private const string CodeDirectoryName = "code";
         private const string CompiledDirectoryName = ".compiled";
         private const string FallbackCompilerProcessName = "dotnet";
@@ -34,6 +37,9 @@ namespace AIBridge.Editor
         private const string CSharpVersion2019 = "7.3";
         private const string CSharpVersion2020 = "8.0";
         private const string CSharpVersion2021OrNewer = "9.0";
+        private static readonly Regex CompilerDiagnosticPattern = new Regex(
+            @"^(?<file>.+?)\((?<line>\d+),(?<column>\d+)\):\s*(?<severity>error|warning)\s*(?<code>[A-Z]+\d+):\s*(?<message>.*)$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         private static CodeAsyncOperation _activeOperation;
 
@@ -47,6 +53,8 @@ Experimental and disabled by default. Enable it in **AIBridge/Settings -> Basic 
 ```bash
 $CLI code execute --file "".aibridge/code/check.csx"" --allow-experimental true --timeout 5000
 $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experimental true
+$CLI code status
+$CLI code cancel
 ```
 
 **Rules:**
@@ -57,20 +65,32 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
 - For generation scripts, keep output under a clear folder such as `Assets/AIBridgeGenerated/<TaskName>/` and return structured result data.
 - For existing Prefab structure changes prefer `prefab patch --dryRun true`; for single properties prefer `inspector`; for simple scene object edits prefer `gameobject`/`transform`.
 - Snippets are wrapped as `object Execute()` or `Task<object> ExecuteAsync()` when `await` is present.
-- Result data includes `enabled`, `source`, `elapsedMs`, `returnValue`, `logs`, `compileErrors`, and `exception` when applicable.
+- Result data includes `enabled`, `status`, `source`, `elapsedMs`, `returnValue`, `logs`, `compileErrors`, `diagnostics`, and `exception` when applicable.
+- `code execute` is single-flight. Use `code status` after a timeout and `code cancel` only to release AIBridge waiting state; user code may still finish on Unity's side.
 - Use this only for trusted projects/callers; it is not a replacement for `compile unity` or `test run`.";
 
         public CommandResult Execute(CommandRequest request)
         {
             var action = request.GetParam("action", ExecuteAction);
-            if (!string.Equals(action, ExecuteAction, StringComparison.OrdinalIgnoreCase))
-            {
-                return CommandResult.Failure(request.id, $"Unknown action: {action}. Supported: execute");
-            }
 
             try
             {
-                return ExecuteCode(request);
+                if (string.Equals(action, ExecuteAction, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ExecuteCode(request);
+                }
+
+                if (string.Equals(action, StatusAction, StringComparison.OrdinalIgnoreCase))
+                {
+                    return CommandResult.Success(request.id, BuildStatusData());
+                }
+
+                if (string.Equals(action, CancelAction, StringComparison.OrdinalIgnoreCase))
+                {
+                    return CancelActiveOperation(request);
+                }
+
+                return CommandResult.Failure(request.id, $"Unknown action: {action}. Supported: execute, status, cancel");
             }
             catch (Exception ex)
             {
@@ -103,7 +123,10 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
 
             if (_activeOperation != null)
             {
-                return CommandResult.Failure(request.id, "Another code execution is already running.");
+                return FailureWithData(
+                    request.id,
+                    "Another code execution is already running.",
+                    BuildBusyData());
             }
 
             SourceText sourceText;
@@ -134,7 +157,7 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
                     return FailureWithData(
                         request.id,
                         "Code compilation failed.",
-                        BuildResultData(session, null, compileErrors, null, ContainsTimeoutError(compileErrors) ? (bool?)true : null));
+                        BuildResultData(session, null, compileErrors, null, ContainsTimeoutError(compileErrors) ? (bool?)true : null, "compile_failed"));
                 }
 
                 session.CompiledAssemblyPath = assemblyPath;
@@ -156,17 +179,93 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
                     return FailureWithData(
                         request.id,
                         "Code execution timed out after " + timeoutMs + "ms.",
-                        BuildResultData(session, null, new List<string>(), null, true));
+                        BuildResultData(session, null, new List<string>(), null, true, "timed_out"));
                 }
 
-                return CommandResult.Success(request.id, BuildResultData(session, NormalizeReturnValue(invocation.ReturnValue), new List<string>(), null, null));
+                return CommandResult.Success(request.id, BuildResultData(session, NormalizeReturnValue(invocation.ReturnValue), new List<string>(), null, false, "completed"));
             }
             catch (Exception ex)
             {
                 Application.logMessageReceived -= session.OnLogMessageReceived;
                 stopwatch.Stop();
-                return FailureWithData(request.id, "Code execution failed.", BuildResultData(session, null, new List<string>(), BuildExceptionInfo(ex), null));
+                return FailureWithData(request.id, "Code execution failed.", BuildResultData(session, null, new List<string>(), BuildExceptionInfo(ex), false, "failed"));
             }
+        }
+
+        private static object BuildStatusData()
+        {
+            if (_activeOperation == null)
+            {
+                return new
+                {
+                    active = false,
+                    busy = false,
+                    status = "idle",
+                    hint = "No code execution is active."
+                };
+            }
+
+            return _activeOperation.BuildStatusData();
+        }
+
+        private static object BuildBusyData()
+        {
+            return new
+            {
+                active = true,
+                busy = true,
+                activeOperation = BuildStatusData(),
+                hint = "code execute is single-flight. Run `code status` to inspect it, or `code cancel` to release AIBridge waiting state."
+            };
+        }
+
+        private static CommandResult CancelActiveOperation(CommandRequest request)
+        {
+            if (_activeOperation == null)
+            {
+                return CommandResult.Success(request.id, new
+                {
+                    active = false,
+                    canceled = false,
+                    status = "idle",
+                    hint = "No code execution is active."
+                });
+            }
+
+            var targetRequestId = request.GetParam<string>("requestId", null);
+            if (!string.IsNullOrWhiteSpace(targetRequestId)
+                && !string.Equals(targetRequestId, _activeOperation.RequestId, StringComparison.Ordinal))
+            {
+                return FailureWithData(
+                    request.id,
+                    "Active code execution does not match requestId.",
+                    new
+                    {
+                        active = true,
+                        canceled = false,
+                        requestedRequestId = targetRequestId,
+                        activeOperation = _activeOperation.BuildStatusData()
+                    });
+            }
+
+            var canceledRequestId = _activeOperation.RequestId;
+            var originalResult = _activeOperation.CancelForOriginalRequest();
+            var originalResultWritten = originalResult != null;
+            if (originalResult != null)
+            {
+                WriteResultFile(originalResult);
+            }
+
+            _activeOperation = null;
+            EditorApplication.update -= OnAsyncUpdate;
+            return CommandResult.Success(request.id, new
+            {
+                active = false,
+                canceled = true,
+                canceledRequestId = canceledRequestId,
+                originalResultWritten = originalResultWritten,
+                warning = "Cancellation releases AIBridge waiting state only; Unity user code that already started may still finish."
+            });
         }
 
         private static bool TryResolveSource(CommandRequest request, out SourceText sourceText, out string error)
@@ -306,10 +405,103 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
                 : "    public static object Execute()");
             builder.AppendLine("    {");
             builder.AppendLine(body ?? string.Empty);
-            builder.AppendLine("        return null;");
+            if (ShouldAppendFallbackReturn(body))
+            {
+                builder.AppendLine("        return null;");
+            }
             builder.AppendLine("    }");
             builder.AppendLine("}");
             return builder.ToString();
+        }
+
+        internal static bool ShouldAppendFallbackReturn(string body)
+        {
+            if (string.IsNullOrWhiteSpace(body))
+            {
+                return true;
+            }
+
+            var trimmed = TrimTrailingTrivia(body);
+            if (string.IsNullOrWhiteSpace(trimmed) || !trimmed.EndsWith(";", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            var statementStart = FindLastStatementStart(trimmed);
+            var lastStatement = trimmed.Substring(statementStart).TrimStart();
+            return !StartsWithKeyword(lastStatement, "return") && !StartsWithKeyword(lastStatement, "throw");
+        }
+
+        private static string TrimTrailingTrivia(string text)
+        {
+            var current = text ?? string.Empty;
+            var changed = true;
+            while (changed)
+            {
+                changed = false;
+                current = current.TrimEnd();
+
+                if (current.EndsWith("*/", StringComparison.Ordinal))
+                {
+                    var blockStart = current.LastIndexOf("/*", StringComparison.Ordinal);
+                    if (blockStart >= 0)
+                    {
+                        current = current.Substring(0, blockStart);
+                        changed = true;
+                        continue;
+                    }
+                }
+
+                var lineStart = Math.Max(current.LastIndexOf('\n'), current.LastIndexOf('\r')) + 1;
+                var lineComment = current.IndexOf("//", lineStart, StringComparison.Ordinal);
+                if (lineComment >= 0 && current.IndexOf(";", lineComment, StringComparison.Ordinal) < 0)
+                {
+                    current = current.Substring(0, lineComment);
+                    changed = true;
+                }
+            }
+
+            return current.TrimEnd();
+        }
+
+        private static int FindLastStatementStart(string text)
+        {
+            var parenDepth = 0;
+            var bracketDepth = 0;
+            var braceDepth = 0;
+
+            // 从末尾反扫，跳过匿名对象/集合初始化等表达式内部的分号，定位最后一个顶层语句。
+            for (var i = text.Length - 2; i >= 0; i--)
+            {
+                var c = text[i];
+                if (c == ')') parenDepth++;
+                else if (c == '(') parenDepth--;
+                else if (c == ']') bracketDepth++;
+                else if (c == '[') bracketDepth--;
+                else if (c == '}') braceDepth++;
+                else if (c == '{') braceDepth--;
+                else if (c == ';' && parenDepth == 0 && bracketDepth == 0 && braceDepth == 0)
+                {
+                    return i + 1;
+                }
+            }
+
+            return 0;
+        }
+
+        private static bool StartsWithKeyword(string text, string keyword)
+        {
+            if (text == null || !text.StartsWith(keyword, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            return text.Length == keyword.Length || !IsIdentifierChar(text[keyword.Length]);
+        }
+
+        private static bool IsIdentifierChar(char c)
+        {
+            return char.IsLetterOrDigit(c) || c == '_';
         }
 
         private static bool CompileSource(CodeExecutionSession session, out string assemblyPath, out List<string> compileErrors)
@@ -347,7 +539,7 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
 
             session.Compiler = compiler;
             session.CompilerProbePaths = compilerProbePaths;
-            var output = RunCompilerProcess(compiler, responsePath, session.TimeoutMs, compileErrors);
+            var output = RunCompilerProcess(compiler, responsePath, session.TimeoutMs, compileErrors, session.CompilerDiagnostics);
             if (!string.IsNullOrEmpty(output))
             {
                 session.CompilerOutput = output;
@@ -552,7 +744,12 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
             };
         }
 
-        private static string RunCompilerProcess(CompilerInvocation compiler, string responsePath, int timeoutMs, List<string> compileErrors)
+        private static string RunCompilerProcess(
+            CompilerInvocation compiler,
+            string responsePath,
+            int timeoutMs,
+            List<string> compileErrors,
+            List<CompilerDiagnostic> diagnostics)
         {
             var arguments = string.IsNullOrEmpty(compiler.PrefixArguments)
                 ? "@\"" + responsePath + "\""
@@ -625,8 +822,8 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
                 var stderr = stderrBuilder.ToString();
                 outputBuilder.Append(stdout);
                 outputBuilder.Append(stderr);
-                CollectCompilerErrors(stdout, compileErrors);
-                CollectCompilerErrors(stderr, compileErrors);
+                CollectCompilerDiagnostics(stdout, compileErrors, diagnostics);
+                CollectCompilerDiagnostics(stderr, compileErrors, diagnostics);
                 if (process.HasExited && process.ExitCode != 0 && compileErrors.Count == 0)
                 {
                     compileErrors.Add("Compiler exited with code " + process.ExitCode + ".");
@@ -638,12 +835,8 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
 
         internal static Encoding ResolveCompilerOutputEncoding()
         {
-#if UNITY_EDITOR_WIN
-            // Unity/Windows 旧版 Roslyn 的中文诊断常按本机代码页输出，强制 UTF-8 会产生乱码。
-            return Encoding.Default;
-#else
+            // CLI、命令文件和结果文件统一使用 UTF-8；编译器输出也按同一编码读取，避免跨平台分叉。
             return Encoding.UTF8;
-#endif
         }
 
         private static string GetEncodingDisplayName(Encoding encoding)
@@ -656,7 +849,10 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
             return encoding.WebName + " (codePage " + encoding.CodePage + ")";
         }
 
-        private static void CollectCompilerErrors(string output, List<string> compileErrors)
+        private static void CollectCompilerDiagnostics(
+            string output,
+            List<string> compileErrors,
+            List<CompilerDiagnostic> diagnostics)
         {
             if (string.IsNullOrEmpty(output))
             {
@@ -667,11 +863,102 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
             for (var i = 0; i < lines.Length; i++)
             {
                 var line = lines[i].Trim();
-                if (line.IndexOf("error", StringComparison.OrdinalIgnoreCase) >= 0)
+                var diagnostic = ParseCompilerDiagnosticLine(line);
+                if (diagnostic == null)
+                {
+                    continue;
+                }
+
+                if (diagnostics != null)
+                {
+                    diagnostics.Add(diagnostic);
+                }
+
+                if (string.Equals(diagnostic.severity, "error", StringComparison.OrdinalIgnoreCase))
                 {
                     compileErrors.Add(line);
                 }
             }
+        }
+
+        internal static List<CompilerDiagnostic> ParseCompilerDiagnostics(string output)
+        {
+            var diagnostics = new List<CompilerDiagnostic>();
+            if (string.IsNullOrEmpty(output))
+            {
+                return diagnostics;
+            }
+
+            var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            for (var i = 0; i < lines.Length; i++)
+            {
+                var diagnostic = ParseCompilerDiagnosticLine(lines[i].Trim());
+                if (diagnostic != null)
+                {
+                    diagnostics.Add(diagnostic);
+                }
+            }
+
+            return diagnostics;
+        }
+
+        private static CompilerDiagnostic ParseCompilerDiagnosticLine(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return null;
+            }
+
+            var match = CompilerDiagnosticPattern.Match(line);
+            if (match.Success)
+            {
+                int lineNumber;
+                int columnNumber;
+                int.TryParse(match.Groups["line"].Value, out lineNumber);
+                int.TryParse(match.Groups["column"].Value, out columnNumber);
+                return new CompilerDiagnostic
+                {
+                    file = match.Groups["file"].Value,
+                    line = lineNumber,
+                    column = columnNumber,
+                    severity = match.Groups["severity"].Value.ToLowerInvariant(),
+                    code = match.Groups["code"].Value,
+                    message = match.Groups["message"].Value,
+                    raw = line
+                };
+            }
+
+            var severity = DetectCompilerSeverity(line);
+            if (severity == null)
+            {
+                return null;
+            }
+
+            return new CompilerDiagnostic
+            {
+                severity = severity,
+                message = line,
+                raw = line
+            };
+        }
+
+        private static string DetectCompilerSeverity(string line)
+        {
+            if (line.StartsWith("error ", StringComparison.OrdinalIgnoreCase)
+                || line.IndexOf(": error ", StringComparison.OrdinalIgnoreCase) >= 0
+                || line.IndexOf(" error CS", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "error";
+            }
+
+            if (line.StartsWith("warning ", StringComparison.OrdinalIgnoreCase)
+                || line.IndexOf(": warning ", StringComparison.OrdinalIgnoreCase) >= 0
+                || line.IndexOf(" warning CS", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "warning";
+            }
+
+            return null;
         }
 
         private static InvocationResult InvokeCompiledCode(string assemblyPath, string className)
@@ -708,15 +995,23 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
                 return;
             }
 
-            if (!_activeOperation.Step())
+            CommandResult result;
+            bool shouldRelease;
+            if (!_activeOperation.Step(out result, out shouldRelease))
             {
                 return;
             }
 
-            var result = _activeOperation.BuildResult();
-            _activeOperation = null;
-            EditorApplication.update -= OnAsyncUpdate;
-            WriteResultFile(result);
+            if (result != null)
+            {
+                WriteResultFile(result);
+            }
+
+            if (shouldRelease)
+            {
+                _activeOperation = null;
+                EditorApplication.update -= OnAsyncUpdate;
+            }
         }
 
         private static void WriteResultFile(CommandResult result)
@@ -744,11 +1039,13 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
             object returnValue,
             List<string> compileErrors,
             object exception,
-            bool? timedOut)
+            bool? timedOut,
+            string status = null)
         {
             return new
             {
                 enabled = true,
+                status = status,
                 source = session.Source.Kind,
                 sourcePath = session.Source.Path,
                 isAsync = session.Source.IsAsync,
@@ -758,6 +1055,7 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
                 returnValue = returnValue,
                 logs = session.Logs,
                 compileErrors = compileErrors ?? new List<string>(),
+                diagnostics = session.CompilerDiagnostics ?? new List<CompilerDiagnostic>(),
                 compilerOutput = session.CompilerOutput,
                 compiler = BuildCompilerInfo(session),
                 compilerProbePaths = session.CompilerProbePaths ?? new List<string>(),
@@ -1176,6 +1474,18 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
             public string stackTrace;
         }
 
+        [Serializable]
+        internal sealed class CompilerDiagnostic
+        {
+            public string file;
+            public int line;
+            public int column;
+            public string severity;
+            public string code;
+            public string message;
+            public string raw;
+        }
+
         private sealed class CodeExecutionSession
         {
             public CodeExecutionSession(string requestId, SourceText source, int timeoutMs, Stopwatch stopwatch)
@@ -1185,6 +1495,7 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
                 TimeoutMs = timeoutMs;
                 Stopwatch = stopwatch;
                 Logs = new List<CapturedLog>();
+                CompilerDiagnostics = new List<CompilerDiagnostic>();
             }
 
             public string RequestId;
@@ -1196,6 +1507,7 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
             public string CompilerOutput;
             public CompilerInvocation Compiler;
             public List<string> CompilerProbePaths;
+            public List<CompilerDiagnostic> CompilerDiagnostics;
 
             public void OnLogMessageReceived(string condition, string stackTrace, LogType type)
             {
@@ -1212,7 +1524,9 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
         {
             private readonly CodeExecutionSession _session;
             private readonly Task _task;
-            private CommandResult _result;
+            private bool _resultWritten;
+            private bool _timedOut;
+            private bool _cancelRequested;
 
             public CodeAsyncOperation(CodeExecutionSession session, Task task)
             {
@@ -1220,54 +1534,123 @@ $CLI code execute --code ""Debug.Log(\""hello\""); return 123;"" --allow-experim
                 _task = task;
             }
 
-            public bool Step()
+            public string RequestId => _session.RequestId;
+
+            public bool Step(out CommandResult result, out bool shouldRelease)
             {
+                result = null;
+                shouldRelease = false;
+
                 if (_task.IsCompleted)
                 {
                     Application.logMessageReceived -= _session.OnLogMessageReceived;
-                    _session.Stopwatch.Stop();
+                    if (_session.Stopwatch.IsRunning)
+                    {
+                        _session.Stopwatch.Stop();
+                    }
+
+                    shouldRelease = true;
+                    if (_resultWritten)
+                    {
+                        return true;
+                    }
 
                     if (_task.IsFaulted)
                     {
-                        _result = FailureWithData(
+                        result = FailureWithData(
                             _session.RequestId,
                             "Code execution failed.",
-                            BuildResultData(_session, null, new List<string>(), BuildExceptionInfo(_task.Exception), false));
+                            BuildResultData(_session, null, new List<string>(), BuildExceptionInfo(_task.Exception), false, "failed"));
                     }
                     else if (_task.IsCanceled)
                     {
-                        _result = FailureWithData(
+                        result = FailureWithData(
                             _session.RequestId,
                             "Code execution was canceled.",
-                            BuildResultData(_session, null, new List<string>(), null, false));
+                            BuildResultData(_session, null, new List<string>(), null, false, "canceled"));
                     }
                     else
                     {
-                        _result = CommandResult.Success(
+                        result = CommandResult.Success(
                             _session.RequestId,
-                            BuildResultData(_session, NormalizeReturnValue(GetTaskResult(_task)), new List<string>(), null, false));
+                            BuildResultData(_session, NormalizeReturnValue(GetTaskResult(_task)), new List<string>(), null, false, "completed"));
                     }
 
+                    _resultWritten = true;
                     return true;
                 }
 
-                if (_session.Stopwatch.ElapsedMilliseconds >= _session.TimeoutMs)
+                if (!_timedOut && _session.Stopwatch.ElapsedMilliseconds >= _session.TimeoutMs)
                 {
                     Application.logMessageReceived -= _session.OnLogMessageReceived;
-                    _session.Stopwatch.Stop();
-                    _result = FailureWithData(
+                    _timedOut = true;
+                    result = FailureWithData(
                         _session.RequestId,
                         "Code execution timed out after " + _session.TimeoutMs + "ms.",
-                        BuildResultData(_session, null, new List<string>(), null, true));
+                        BuildResultData(_session, null, new List<string>(), null, true, "timed_out_waiting_for_task"));
+                    _resultWritten = true;
                     return true;
                 }
 
                 return false;
             }
 
-            public CommandResult BuildResult()
+            public CommandResult CancelForOriginalRequest()
             {
-                return _result ?? CommandResult.Failure(_session.RequestId, "Code execution ended without a result.");
+                _cancelRequested = true;
+                Application.logMessageReceived -= _session.OnLogMessageReceived;
+                if (_session.Stopwatch.IsRunning)
+                {
+                    _session.Stopwatch.Stop();
+                }
+
+                if (_resultWritten)
+                {
+                    return null;
+                }
+
+                _resultWritten = true;
+                return FailureWithData(
+                    _session.RequestId,
+                    "Code execution was canceled.",
+                    BuildResultData(_session, null, new List<string>(), null, false, "canceled"));
+            }
+
+            public object BuildStatusData()
+            {
+                return new
+                {
+                    active = true,
+                    busy = true,
+                    status = GetStatusText(),
+                    requestId = _session.RequestId,
+                    source = _session.Source.Kind,
+                    sourcePath = _session.Source.Path,
+                    isAsync = _session.Source.IsAsync,
+                    elapsedMs = _session.Stopwatch.ElapsedMilliseconds,
+                    timeoutMs = _session.TimeoutMs,
+                    timedOut = _timedOut,
+                    resultWritten = _resultWritten,
+                    canCancel = true,
+                    hint = _timedOut
+                        ? "The CLI result has timed out, but the async Task has not completed yet. Wait for status to become idle or run `code cancel`."
+                        : "A code execution is running. Run `code status` again later or `code cancel` to release AIBridge waiting state."
+                };
+            }
+
+            private string GetStatusText()
+            {
+                if (_cancelRequested)
+                {
+                    return "cancel_requested";
+                }
+
+                if (_timedOut)
+                {
+                    return "timed_out_waiting_for_task";
+                }
+
+                return "running";
             }
 
             private static object GetTaskResult(Task task)

@@ -236,7 +236,9 @@ namespace AIBridge.Editor
                     {
                         safety = "Disabled by default. Enable AIBridge/Settings -> Basic -> Enable Code Execution and pass --allow-experimental true.",
                         file = new { type = "code", @params = new { action = "execute", file = ".aibridge/code/check.csx", allowExperimental = true, timeout = 5000 } },
-                        inline = new { type = "code", @params = new { action = "execute", code = "Debug.Log(\"hello\"); return 123;", allowExperimental = true, timeout = 5000 } }
+                        inline = new { type = "code", @params = new { action = "execute", code = "Debug.Log(\"hello\"); return 123;", allowExperimental = true, timeout = 5000 } },
+                        status = new { type = "code", @params = new { action = "status" } },
+                        cancel = new { type = "code", @params = new { action = "cancel", requestId = "optional-active-request-id" } }
                     };
 
                 default:

@@ -41,6 +41,9 @@
 7. 生成后返回结构化结果，至少包含创建/更新的 asset、prefab、scene、warning。
 8. 执行后必须运行 `compile unity`，并检查 `get_logs --logType Error`。
 9. Unity 2019 或老版本首次执行复杂脚本前，先用最小 `code execute` 做 smoke test，确认 Roslyn 编译器路径可用。
+10. `code execute` 不能并发；超时后先用 `code status` 确认 Unity 端异步任务是否仍在收尾，必要时用 `code cancel` 释放 AIBridge 等待状态。
+11. 编译器输出按 UTF-8 读取；中文诊断仍可能受 Roslyn/系统输出影响，优先查看结果里的结构化 `diagnostics`。
+12. 用户脚本末尾已有顶层 `return` 或 `throw` 时，包装器不会追加 fallback return，避免 `CS0162` 噪声。
 
 ## 推荐脚本模板
 
@@ -99,6 +102,8 @@ AIBridgeGeneration.RefreshAssets();
 ```powershell
 $CLI code execute --code "return 1;" --allow-experimental true --timeout 5000
 $CLI code execute --file ".aibridge/code/my_effect.csx" --allow-experimental true --timeout 30000
+$CLI code status
+$CLI code cancel
 $CLI compile unity --timeout 120000
 $CLI get_logs --logType Error --count 20
 ```

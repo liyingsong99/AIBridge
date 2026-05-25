@@ -15,7 +15,9 @@ namespace AIBridgeCLI.Commands
 
         public override string[] Actions => new[]
         {
-            "execute"
+            "execute",
+            "status",
+            "cancel"
         };
 
         protected override Dictionary<string, List<ParameterInfo>> ActionParameters => new Dictionary<string, List<ParameterInfo>>
@@ -26,6 +28,11 @@ namespace AIBridgeCLI.Commands
                 new ParameterInfo("code", "Short inline C# snippet", false),
                 new ParameterInfo("timeout", "Execution and CLI wait timeout in milliseconds", false, "5000"),
                 new ParameterInfo("allow-experimental", "Must be true for execution", true)
+            },
+            ["status"] = new List<ParameterInfo>(),
+            ["cancel"] = new List<ParameterInfo>
+            {
+                new ParameterInfo("requestId", "Only cancel if the active code execution matches this request id", false)
             }
         };
 
@@ -39,9 +46,12 @@ namespace AIBridgeCLI.Commands
                         + "Sources: provide exactly one of --file or --code. File paths must resolve under .aibridge/code and use .cs or .csx." + Environment.NewLine
                         + "Use file mode for complex one-off Editor C# tasks: generated assets, structured analysis, diagnostics, Runtime/Public API calls, or multi-step UnityEditor API orchestration." + Environment.NewLine
                         + "Prefer prefab patch dry-run for existing Prefab structure changes, inspector for properties, and gameobject/transform for simple scene object edits." + Environment.NewLine
+                        + "code execute is single-flight. After a timeout, use `code status` to inspect whether Unity is still finishing the async Task, or `code cancel` to release AIBridge waiting state." + Environment.NewLine
                         + "Examples:" + Environment.NewLine
                         + "  AIBridgeCLI code execute --file .aibridge/code/check.csx --allow-experimental true --timeout 5000" + Environment.NewLine
-                        + "  AIBridgeCLI code execute --code \"Debug.Log(\\\"hello\\\"); return 123;\" --allow-experimental true --timeout 5000" + Environment.NewLine;
+                        + "  AIBridgeCLI code execute --code \"Debug.Log(\\\"hello\\\"); return 123;\" --allow-experimental true --timeout 5000" + Environment.NewLine
+                        + "  AIBridgeCLI code status" + Environment.NewLine
+                        + "  AIBridgeCLI code cancel" + Environment.NewLine;
             }
 
             return help;
@@ -61,7 +71,7 @@ namespace AIBridgeCLI.Commands
                 request.@params["timeout"] = ParseValue(timeoutValue);
             }
 
-            ValidateCodeRules(action, request.@params);
+            ValidateCodeRules(GetActionName(action, request.@params), request.@params);
 
             if (request.@params.TryGetValue("file", out var fileValue) && fileValue != null)
             {
@@ -75,11 +85,27 @@ namespace AIBridgeCLI.Commands
         protected override void ValidateParameters(string action, Dictionary<string, object> @params)
         {
             ApplyAliases(@params);
-            ValidateCodeRules(string.IsNullOrEmpty(action) ? "execute" : action, @params);
+            ValidateCodeRules(GetActionName(string.IsNullOrEmpty(action) ? "execute" : action, @params), @params);
+        }
+
+        private static string GetActionName(string fallbackAction, Dictionary<string, object> @params)
+        {
+            if (@params != null && @params.TryGetValue("action", out var actionValue) && actionValue != null)
+            {
+                return actionValue.ToString();
+            }
+
+            return fallbackAction;
         }
 
         private static void ValidateCodeRules(string action, Dictionary<string, object> @params)
         {
+            if (string.Equals(action, "status", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(action, "cancel", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
             if (!string.Equals(action, "execute", StringComparison.OrdinalIgnoreCase))
             {
                 throw new ArgumentException($"Unknown action: {action}");
