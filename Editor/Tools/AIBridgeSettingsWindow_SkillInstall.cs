@@ -509,8 +509,10 @@ namespace AIBridge.Editor
 
             try
             {
-                // 拷贝文件
-                File.Copy(sourcePath, targetPath, true);
+                // 项目模板包含 Unity/C# 版本占位符，安装时必须渲染成当前项目的实际要求。
+                var content = File.ReadAllText(sourcePath, System.Text.Encoding.UTF8);
+                content = SkillInstaller.ApplyProjectVersionTokens(content);
+                File.WriteAllText(targetPath, content, System.Text.Encoding.UTF8);
                 Debug.Log(AIBridgeEditorText.T($"[AIBridge] AGENTS.md installed to: {targetPath}", $"[AIBridge] AGENTS.md 已安装到: {targetPath}"));
 
                 // AGENTS.md 是 Codex 规则入口，模板安装时只启用 Codex，避免新工程同时生成多个工具适配目录。

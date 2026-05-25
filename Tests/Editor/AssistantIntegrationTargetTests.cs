@@ -108,6 +108,19 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
+        public void ProjectAgentsTemplateVersionTokensAreRendered()
+        {
+            var template = RuleTemplateLoader.Load(_projectRoot, "Templates~/ProjectRules/AGENTS.zh-CN.md");
+
+            var rendered = SkillInstaller.ApplyProjectVersionTokens(template.Body);
+
+            Assert.IsFalse(rendered.Contains("{{UNITY_VERSION}}"));
+            Assert.IsFalse(rendered.Contains("{{CSHARP_LANGUAGE_VERSION}}"));
+            StringAssert.Contains(UnityEngine.Application.unityVersion, rendered);
+            StringAssert.Contains("C# ", rendered);
+        }
+
+        [Test]
         public void NonCodexSkillRootUsesToolDefaultDirectory()
         {
             Directory.CreateDirectory(Path.Combine(_projectRoot, ".agents"));

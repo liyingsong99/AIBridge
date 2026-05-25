@@ -581,7 +581,7 @@ namespace AIBridge.Editor
             };
         }
 
-        private static string ApplyProjectVersionTokens(string content)
+        internal static string ApplyProjectVersionTokens(string content)
         {
             return content
                 .Replace("{{UNITY_VERSION}}", GetCurrentUnityVersionText())
