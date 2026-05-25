@@ -198,7 +198,7 @@ namespace AIBridgeCLI
             }
 
             // Send command
-            var sender = CreateCommandSender(timeout, parsed);
+            var sender = CreateCommandSender(timeout, parsed, request);
 
             if (noWait)
             {
@@ -226,14 +226,15 @@ namespace AIBridgeCLI
             return result.success ? 0 : 1;
         }
 
-        static CommandSender CreateCommandSender(int timeout, ParsedArgs parsed)
+        static CommandSender CreateCommandSender(int timeout, ParsedArgs parsed, CommandRequest request = null)
         {
+            var dialogAutoClickPlan = BatchDialogAutoClickPlan.ExtractFromRequest(request);
             if (parsed != null && parsed.Options.TryGetValue("on-dialog", out var onDialog))
             {
-                return new CommandSender(timeout, onDialog);
+                return new CommandSender(timeout, onDialog, dialogAutoClickPlan: dialogAutoClickPlan);
             }
 
-            return new CommandSender(timeout);
+            return new CommandSender(timeout, dialogAutoClickPlan: dialogAutoClickPlan);
         }
 
     }

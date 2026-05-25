@@ -67,7 +67,7 @@ namespace AIBridgeCLI
 
             // Use longer timeout for multi commands
             var actualTimeout = timeout == DEFAULT_TIMEOUT ? MULTI_COMMAND_TIMEOUT : timeout;
-            var sender = CreateCommandSender(actualTimeout, parsed);
+            var sender = CreateCommandSender(actualTimeout, parsed, request);
 
             if (noWait)
             {
@@ -101,7 +101,7 @@ namespace AIBridgeCLI
 
 Each plain CLI line is written as `call <line>` in a temporary batch script.
 Native batch lines are allowed and kept as-is: call, delay, log, menu, wait_compile,
-wait_playmode, assert_log_empty, assert_object, set_var, print_var, and # comments.
+wait_playmode, assert_log_empty, assert_object, set_var, print_var, dialog click, and # comments.
 For complex quoting, JSON values, or long scripts, prefer --stdin.
 
 Usage:

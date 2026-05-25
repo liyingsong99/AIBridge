@@ -86,6 +86,8 @@ $CLI multi --cmd 'editor log --message Step1&gameobject create --name Cube --pri
 $CLI multi --stdin
 ```
 
+In batch/multi scripts, `dialog click ok | yes | Save` declares persistent dialog auto-click choices for subsequent steps; a later `dialog click` replaces the previous strategy. Keep the CLI invocation waiting, because `--no-wait` exits before it can continue clicking.
+
 ### `input` - Runtime Input Simulation
 
 Play Mode only. Use the generated command reference for all actions and parameters.

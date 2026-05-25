@@ -8,5 +8,3 @@
 ## 项目验证
 - Unity 编译只能使用 `$CLI compile unity`
 - `compile dotnet` 只能作为额外检查，不能作为 Unity 编译的替代或 fallback
-- 当前项目 Unity 版本：{{UNITY_VERSION}}
-- 当前项目 C# 语言版本要求：兼容 {{CSHARP_LANGUAGE_VERSION}}，禁止使用更高版本语法

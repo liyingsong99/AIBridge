@@ -119,6 +119,11 @@ namespace AIBridgeCLI.Commands
                 return true;
             }
 
+            if (BatchDialogAutoClickPlan.IsDialogClickDirectiveLine(line))
+            {
+                return true;
+            }
+
             var firstToken = GetFirstToken(line);
             return BatchNativeCommands.Contains(firstToken);
         }

@@ -122,6 +122,12 @@ $CLI scene load --scenePath "Assets/Scenes/Main.unity" --on-dialog discard
 
 On Windows, dialog buttons are detected through window APIs and support button mnemonics such as `&Don't Save`. On macOS, dialog inspection and clicking require Accessibility permission.
 
+Batch scripts can declare persistent dialog auto-click choices. After the declaration line runs, later batch steps auto-click the first matching logical choice or visible button text. A later `dialog click` declaration replaces the previous strategy. Keep the CLI invocation waiting; `--no-wait` cannot continue clicking after the process exits.
+
+```text
+dialog click ok | yes | Save
+```
+
 ### Assets And Scenes
 
 ```bash
@@ -185,6 +191,7 @@ Use `multi --stdin` for long scripts or JSON-heavy commands:
 ```powershell
 $script = @'
 editor log --message "Start"
+dialog click ok | yes | Save
 delay 1000
 get_logs --logType Error --count 1
 '@

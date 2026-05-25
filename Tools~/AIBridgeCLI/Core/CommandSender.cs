@@ -17,19 +17,25 @@ namespace AIBridgeCLI.Core
         private readonly int _timeout;
         private readonly int _pollInterval;
         private readonly string _onDialog;
+        private readonly BatchDialogAutoClickPlan _dialogAutoClickPlan;
 
         /// <summary>
         /// Create a new CommandSender
         /// </summary>
         /// <param name="timeout">Timeout in milliseconds (default: 5000)</param>
         /// <param name="pollInterval">Poll interval in milliseconds (default: 50)</param>
-        public CommandSender(int timeout = 5000, string onDialog = null, int pollInterval = 50)
+        public CommandSender(
+            int timeout = 5000,
+            string onDialog = null,
+            int pollInterval = 50,
+            BatchDialogAutoClickPlan dialogAutoClickPlan = null)
         {
             _commandsDir = PathHelper.GetCommandsDirectory();
             _resultsDir = PathHelper.GetResultsDirectory();
             _timeout = timeout;
             _onDialog = onDialog;
             _pollInterval = pollInterval;
+            _dialogAutoClickPlan = dialogAutoClickPlan;
 
             PathHelper.EnsureDirectoriesExist();
         }
@@ -44,16 +50,16 @@ namespace AIBridgeCLI.Core
                 request.id = PathHelper.GenerateCommandId();
             }
 
+            var autoPreflightDialogDiagnostic = HandleAutoDialogsUntilClear(request.id, isPreflight: true);
+            if (autoPreflightDialogDiagnostic != null)
+            {
+                return CreateDialogFailure(request.id, autoPreflightDialogDiagnostic);
+            }
+
             var preflightDialogDiagnostic = HandleBlockingDialog(isPreflight: true);
             if (preflightDialogDiagnostic != null)
             {
-                return new CommandResult
-                {
-                    id = request.id,
-                    success = false,
-                    error = preflightDialogDiagnostic.Error,
-                    data = preflightDialogDiagnostic.Data
-                };
+                return CreateDialogFailure(request.id, preflightDialogDiagnostic);
             }
 
             var commandFile = Path.Combine(_commandsDir, $"{request.id}.json");
@@ -65,6 +71,7 @@ namespace AIBridgeCLI.Core
 
             // Wait for result
             var startTime = DateTime.Now;
+            var lastAutoDialogPoll = DateTime.MinValue;
             while ((DateTime.Now - startTime).TotalMilliseconds < _timeout)
             {
                 if (File.Exists(resultFile))
@@ -90,6 +97,16 @@ namespace AIBridgeCLI.Core
                     }
                 }
 
+                if (ShouldPollAutoDialog(ref lastAutoDialogPoll))
+                {
+                    bool handled;
+                    var autoDialogDiagnostic = TryHandleAutoClickDialog(request.id, isPreflight: false, out handled);
+                    if (autoDialogDiagnostic != null)
+                    {
+                        return CreateDialogFailure(request.id, autoDialogDiagnostic);
+                    }
+                }
+
                 Thread.Sleep(_pollInterval);
             }
 
@@ -97,13 +114,7 @@ namespace AIBridgeCLI.Core
             var dialogDiagnostic = HandleBlockingDialog(isPreflight: false);
             if (dialogDiagnostic != null)
             {
-                return new CommandResult
-                {
-                    id = request.id,
-                    success = false,
-                    error = dialogDiagnostic.Error,
-                    data = dialogDiagnostic.Data
-                };
+                return CreateDialogFailure(request.id, dialogDiagnostic);
             }
 
             try { File.Delete(commandFile); } catch { }
@@ -134,13 +145,7 @@ namespace AIBridgeCLI.Core
             var preflightDialogDiagnostic = HandleBlockingDialog(isPreflight: true);
             if (preflightDialogDiagnostic != null)
             {
-                return new CommandResult
-                {
-                    id = request.id,
-                    success = false,
-                    error = preflightDialogDiagnostic.Error,
-                    data = preflightDialogDiagnostic.Data
-                };
+                return CreateDialogFailure(request.id, preflightDialogDiagnostic);
             }
 
             var commandFile = Path.Combine(_commandsDir, $"{request.id}.json");
@@ -255,6 +260,145 @@ namespace AIBridgeCLI.Core
                     dialog = status,
                     click = click
                 }
+            };
+        }
+
+        private BlockingDialogDiagnostic HandleAutoDialogsUntilClear(string requestId, bool isPreflight)
+        {
+            for (var i = 0; i < 10; i++)
+            {
+                bool handled;
+                var diagnostic = TryHandleAutoClickDialog(requestId, isPreflight, out handled);
+                if (diagnostic != null)
+                {
+                    return diagnostic;
+                }
+
+                if (!handled)
+                {
+                    return null;
+                }
+
+                Thread.Sleep(_pollInterval);
+            }
+
+            return null;
+        }
+
+        private bool ShouldPollAutoDialog(ref DateTime lastPollTime)
+        {
+            if (_dialogAutoClickPlan == null || !_dialogAutoClickPlan.HasRules)
+            {
+                return false;
+            }
+
+            var now = DateTime.Now;
+            if ((now - lastPollTime).TotalMilliseconds < 100)
+            {
+                return false;
+            }
+
+            lastPollTime = now;
+            return true;
+        }
+
+        private BlockingDialogDiagnostic TryHandleAutoClickDialog(string requestId, bool isPreflight, out bool handled)
+        {
+            handled = false;
+            if (_dialogAutoClickPlan == null || !_dialogAutoClickPlan.HasRules)
+            {
+                return null;
+            }
+
+            var targets = _dialogAutoClickPlan.GetActiveTargets(requestId, isPreflight);
+            if (targets == null || targets.Count == 0)
+            {
+                return null;
+            }
+
+            // batch 内的弹窗会阻塞 Unity 主线程，所以这里由 CLI 进程按脚本状态代为点击。
+            var status = DialogService.GetStatus();
+            if (status == null || !status.success || !DialogService.HasBlockingDialog(status))
+            {
+                return null;
+            }
+
+            if (status.dialogs != null)
+            {
+                foreach (var dialog in status.dialogs)
+                {
+                    foreach (var target in targets)
+                    {
+                        if (target == null || string.IsNullOrWhiteSpace(target.Value))
+                        {
+                            continue;
+                        }
+
+                        var button = DialogService.SelectButton(dialog, target.Value, target.Value);
+                        if (button == null)
+                        {
+                            continue;
+                        }
+
+                        var click = DialogService.Click(target.Value, target.Value, dialog.id);
+                        if (click.success)
+                        {
+                            handled = true;
+                            return null;
+                        }
+
+                        return new BlockingDialogDiagnostic
+                        {
+                            Error = "Unity is blocked by a modal dialog, and batch dialog auto-click failed.",
+                            Data = new
+                            {
+                                dialog = status,
+                                click = click,
+                                autoClickTargets = GetTargetValues(targets)
+                            }
+                        };
+                    }
+                }
+            }
+
+            return new BlockingDialogDiagnostic
+            {
+                Error = "Unity is blocked by a modal dialog, but no button matched the active batch dialog click rule.",
+                Data = new
+                {
+                    dialog = status,
+                    autoClickTargets = GetTargetValues(targets)
+                }
+            };
+        }
+
+        private static string[] GetTargetValues(System.Collections.Generic.List<DialogAutoClickTarget> targets)
+        {
+            if (targets == null)
+            {
+                return new string[0];
+            }
+
+            var values = new System.Collections.Generic.List<string>();
+            foreach (var target in targets)
+            {
+                if (target != null && !string.IsNullOrWhiteSpace(target.Value))
+                {
+                    values.Add(target.Value);
+                }
+            }
+
+            return values.ToArray();
+        }
+
+        private static CommandResult CreateDialogFailure(string requestId, BlockingDialogDiagnostic diagnostic)
+        {
+            return new CommandResult
+            {
+                id = requestId,
+                success = false,
+                error = diagnostic.Error,
+                data = diagnostic.Data
             };
         }
 

@@ -8,5 +8,3 @@
 ## Project Validation
 - Unity compilation must use `$CLI compile unity`.
 - `compile dotnet` is only an extra check and must not replace or fallback from Unity compilation.
-- Current Unity version: {{UNITY_VERSION}}
-- Current C# language requirement: compatible with {{CSHARP_LANGUAGE_VERSION}}; do not use newer syntax.

@@ -13,7 +13,7 @@ namespace AIBridge.Editor.Tests
             var scriptPath = Path.Combine(Path.GetTempPath(), "aibridge_batch_" + Path.GetRandomFileName() + ".txt");
             File.WriteAllText(
                 scriptPath,
-                "wait_compile 120000\nwait_playmode playing 30000\nassert_log_empty Error\nassert_object \"Canvas/Button\"\nset_var name value\nprint_var name\n");
+                "wait_compile 120000\nwait_playmode playing 30000\nassert_log_empty Error\nassert_object \"Canvas/Button\"\nset_var name value\nprint_var name\ndialog click ok | yes | Save\n");
 
             try
             {
@@ -25,6 +25,7 @@ namespace AIBridge.Editor.Tests
                 Assert.That(commands[3], Is.TypeOf<AssertObjectCommand>());
                 Assert.That(commands[4], Is.TypeOf<SetVarCommand>());
                 Assert.That(commands[5], Is.TypeOf<PrintVarCommand>());
+                Assert.That(commands[6], Is.TypeOf<DialogClickCommand>());
             }
             finally
             {
@@ -33,6 +34,18 @@ namespace AIBridge.Editor.Tests
                     File.Delete(scriptPath);
                 }
             }
+        }
+
+        [Test]
+        public void DialogClickCommand_ParsesAlternativeTargets()
+        {
+            DialogClickCommand command;
+            string error;
+
+            var parsed = DialogClickCommand.TryParse("dialog click ok | yes | \"Don't Save\"", out command, out error);
+
+            Assert.That(parsed, Is.True, error);
+            Assert.That(command.Targets, Is.EquivalentTo(new[] { "ok", "yes", "Don't Save" }));
         }
 
         [Test]

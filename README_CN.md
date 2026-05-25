@@ -122,6 +122,12 @@ $CLI scene load --scenePath "Assets/Scenes/Main.unity" --on-dialog discard
 
 Windows 上会通过窗口 API 检测弹窗按钮，并兼容 `&Don't Save` 这类按钮助记符。macOS 检查和点击弹窗需要 Accessibility 权限。
 
+batch 脚本可以声明持续生效的弹窗自动点击规则。声明行执行后，后续步骤遇到弹窗时会自动点击第一个匹配的逻辑选项或可见按钮文本；后续再次声明 `dialog click` 会覆盖前一个策略。调用端需要保持等待；使用 `--no-wait` 后 CLI 进程退出，无法继续代点后续弹窗：
+
+```text
+dialog click ok | yes | Save
+```
+
 ### 资源和场景
 
 ```bash
@@ -185,6 +191,7 @@ $CLI multi --cmd "editor log --message Step1&get_logs --logType Error --count 1"
 ```powershell
 $script = @'
 editor log --message "Start"
+dialog click ok | yes | Save
 delay 1000
 get_logs --logType Error --count 1
 '@

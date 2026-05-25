@@ -120,6 +120,19 @@ namespace AIBridge.Editor.ScriptExecution
                 return new PrintVarCommand(name);
             }
 
+            if (line.Equals("dialog", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("dialog ", StringComparison.OrdinalIgnoreCase))
+            {
+                DialogClickCommand command;
+                string error;
+                if (DialogClickCommand.TryParse(line, out command, out error))
+                {
+                    return command;
+                }
+
+                throw new Exception(string.IsNullOrEmpty(error) ? $"未知的 dialog 命令: {line}" : error);
+            }
+
             // delay [milliseconds]
             if (line.StartsWith("delay ", StringComparison.OrdinalIgnoreCase))
             {

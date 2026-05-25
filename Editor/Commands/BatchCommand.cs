@@ -38,6 +38,7 @@ assert_log_empty [Error|Warning|Log]      # 断言 Console 指定最低等级日
 assert_object ""Canvas/Button""           # 断言场景对象存在
 set_var name value                       # 设置脚本变量
 print_var name                           # 打印脚本变量
+dialog click ok | yes | Save             # 声明后续弹窗自动点击；再次声明会覆盖前一个策略
 # 注释                 # 行注释
 ```
 
@@ -57,6 +58,7 @@ $CLI batch from_file --file ""script.txt""
 ```
 # 自动化构建流程
 log ""开始构建""
+dialog click ok | yes | Save
 call compile unity
 wait_compile 120000
 call scene get_hierarchy --depth 2

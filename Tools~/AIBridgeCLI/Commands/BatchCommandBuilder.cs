@@ -60,8 +60,10 @@ namespace AIBridgeCLI.Commands
                     throw new ArgumentException("Script file must be .txt format");
                 }
 
+                var fullPath = Path.GetFullPath(filePath);
                 request.@params["action"] = "from_file";
-                request.@params["file"] = Path.GetFullPath(filePath);
+                request.@params["file"] = fullPath;
+                BatchDialogAutoClickPlan.AttachToRequest(request, File.ReadAllText(fullPath, Encoding.UTF8));
             }
             else if (action == "from_text")
             {
@@ -105,6 +107,7 @@ namespace AIBridgeCLI.Commands
                 request.@params["action"] = "from_text";
                 request.@params["scriptPath"] = Path.GetFullPath(scriptPath);
                 request.@params["keepFile"] = keepFile;
+                BatchDialogAutoClickPlan.AttachToRequest(request, scriptText);
             }
             else
             {
