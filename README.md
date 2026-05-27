@@ -7,35 +7,37 @@
 English | [中文](./README_CN.md)
 
 ![Unity 2019.4+](https://img.shields.io/badge/Unity-2019.4%2B-black?style=flat-square&logo=unity)
-![Package 1.4.0](https://img.shields.io/badge/Package-1.4.0-5b6cff?style=flat-square)
+![Package 1.4.1](https://img.shields.io/badge/Package-1.4.1-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
 > Design principles: **simple, easy to use, stable**.
 
-AIBridge is a Unity package that gives AI coding assistants a stable CLI bridge into Unity Editor and Player Runtime. It lets agents resolve real Unity asset paths, inspect scenes and prefabs, edit objects through Unity APIs, run Unity compilation, read Console logs, execute batch workflows, run tests, simulate UGUI/EventSystem runtime clicks and drags, connect to built Players for runtime state/log/screenshot checks, and capture screenshots or GIFs for visual verification.
+AIBridge is a Unity package that gives AI coding assistants a stable CLI bridge into Unity Editor and Player Runtime. It lets agents resolve real Unity asset paths, inspect scenes and prefabs, edit objects through Unity APIs, run Unity compilation, read Console logs, execute batch workflows, run tests, simulate UGUI/EventSystem runtime clicks and drags, connect to built Players for runtime state/log/screenshot checks, and, when HybridCLR is installed, compile temporary runtime C# in the Editor and execute it in the target Player. It also captures screenshots or GIFs for visual verification.
 
 The package is designed for AI-assisted Unity development where the assistant must validate changes inside the Editor, not only edit files.
 
 ## Why AIBridge
 
-Many Unity automation tools depend on a live socket or MCP session. AIBridge uses file-based command requests and result files, so work can survive script recompilation, domain reloads, editor focus changes, and restarts.
+Many Unity automation tools depend on a live socket or MCP session. AIBridge uses file-based command requests and result files for Editor automation, plus an HTTP Runtime control plane for Player debugging, so work can survive script recompilation, domain reloads, editor focus changes, restarts, and device/player sessions.
 
-| Dimension | AIBridge | Persistent bridge |
+| Dimension | AIBridge | MCP / persistent bridge |
 |---|---|---|
-| Connection model | File-based requests and results | Live session |
-| Compile-cycle resilience | Polls and resumes across reloads | Session can drop |
+| Connection model | File-based Editor requests plus HTTP Runtime targets | Live session or tool server |
+| Compile-cycle resilience | Polls and resumes across reloads; Runtime targets can be rediscovered | Session can drop |
 | Setup | Bundled CLI commands | Server/client wiring |
+| Multi-project recognition | Automatic and project-local: no extra mapping, registration, or manual project selection is needed when commands run from the Unity project root | Supported by some MCP tools, but usually depends on server/tool configuration or project selection state |
 | AI integration | CLI plus JSON output | Protocol-specific tools |
 | Traceability | Command files, results, logs, screenshots | Session state |
 | Extensibility | Unity commands plus CLI builders | Tool server extensions |
+| Mobile Player debugging | LAN/USB HTTP Runtime Bridge supports status, logs, screenshots, perf, handlers, and HybridCLR-gated `code runtime_execute` | Usually needs custom per-tool runtime server support |
 
 ## Core Capabilities
 
 - **Unity asset and object inspection**: find assets, read scene hierarchies, inspect components and SerializedProperty values, then write through Unity-aware APIs.
 - **Prefab and scene automation**: use simple Inspector field edits, Prefab Patch dry-runs, multi-step batch scripts, and task continuation across domain reloads.
 - **UGUI runtime input simulation**: in Play Mode, the `input` command can click, click screen coordinates, drag, and long-press EventSystem UI for button, inventory, and runtime panel checks.
-- **Player Runtime Bridge**: an `AIBridgeRuntime` component inside a built Player can expose runtime status, logs, screenshots, and project allowlisted handlers for Development Build debugging and QA smoke checks.
+- **Player Runtime Bridge**: an `AIBridgeRuntime` component inside a built Player can expose runtime status, logs, screenshots, performance samples, project allowlisted handlers, and HybridCLR-gated runtime code execution for Development Build and mobile debugging.
 - **Roslyn temporary C# execution**: controlled `code execute` runs `.aibridge/code/*.cs` or `.csx` temporary scripts inside Unity Editor for complex one-off asset generation, structured analysis, diagnostics, and Runtime/Public API calls. It is enabled by default in Settings and can be disabled there for untrusted projects or callers.
 - **Visual and log validation**: capture Game/Scene view screenshots or GIFs, read Console logs, run Unity compilation, and invoke tests so agents can close the loop on changes.
 
@@ -44,7 +46,7 @@ Many Unity automation tools depend on a live socket or MCP session. AIBridge use
 - Unity 2019.4 or later.
 - .NET 8.0 Runtime for the bundled CLI.
 - Unity Editor must be running for Unity-side commands such as `compile unity`, `asset`, `scene`, `inspector`, `prefab`, `input`, `screenshot`, `code`, and `get_logs`.
-- `runtime` commands require an `AIBridgeRuntime` component in the Player or Play Mode scene; Editor Play Mode can auto inject one when Runtime Bridge is enabled. Runtime Bridge is disabled by default in Release Builds unless the project explicitly enables it.
+- `runtime` commands require an `AIBridgeRuntime` component in the Player or Play Mode scene; Editor Play Mode can auto inject one when Runtime Bridge is enabled. `code runtime_execute` also requires the HybridCLR package and Runtime Code Execution to be enabled. Runtime Bridge is disabled by default in Release Builds unless the project explicitly enables it.
 
 ## Installation
 
@@ -270,11 +272,12 @@ $CLI runtime perf --target latest --duration 5s --interval 100ms
 $CLI runtime screenshot --target latest
 $CLI runtime handlers --target latest
 $CLI runtime call --target latest --action qa.open_panel --json "{\"panel\":\"Inventory\"}"
+$CLI code runtime_execute --file ".aibridge/code/player_probe.csx" --target latest --timeout 10000
 ```
 
-For remote phones, use LAN discovery first: `$CLI runtime discover`, then target the discovered id or URL. For Android USB debugging, run `adb reverse tcp:27182 tcp:27182`, then connect with `--transport http --url http://127.0.0.1:27182`; `adb` is not a standalone Runtime transport.
+For remote phones, use LAN discovery first: `$CLI runtime discover`, then target the discovered id or URL. For Android USB debugging, run `adb reverse tcp:27182 tcp:27182`, then connect with `--transport http --url http://127.0.0.1:27182`; `adb` is not a standalone Runtime transport. With HybridCLR installed, `code runtime_execute` can compile a temporary runtime-safe DLL in the Editor, send it to the phone or built Player over the Runtime Bridge, and invoke it inside the target through `Assembly.Load` plus reflection. This is useful for one-off mobile probes that are too specific for generic status/log/screenshot commands.
 
-Runtime Bridge only provides status, logs, screenshots, and explicitly registered handler calls. It does not include in-game LLMs, arbitrary C# execution, or unallowlisted reflection calls. Release Builds are off by default and should only enable this bridge after the project accepts the security boundary.
+Runtime Bridge does not include an in-game LLM and does not expose an unrestricted project-method reflection RPC. Its built-in surface includes status, logs, screenshots, perf, handlers, and the explicit `runtime.code.execute` action used by `code runtime_execute` when HybridCLR and Runtime Code Execution are enabled. Treat runtime code execution as a trusted debugging backdoor. Release Builds remain off by default and should only enable this bridge after the project accepts the security boundary, network exposure, auth token, and runtime-code options.
 
 </details>
 
@@ -285,14 +288,18 @@ Runtime Bridge only provides status, logs, screenshots, and explicitly registere
 
 `code execute` runs controlled temporary Editor C# for complex one-off tasks that declarative CLI commands cannot express cleanly, such as generated asset sets, structured diagnostics, reports, Runtime/Public API calls, or multi-step UnityEditor API orchestration. It is not a replacement for `compile unity` or `test run`.
 
-`Enable Code Execution` is enabled by default in `Tools > AIBridge Settings > Basic`; disable it there for untrusted projects or callers. File mode is limited to `.aibridge/code/*.cs` or `.aibridge/code/*.csx`, and complex scripts should use file mode. `code execute` is single-flight; after a timeout, use `code status` first and only use `code cancel` when you need to release AIBridge's waiting state.
+`Enable Code Execution` is enabled by default in `Tools > AIBridge Settings > Basic`; disable it there for untrusted projects or callers. This gate applies to both `code execute` and `code runtime_execute`. File mode is limited to `.aibridge/code/*.cs` or `.aibridge/code/*.csx`, and complex scripts should use file mode. Code execution is single-flight; after a timeout, use `code status` first and only use `code cancel` when you need to release AIBridge's waiting state.
 
 ```bash
 $CLI code execute --file ".aibridge/code/check.csx" --timeout 5000
 $CLI code execute --code "Debug.Log(\"hello\"); return 123;"
+$CLI code runtime_execute --file ".aibridge/code/player_probe.csx" --target latest --timeout 10000
+$CLI code runtime_execute --code "return Application.platform.ToString();" --transport http --url http://127.0.0.1:27182 --timeout 10000
 $CLI code status
 $CLI code cancel
 ```
+
+`code runtime_execute` is the Player-side companion to `code execute`. It compiles a runtime-safe DLL in the Editor, dispatches it through Runtime Bridge, and invokes it in the target Player. It is available only when `com.code-philosophy.hybridclr` is installed, the global code-execution gate is accepted, and Runtime Code Execution remains enabled in `AIBridge/Settings > Runtime`; use it only for trusted debugging builds and explicit mobile/player probes.
 
 </details>
 
@@ -304,7 +311,7 @@ $CLI code cancel
 4. Run `compile unity`.
 5. Read `get_logs --logType Error`.
 6. For runtime UI, enter Play Mode and verify interaction with `input`, logs, and screenshots or GIFs.
-7. Use `code execute` only when declarative commands cannot express a complex one-off Editor task.
+7. Use `code execute` or HybridCLR-backed `code runtime_execute` only when declarative commands cannot express a complex one-off Editor or Player debugging task.
 
 ## Repository Layout
 
