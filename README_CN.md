@@ -11,6 +11,8 @@
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
+> 设计准则：**简单、易用、稳定**。
+
 AIBridge 是一个 Unity Package，用于在 AI 编码助手和 Unity Editor / Player Runtime 之间建立稳定的 CLI 桥接。它可以让 AI 定位真实 Unity 资源路径、检查场景和 Prefab、通过 Unity API 编辑对象、执行 Unity 编译、读取 Console 日志、运行批处理流程、执行测试，模拟 UGUI/EventSystem 运行时点击与拖拽，连接已编译 Player 查询状态、日志和截图，并用截图或 GIF 做视觉验证。
 
 它面向 AI 真实参与 Unity 项目开发的场景，而不是只生成代码建议。
@@ -50,6 +52,12 @@ AIBridge 是一个 Unity Package，用于在 AI 编码助手和 Unity Editor / P
 
 ```text
 https://github.com/liyingsong99/AIBridge.git
+```
+
+UPM 备用 Git 地址：
+
+```text
+https://gitee.com/lijoujou99_admin/AIBridge.git
 ```
 
 也可以将本仓库克隆到 Unity 项目的 `Packages` 目录下。

@@ -11,6 +11,8 @@ English | [中文](./README_CN.md)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
+> Design principles: **simple, easy to use, stable**.
+
 AIBridge is a Unity package that gives AI coding assistants a stable CLI bridge into Unity Editor and Player Runtime. It lets agents resolve real Unity asset paths, inspect scenes and prefabs, edit objects through Unity APIs, run Unity compilation, read Console logs, execute batch workflows, run tests, simulate UGUI/EventSystem runtime clicks and drags, connect to built Players for runtime state/log/screenshot checks, and capture screenshots or GIFs for visual verification.
 
 The package is designed for AI-assisted Unity development where the assistant must validate changes inside the Editor, not only edit files.
@@ -50,6 +52,12 @@ Install with Unity Package Manager using this Git URL:
 
 ```text
 https://github.com/liyingsong99/AIBridge.git
+```
+
+Backup UPM Git URL:
+
+```text
+https://gitee.com/lijoujou99_admin/AIBridge.git
 ```
 
 You can also clone this repository into a Unity project's `Packages` folder.
