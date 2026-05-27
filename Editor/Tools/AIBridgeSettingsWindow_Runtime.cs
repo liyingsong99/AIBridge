@@ -9,6 +9,10 @@ namespace AIBridge.Editor
 {
     public partial class AIBridgeSettingsWindow
     {
+        private const float RuntimeBridgeSettingsLabelWidthRatio = 0.28f;
+        private const float RuntimeBridgeSettingsMinLabelWidth = 220f;
+        private const float RuntimeBridgeSettingsMaxLabelWidth = 280f;
+
         private void DrawRuntimeBridgeSettingsTab()
         {
             var settings = AIBridgeProjectSettings.Instance.RuntimeBridge;
@@ -19,6 +23,9 @@ namespace AIBridge.Editor
                     "Runtime Bridge lets AIBridgeCLI connect to AIBridgeRuntime inside Play Mode or a built Player. Release builds remain disabled unless explicitly allowed.",
                     "Runtime Bridge 允许 AIBridgeCLI 连接 Play Mode 或已编译 Player 内的 AIBridgeRuntime。Release Build 默认关闭，除非显式允许。"),
                 MessageType.Info);
+
+            var oldLabelWidth = EditorGUIUtility.labelWidth;
+            EditorGUIUtility.labelWidth = GetRuntimeBridgeSettingsLabelWidth();
 
             EditorGUI.BeginChangeCheck();
 
@@ -109,7 +116,10 @@ namespace AIBridge.Editor
                 AIBridgeEditorText.T("Max Result Bytes", "最大结果字节数"),
                 settings.MaxResultBytes);
 
-            if (EditorGUI.EndChangeCheck())
+            var settingsChanged = EditorGUI.EndChangeCheck();
+            EditorGUIUtility.labelWidth = oldLabelWidth;
+
+            if (settingsChanged)
             {
                 settings.MaxResultBytes = Math.Max(1024, settings.MaxResultBytes);
                 settings.HttpBindAddress = string.IsNullOrWhiteSpace(settings.HttpBindAddress)
@@ -279,6 +289,14 @@ namespace AIBridge.Editor
                 "runtime discover --udpPort " + Math.Max(1, settings.DiscoveryUdpPort),
                 includeRuntimeDirectory: false);
             Debug.Log(AIBridgeEditorText.T("[AIBridge] Runtime discovery CLI command copied.", "[AIBridge] Runtime 自动发现 CLI 命令已复制。"));
+        }
+
+        private float GetRuntimeBridgeSettingsLabelWidth()
+        {
+            return Mathf.Clamp(
+                position.width * RuntimeBridgeSettingsLabelWidthRatio,
+                RuntimeBridgeSettingsMinLabelWidth,
+                RuntimeBridgeSettingsMaxLabelWidth);
         }
     }
 }

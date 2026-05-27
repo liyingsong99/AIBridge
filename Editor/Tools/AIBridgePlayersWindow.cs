@@ -128,6 +128,11 @@ namespace AIBridge.Editor
             GUI.color = player.Stale ? new Color(1f, 0.72f, 0.25f) : new Color(0.55f, 1f, 0.55f);
             GUILayout.Label(statusText, EditorStyles.boldLabel, GUILayout.Width(72));
             GUI.color = previousColor;
+            if (player.Stale
+                && GUILayout.Button(AIBridgeEditorText.T("Delete Cache", "删除缓存"), GUILayout.Width(92)))
+            {
+                DeletePlayerCache(player);
+            }
             EditorGUILayout.EndHorizontal();
 
             DrawInfoLine(AIBridgeEditorText.T("Product", "产品"), JoinNonEmpty(player.ProductName, player.ApplicationVersion));
@@ -206,6 +211,11 @@ namespace AIBridge.Editor
             GUI.color = target.Stale ? new Color(1f, 0.72f, 0.25f) : new Color(0.55f, 1f, 0.55f);
             GUILayout.Label(statusText, EditorStyles.boldLabel, GUILayout.Width(96));
             GUI.color = previousColor;
+            if (target.Stale
+                && GUILayout.Button(AIBridgeEditorText.T("Delete Cache", "删除缓存"), GUILayout.Width(92)))
+            {
+                DeleteDiscoveredTargetCache(target);
+            }
             EditorGUILayout.EndHorizontal();
 
             DrawInfoLine(AIBridgeEditorText.T("URL", "URL"), target.Url);
@@ -285,6 +295,74 @@ namespace AIBridge.Editor
             CopyHttpCommand("runtime " + action
                 + " --transport http --url " + Quote(target.Url)
                 + " --target " + QuoteTarget(target.TargetId));
+        }
+
+        private void DeletePlayerCache(AIBridgeRuntimePlayerInfo player)
+        {
+            if (player == null)
+            {
+                return;
+            }
+
+            if (!EditorUtility.DisplayDialog(
+                AIBridgeEditorText.T("Delete Runtime Target Cache", "删除 Runtime 目标缓存"),
+                AIBridgeEditorText.T(
+                    $"Delete stale Runtime target cache for '{player.TargetId}'?",
+                    $"删除已过期 Runtime 目标 '{player.TargetId}' 的缓存？"),
+                AIBridgeEditorText.T("Delete", "删除"),
+                AIBridgeEditorText.T("Cancel", "取消")))
+            {
+                return;
+            }
+
+            if (!AIBridgeRuntimeBridgeEditorUtility.TryDeletePlayerCache(player, out var error))
+            {
+                EditorUtility.DisplayDialog(
+                    AIBridgeEditorText.T("Delete Failed", "删除失败"),
+                    error,
+                    AIBridgeEditorText.T("OK", "确定"));
+                return;
+            }
+
+            Debug.Log(AIBridgeEditorText.T(
+                "[AIBridge] Stale Runtime target cache deleted: " + player.TargetId,
+                "[AIBridge] 已删除过期 Runtime 目标缓存：" + player.TargetId));
+            RefreshPlayers();
+            GUIUtility.ExitGUI();
+        }
+
+        private void DeleteDiscoveredTargetCache(AIBridgeRuntimeDiscoveredTargetInfo target)
+        {
+            if (target == null)
+            {
+                return;
+            }
+
+            if (!EditorUtility.DisplayDialog(
+                AIBridgeEditorText.T("Delete Discovery Cache", "删除发现缓存"),
+                AIBridgeEditorText.T(
+                    $"Delete stale discovered target cache for '{target.TargetId}'?",
+                    $"删除已过期发现目标 '{target.TargetId}' 的缓存？"),
+                AIBridgeEditorText.T("Delete", "删除"),
+                AIBridgeEditorText.T("Cancel", "取消")))
+            {
+                return;
+            }
+
+            if (!AIBridgeRuntimeBridgeEditorUtility.TryDeleteDiscoveredTargetCache(target, out var error))
+            {
+                EditorUtility.DisplayDialog(
+                    AIBridgeEditorText.T("Delete Failed", "删除失败"),
+                    error,
+                    AIBridgeEditorText.T("OK", "确定"));
+                return;
+            }
+
+            Debug.Log(AIBridgeEditorText.T(
+                "[AIBridge] Stale Runtime discovery cache deleted: " + target.TargetId,
+                "[AIBridge] 已删除过期 Runtime 发现缓存：" + target.TargetId));
+            RefreshPlayers();
+            GUIUtility.ExitGUI();
         }
 
         private string FormatRefreshAge()

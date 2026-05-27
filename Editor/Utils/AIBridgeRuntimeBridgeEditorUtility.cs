@@ -240,6 +240,113 @@ namespace AIBridge.Editor
             return targets;
         }
 
+        public static bool TryDeletePlayerCache(AIBridgeRuntimePlayerInfo player, out string error)
+        {
+            error = null;
+            if (player == null)
+            {
+                error = "Runtime target is null.";
+                return false;
+            }
+
+            if (!player.Stale)
+            {
+                error = "Only stale Runtime target cache can be deleted.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(player.TargetPath))
+            {
+                error = "Runtime target path is empty.";
+                return false;
+            }
+
+            try
+            {
+                var targetPath = Path.GetFullPath(player.TargetPath);
+                var targetsRoot = Path.GetFullPath(Path.Combine(GetRuntimeDirectory(), TargetsDirectoryName));
+                // 删除缓存目录前限制在 targets 根目录内，避免误删外部路径。
+                if (!IsChildPath(targetPath, targetsRoot))
+                {
+                    error = "Runtime target path is outside the targets cache directory.";
+                    return false;
+                }
+
+                if (Directory.Exists(targetPath))
+                {
+                    Directory.Delete(targetPath, recursive: true);
+                }
+
+                return true;
+            }
+            catch (Exception exception)
+            {
+                error = exception.Message;
+                return false;
+            }
+        }
+
+        public static bool TryDeleteDiscoveredTargetCache(AIBridgeRuntimeDiscoveredTargetInfo target, out string error)
+        {
+            error = null;
+            if (target == null)
+            {
+                error = "Discovered target is null.";
+                return false;
+            }
+
+            if (!target.Stale)
+            {
+                error = "Only stale discovered target cache can be deleted.";
+                return false;
+            }
+
+            try
+            {
+                var cache = ReadDiscoveryCache();
+                var rawTargets = GetList(cache, "targets");
+                if (cache == null || rawTargets == null)
+                {
+                    return true;
+                }
+
+                var keptTargets = new List<object>();
+                var removed = false;
+                for (var i = 0; i < rawTargets.Count; i++)
+                {
+                    var item = rawTargets[i] as Dictionary<string, object>;
+                    if (item != null && IsSameDiscoveredTarget(item, target))
+                    {
+                        removed = true;
+                        continue;
+                    }
+
+                    keptTargets.Add(rawTargets[i]);
+                }
+
+                if (!removed)
+                {
+                    return true;
+                }
+
+                cache["targets"] = keptTargets;
+                var path = GetDiscoveryCachePath();
+                var directory = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                File.WriteAllText(path, AIBridgeJson.Serialize(cache, pretty: true));
+                return true;
+            }
+            catch (Exception exception)
+            {
+                error = exception.Message;
+                return false;
+            }
+        }
+
         public static string Quote(string value)
         {
             return "\"" + (value ?? string.Empty).Replace("\"", "\\\"") + "\"";
@@ -427,6 +534,32 @@ namespace AIBridge.Editor
                 .Where(action => !string.IsNullOrEmpty(action))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+        }
+
+        private static bool IsChildPath(string childPath, string parentPath)
+        {
+            if (string.IsNullOrEmpty(childPath) || string.IsNullOrEmpty(parentPath))
+            {
+                return false;
+            }
+
+            var normalizedParent = parentPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            return childPath.StartsWith(normalizedParent, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsSameDiscoveredTarget(Dictionary<string, object> item, AIBridgeRuntimeDiscoveredTargetInfo target)
+        {
+            var itemTargetId = GetString(item, "targetId") ?? "http";
+            var itemUrl = (GetString(item, "url") ?? string.Empty).TrimEnd('/');
+            return StringEquals(itemTargetId, target.TargetId)
+                && StringEquals(itemUrl, target.Url)
+                && StringEquals(GetString(item, "remoteEndPoint"), target.RemoteEndPoint);
+        }
+
+        private static bool StringEquals(string left, string right)
+        {
+            return string.Equals(left ?? string.Empty, right ?? string.Empty, StringComparison.OrdinalIgnoreCase);
         }
 
         private static int ComparePlayers(AIBridgeRuntimePlayerInfo left, AIBridgeRuntimePlayerInfo right)

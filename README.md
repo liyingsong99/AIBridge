@@ -7,7 +7,7 @@
 English | [中文](./README_CN.md)
 
 ![Unity 2019.4+](https://img.shields.io/badge/Unity-2019.4%2B-black?style=flat-square&logo=unity)
-![Package 1.3.6](https://img.shields.io/badge/Package-1.3.6-5b6cff?style=flat-square)
+![Package 1.4.0](https://img.shields.io/badge/Package-1.4.0-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
@@ -224,6 +224,11 @@ get_logs --logType Error --count 1
 $script | & "./.aibridge/cli/AIBridgeCLI.exe" multi --stdin
 ```
 
+</details>
+
+<details>
+<summary>Runtime Debugging</summary>
+
 ### Runtime Input And Visual Verification
 
 The `input` command automates UGUI/EventSystem interaction in Play Mode. It requires an active `EventSystem` in the current scene. You can target objects by hierarchy path or instance ID, click screen coordinates, drag between UI targets, or perform a long press.
@@ -251,7 +256,7 @@ Game view screenshots, GIF capture, and `input` commands require Play Mode. Scen
 
 The `runtime` command connects to `AIBridgeRuntime` inside a Player or Play Mode scene. HTTP transport is the default Runtime control plane at `http://127.0.0.1:27182`; file transport remains available for Editor/local compatibility. Built Players can still pass `--aibridge-runtime-dir <path>` and `--aibridge-target-id <id>` when using file transport.
 
-Use `AIBridge/Settings > Runtime` to configure default enablement, HTTP bind/port, LAN discovery, Editor Play Mode auto injection, Development Build auto injection, Release Build allowance, background running, TargetId, auth token, allowed actions, and log buffer size. The settings tab can write `.aibridge/runtime-config.json` so CLI commands can use project defaults. Use `AIBridge/Players` to inspect file heartbeat targets, local HTTP entry, LAN discovery cache, status, scene, platform, and common CLI commands. Editor Play Mode auto injection is enabled by default, so entering Play Mode creates a temporary hidden `AIBridgeRuntime` when the scene does not already contain one. `Keep Running In Background` is enabled by default for Editor Play Mode and Development Builds so heartbeat and runtime commands keep working after focus loss.
+Use `AIBridge/Settings > Runtime` to configure default enablement, HTTP bind/port, LAN discovery, Editor Play Mode auto injection, Development Build auto injection, Release Build allowance, background running, TargetId, auth token, allowed actions, and log buffer size. The settings tab can write `.aibridge/runtime-config.json` so CLI commands can use project defaults. Use `AIBridge/Players` to inspect file heartbeat targets, local HTTP entry, LAN discovery cache, status, scene, platform, and common CLI commands. Stale File/CACHE entries show a `Delete Cache` button so old target directories or discovery-cache entries can be cleaned without touching online Players. Editor Play Mode auto injection is enabled by default, so entering Play Mode creates a temporary hidden `AIBridgeRuntime` when the scene does not already contain one. `Keep Running In Background` is enabled by default for Editor Play Mode and Development Builds so heartbeat and runtime commands keep working after focus loss.
 
 ```bash
 $CLI runtime list_targets
@@ -268,6 +273,11 @@ $CLI runtime call --target latest --action qa.open_panel --json "{\"panel\":\"In
 For remote phones, use LAN discovery first: `$CLI runtime discover`, then target the discovered id or URL. For Android USB debugging, run `adb reverse tcp:27182 tcp:27182`, then connect with `--transport http --url http://127.0.0.1:27182`; `adb` is not a standalone Runtime transport.
 
 Runtime Bridge only provides status, logs, screenshots, and explicitly registered handler calls. It does not include in-game LLMs, arbitrary C# execution, or unallowlisted reflection calls. Release Builds are off by default and should only enable this bridge after the project accepts the security boundary.
+
+</details>
+
+<details>
+<summary>Advanced C# Execution</summary>
 
 ### Roslyn Temporary C# Execution
 
