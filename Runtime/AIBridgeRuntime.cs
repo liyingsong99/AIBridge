@@ -557,7 +557,7 @@ namespace AIBridge.Runtime
                 transport = _httpTransportServer != null && _httpTransportServer.IsRunning ? "http" : "file",
                 capabilities = BuildCapabilitiesData(),
                 httpUrl = BuildLocalHttpUrl(),
-                httpPort = runtimeSettings == null ? 0 : runtimeSettings.httpPort,
+                httpPort = GetActualHttpPort(),
                 httpBindAddress = runtimeSettings == null ? null : runtimeSettings.httpBindAddress,
                 lanDiscoveryUdpPort = runtimeSettings == null ? 0 : runtimeSettings.discoveryUdpPort,
                 runtimeVersion = RuntimeVersion,
@@ -973,7 +973,7 @@ namespace AIBridge.Runtime
                 ["transport"] = "file",
                 ["capabilities"] = BuildCapabilitiesData(),
                 ["httpUrl"] = BuildLocalHttpUrl(),
-                ["httpPort"] = runtimeSettings == null ? 0 : runtimeSettings.httpPort,
+                ["httpPort"] = GetActualHttpPort(),
                 ["httpBindAddress"] = runtimeSettings == null ? null : runtimeSettings.httpBindAddress,
                 ["lanDiscoveryUdpPort"] = runtimeSettings == null ? 0 : runtimeSettings.discoveryUdpPort,
                 ["runtimeVersion"] = RuntimeVersion,
@@ -1240,6 +1240,9 @@ namespace AIBridge.Runtime
                 ["targetId"] = _targetId,
                 ["protocolVersion"] = 2,
                 ["transport"] = "http",
+                ["httpUrl"] = BuildLocalHttpUrl(),
+                ["httpPort"] = GetActualHttpPort(),
+                ["httpBindAddress"] = runtimeSettings == null ? null : runtimeSettings.httpBindAddress,
                 ["runtimeVersion"] = RuntimeVersion,
                 ["uptimeSeconds"] = (DateTime.UtcNow - _startedAtUtc).TotalSeconds,
                 ["lastHeartbeatUtc"] = DateTime.UtcNow.ToString("o"),
@@ -1324,14 +1327,17 @@ namespace AIBridge.Runtime
                 return null;
             }
 
-            var port = runtimeSettings == null || runtimeSettings.httpPort <= 0 ? 27182 : runtimeSettings.httpPort;
-            var bind = runtimeSettings == null ? null : runtimeSettings.httpBindAddress;
-            if (string.IsNullOrWhiteSpace(bind) || bind == "*" || bind == "+" || bind == "0.0.0.0")
+            return _httpTransportServer.Url;
+        }
+
+        internal int GetActualHttpPort()
+        {
+            if (_httpTransportServer != null && _httpTransportServer.IsRunning)
             {
-                bind = "127.0.0.1";
+                return _httpTransportServer.Port;
             }
 
-            return "http://" + bind.Trim() + ":" + port.ToString(CultureInfo.InvariantCulture);
+            return runtimeSettings == null ? 0 : runtimeSettings.httpPort;
         }
 
         private void StartHttpTransportIfNeeded()

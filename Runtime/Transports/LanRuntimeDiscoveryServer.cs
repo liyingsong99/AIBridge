@@ -149,7 +149,12 @@ namespace AIBridge.Runtime.Transports
         private Dictionary<string, object> BuildResponse(IPEndPoint remote, string requestId)
         {
             var localAddress = ResolveReachableAddress(remote);
-            var httpPort = _settings == null || _settings.httpPort <= 0 ? 27182 : _settings.httpPort;
+            var httpPort = _runtime == null ? 0 : _runtime.GetActualHttpPort();
+            if (httpPort <= 0)
+            {
+                httpPort = _settings == null || _settings.httpPort <= 0 ? 27182 : _settings.httpPort;
+            }
+
             return new Dictionary<string, object>
             {
                 ["protocol"] = DiscoveryProtocol,

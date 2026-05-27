@@ -39,11 +39,12 @@ namespace AIBridgeCLI.Core
             var config = RuntimeConfig.Load();
             var resolvedTransport = ResolveTransportName(transport, config);
             var resolvedTarget = string.IsNullOrWhiteSpace(target) ? (string.IsNullOrWhiteSpace(config.target) ? DefaultTarget : config.target) : target;
-            var httpUrl = ResolveHttpUrl(commandLineOptions, config, resolvedTarget);
+            var runtimeDirectory = RuntimePathHelper.ResolveRuntimeDirectory(runtimeDirectoryOverride);
+            var httpUrl = ResolveHttpUrl(commandLineOptions, config, resolvedTarget, runtimeDirectory);
             return new RuntimeTransportOptions
             {
                 Kind = ParseTransportKind(resolvedTransport),
-                RuntimeDirectory = RuntimePathHelper.ResolveRuntimeDirectory(runtimeDirectoryOverride),
+                RuntimeDirectory = runtimeDirectory,
                 Target = resolvedTarget,
                 TimeoutMs = timeoutMs,
                 PollIntervalMs = pollIntervalMs,
@@ -88,12 +89,18 @@ namespace AIBridgeCLI.Core
             throw new ArgumentException($"Unsupported runtime transport: {transport}. Supported transports: file, http.");
         }
 
-        private static string ResolveHttpUrl(System.Collections.Generic.Dictionary<string, string> options, RuntimeConfig config, string target)
+        private static string ResolveHttpUrl(System.Collections.Generic.Dictionary<string, string> options, RuntimeConfig config, string target, string runtimeDirectory)
         {
             var explicitUrl = ResolveOption(options, "url", HttpUrlEnvironment, null);
             if (!string.IsNullOrWhiteSpace(explicitUrl))
             {
                 return explicitUrl;
+            }
+
+            // 当前工程 fresh heartbeat 是 Runtime 实际端口的权威来源，优先于可能过期的配置文件。
+            if (RuntimePathHelper.TryResolveFreshHttpUrl(runtimeDirectory, target, out var heartbeatUrl))
+            {
+                return heartbeatUrl;
             }
 
             if (!string.IsNullOrWhiteSpace(config?.url))

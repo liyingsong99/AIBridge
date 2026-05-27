@@ -99,7 +99,7 @@ namespace AIBridge.Runtime
             runtime.runtimeSettings.discoveryUdpPort = DefaultDiscoveryUdpPort;
             gameObject.SetActive(true);
 
-            Debug.Log("[AIBridgeRuntimeBootstrap] AIBridgeRuntime created by bootstrap. transport=" + TransportName + ". CLI: AIBridgeCLI runtime status --transport http --url http://127.0.0.1:" + DefaultHttpPort + " --target latest; LAN: AIBridgeCLI runtime discover --udpPort " + DefaultDiscoveryUdpPort + " / 已通过 bootstrap 创建 AIBridgeRuntime。");
+            Debug.Log("[AIBridgeRuntimeBootstrap] AIBridgeRuntime created by bootstrap. transport=" + TransportName + ". Default HTTP port=" + DefaultHttpPort + " (auto-increments if occupied). LAN: AIBridgeCLI runtime discover --udpPort " + DefaultDiscoveryUdpPort + " / 已通过 bootstrap 创建 AIBridgeRuntime。");
         }
 
         private static AIBridgeRuntime FindExistingRuntime()

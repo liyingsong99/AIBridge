@@ -100,7 +100,7 @@ $CLI input drag --path "Canvas/Item" --toPath "Canvas/Slot" --frames 12
 
 ### `runtime` - Built Player Runtime Bridge
 
-Requires an `AIBridgeRuntime` component in the running Player or Play Mode scene. HTTP is the default Runtime transport; file transport remains available for Editor/local compatibility. Configure defaults in `AIBridge/Settings > Runtime`, and inspect live targets plus discovery cache in `AIBridge/Players`.
+Requires an `AIBridgeRuntime` component in the running Player or Play Mode scene. HTTP is the default Runtime transport; if the default HTTP port is occupied, Runtime auto-increments and writes the actual URL to the live heartbeat. File transport remains available for Editor/local compatibility. Configure defaults in `AIBridge/Settings > Runtime`, and inspect live targets plus discovery cache in `AIBridge/Players`.
 
 ```bash
 $CLI runtime list_targets

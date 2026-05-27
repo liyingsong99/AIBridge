@@ -110,6 +110,25 @@ namespace AIBridgeCLI.Core
             return targets.FirstOrDefault(t => string.Equals(t.targetId, target, StringComparison.OrdinalIgnoreCase));
         }
 
+        public static bool TryResolveFreshHttpUrl(string runtimeDirectory, string target, out string url)
+        {
+            url = null;
+            var targetInfo = ResolveTarget(runtimeDirectory, target);
+            if (targetInfo == null || targetInfo.stale)
+            {
+                return false;
+            }
+
+            var heartbeatUrl = targetInfo.heartbeat?["httpUrl"]?.Value<string>();
+            if (string.IsNullOrWhiteSpace(heartbeatUrl))
+            {
+                return false;
+            }
+
+            url = heartbeatUrl.Trim().TrimEnd('/');
+            return true;
+        }
+
         public static string GetRuntimeAction(CommandRequest request)
         {
             if (request == null || request.@params == null)

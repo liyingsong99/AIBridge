@@ -14,6 +14,8 @@ namespace AIBridge.Runtime.Transports
     internal sealed class HttpRuntimeTransportServer : IDisposable
     {
         private const int DefaultPort = 27182;
+        private const int MaxPort = 65535;
+        private const int PortRetryCount = 50;
         private const int DefaultCommandTimeoutMs = 30000;
         private const int MinCommandTimeoutMs = 100;
         private const int MaxCommandTimeoutMs = 300000;
@@ -37,6 +39,8 @@ namespace AIBridge.Runtime.Transports
 
         public bool IsRunning => _running;
 
+        public int Port { get; private set; }
+
         public string Url { get; private set; }
 
         public void Start()
@@ -47,11 +51,10 @@ namespace AIBridge.Runtime.Transports
             }
 
             var bindAddress = ResolveBindAddress();
-            var port = ResolvePort();
-            _listener = new TcpListener(bindAddress, port);
-            _listener.Start();
+            var requestedPort = ResolvePort();
+            BindListener(bindAddress, requestedPort);
             _running = true;
-            Url = "http://" + ResolveDisplayHost(bindAddress) + ":" + port.ToString(CultureInfo.InvariantCulture);
+            Url = "http://" + ResolveDisplayHost(bindAddress) + ":" + Port.ToString(CultureInfo.InvariantCulture);
 
             _listenThread = new Thread(ListenLoop)
             {
@@ -60,6 +63,62 @@ namespace AIBridge.Runtime.Transports
             };
             _listenThread.Start();
             Debug.Log("[AIBridgeRuntime] HTTP transport listening: " + Url);
+        }
+
+        private void BindListener(IPAddress bindAddress, int requestedPort)
+        {
+            requestedPort = Math.Max(1, Math.Min(MaxPort, requestedPort));
+            Exception lastError = null;
+            var maxCandidate = Math.Min(MaxPort, requestedPort + PortRetryCount - 1);
+            // 直接尝试绑定并在端口占用时递增，避免先检测端口再绑定产生竞态。
+            for (var port = requestedPort; port <= maxCandidate; port++)
+            {
+                TcpListener listener = null;
+                try
+                {
+                    listener = new TcpListener(bindAddress, port);
+                    listener.Start();
+                    _listener = listener;
+                    Port = port;
+                    if (port != requestedPort)
+                    {
+                        Debug.LogWarning("[AIBridgeRuntime] HTTP port " + requestedPort.ToString(CultureInfo.InvariantCulture)
+                            + " is unavailable; using " + port.ToString(CultureInfo.InvariantCulture) + ".");
+                    }
+
+                    return;
+                }
+                catch (SocketException ex)
+                {
+                    lastError = ex;
+                    if (listener != null)
+                    {
+                        try { listener.Stop(); } catch { }
+                    }
+
+                    if (!IsAddressAlreadyInUse(ex))
+                    {
+                        throw;
+                    }
+                }
+                catch
+                {
+                    if (listener != null)
+                    {
+                        try { listener.Stop(); } catch { }
+                    }
+
+                    throw;
+                }
+            }
+
+            throw new InvalidOperationException(
+                "No available AIBridge Runtime HTTP port from "
+                + requestedPort.ToString(CultureInfo.InvariantCulture)
+                + " to "
+                + maxCandidate.ToString(CultureInfo.InvariantCulture)
+                + ".",
+                lastError);
         }
 
         public void Dispose()
@@ -358,10 +417,15 @@ namespace AIBridge.Runtime.Transports
         {
             if (bindAddress == null || bindAddress.Equals(IPAddress.Any))
             {
-                return "0.0.0.0";
+                return "127.0.0.1";
             }
 
             return bindAddress.ToString();
+        }
+
+        private static bool IsAddressAlreadyInUse(SocketException ex)
+        {
+            return ex != null && ex.SocketErrorCode == SocketError.AddressAlreadyInUse;
         }
 
         private static HttpRequestData ReadRequest(NetworkStream stream)

@@ -16,6 +16,7 @@ namespace AIBridgeCLI.Core
         public const int DefaultDiscoveryPort = 27183;
         public const int DefaultDiscoveryTimeoutMs = 1500;
         public const int DefaultCacheSeconds = 30;
+        private const int DefaultHttpPort = 27182;
         private const string DiscoveryProtocol = "aibridge-runtime-discovery";
         private const string DiscoveryCacheFileName = "discovery-cache.json";
 
@@ -156,13 +157,13 @@ namespace AIBridgeCLI.Core
 
                 if (string.IsNullOrWhiteSpace(url))
                 {
-                    url = "http://" + remote.Address + ":27182";
+                    url = BuildRemoteUrl(remote, DefaultHttpPort);
                 }
 
                 if (url.IndexOf("127.0.0.1", StringComparison.OrdinalIgnoreCase) >= 0
                     || url.IndexOf("localhost", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    url = "http://" + remote.Address + ":27182";
+                    url = BuildRemoteUrl(remote, ReadPort(url, DefaultHttpPort));
                 }
 
                 return new RuntimeDiscoveryTarget
@@ -185,6 +186,32 @@ namespace AIBridgeCLI.Core
             {
                 return null;
             }
+        }
+
+        private static string BuildRemoteUrl(IPEndPoint remote, int port)
+        {
+            var address = remote == null || remote.Address == null ? IPAddress.Loopback : remote.Address;
+            return "http://" + FormatHost(address) + ":" + port.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private static string FormatHost(IPAddress address)
+        {
+            if (address != null && address.AddressFamily == AddressFamily.InterNetworkV6)
+            {
+                return "[" + address + "]";
+            }
+
+            return address == null ? IPAddress.Loopback.ToString() : address.ToString();
+        }
+
+        private static int ReadPort(string url, int defaultPort)
+        {
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Port > 0)
+            {
+                return uri.Port;
+            }
+
+            return defaultPort;
         }
 
         private static RuntimeDiscoveryTarget ParseCachedTarget(JObject json)
