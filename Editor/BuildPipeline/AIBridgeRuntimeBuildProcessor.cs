@@ -73,6 +73,10 @@ namespace AIBridge.Editor
                 defines,
                 ReleaseBuildAllowedDefine,
                 settings.EnableRuntimeBridge && settings.AllowRuntimeBridgeInReleaseBuild);
+            changed |= SetDefine(
+                defines,
+                AIBridgeHybridClrUtility.HybridClrAvailableDefine,
+                AIBridgeHybridClrUtility.IsHybridClrInstalled());
 
             if (!changed)
             {

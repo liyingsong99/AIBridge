@@ -65,6 +65,7 @@ namespace AIBridge.Editor
             public string TargetId = DefaultRuntimeBridgeTargetId;
             public string AuthToken = string.Empty;
             public string AllowedActions = string.Empty;
+            public bool EnableRuntimeCodeExecution = DefaultRuntimeBridgeCodeExecutionEnabled;
             public float HeartbeatIntervalSeconds = DefaultRuntimeBridgeHeartbeatIntervalSeconds;
             public int LogBufferSize = DefaultRuntimeBridgeLogBufferSize;
             public int MaxResultBytes = DefaultRuntimeBridgeMaxResultBytes;
@@ -82,7 +83,7 @@ namespace AIBridge.Editor
             }
         }
 
-        public const int CurrentDataVersion = 13;
+        public const int CurrentDataVersion = 14;
         public const string DefaultEditorLanguage = "English";
         public const string LegacySharedSkillRootDirectory = ".skills";
         public const string DefaultSkillRootDirectory = "";
@@ -102,6 +103,7 @@ namespace AIBridge.Editor
         public const bool DefaultRuntimeBridgeAllowInReleaseBuild = false;
         public const string DefaultRuntimeBridgeExchangeDirectory = "";
         public const string DefaultRuntimeBridgeTargetId = "";
+        public const bool DefaultRuntimeBridgeCodeExecutionEnabled = true;
         public const float DefaultRuntimeBridgeHeartbeatIntervalSeconds = 1f;
         public const int DefaultRuntimeBridgeLogBufferSize = 500;
         public const int DefaultRuntimeBridgeMaxResultBytes = 1048576;
@@ -624,6 +626,11 @@ namespace AIBridge.Editor
                 runtimeBridge.HttpPort = DefaultRuntimeBridgeHttpPort;
                 runtimeBridge.EnableLanDiscovery = DefaultRuntimeBridgeEnableLanDiscovery;
                 runtimeBridge.DiscoveryUdpPort = DefaultRuntimeBridgeDiscoveryUdpPort;
+            }
+
+            if (dataVersion < 14)
+            {
+                runtimeBridge.EnableRuntimeCodeExecution = DefaultRuntimeBridgeCodeExecutionEnabled;
             }
 
             if (dataVersion != CurrentDataVersion)

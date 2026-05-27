@@ -16,6 +16,7 @@ namespace AIBridgeCLI.Commands
         public override string[] Actions => new[]
         {
             "execute",
+            "runtime_execute",
             "status",
             "cancel"
         };
@@ -27,6 +28,17 @@ namespace AIBridgeCLI.Commands
                 new ParameterInfo("file", "Path under .aibridge/code to a .cs or .csx file", false),
                 new ParameterInfo("code", "Short inline C# snippet", false),
                 new ParameterInfo("timeout", "Execution and CLI wait timeout in milliseconds", false, "5000")
+            },
+            ["runtime_execute"] = new List<ParameterInfo>
+            {
+                new ParameterInfo("file", "Path under .aibridge/code to a .cs or .csx file", false),
+                new ParameterInfo("code", "Short inline C# snippet", false),
+                new ParameterInfo("target", "Runtime target id or latest", false, "latest"),
+                new ParameterInfo("runtime-dir", "Runtime exchange directory", false),
+                new ParameterInfo("transport", "Runtime transport: http, file", false, "http"),
+                new ParameterInfo("url", "HTTP runtime base URL, e.g. http://host:27182", false),
+                new ParameterInfo("token", "Optional runtime auth token", false),
+                new ParameterInfo("timeout", "Compile, dispatch, and CLI wait timeout in milliseconds", false, "5000")
             },
             ["status"] = new List<ParameterInfo>(),
             ["cancel"] = new List<ParameterInfo>
@@ -51,6 +63,16 @@ namespace AIBridgeCLI.Commands
                         + "  AIBridgeCLI code execute --code \"Debug.Log(\\\"hello\\\"); return 123;\" --timeout 5000" + Environment.NewLine
                         + "  AIBridgeCLI code status" + Environment.NewLine
                         + "  AIBridgeCLI code cancel" + Environment.NewLine;
+            }
+            else if (string.Equals(action, "runtime_execute", StringComparison.OrdinalIgnoreCase))
+            {
+                help += Environment.NewLine
+                        + "Compiles the source in Unity Editor with runtime-safe references, sends the DLL to an AIBridgeRuntime target, then invokes it via Assembly.Load and reflection." + Environment.NewLine
+                        + "Auto-enables only when com.code-philosophy.hybridclr is installed; otherwise Unity rejects the command before dispatch." + Environment.NewLine
+                        + "Sources: provide exactly one of --file or --code. File paths must resolve under .aibridge/code and use .cs or .csx." + Environment.NewLine
+                        + "Examples:" + Environment.NewLine
+                        + "  AIBridgeCLI code runtime_execute --file .aibridge/code/player_probe.csx --transport http --url http://127.0.0.1:27182 --timeout 10000" + Environment.NewLine
+                        + "  AIBridgeCLI code runtime_execute --code \"return Application.platform.ToString();\" --target latest --timeout 10000" + Environment.NewLine;
             }
 
             return help;
@@ -105,7 +127,8 @@ namespace AIBridgeCLI.Commands
                 return;
             }
 
-            if (!string.Equals(action, "execute", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(action, "execute", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(action, "runtime_execute", StringComparison.OrdinalIgnoreCase))
             {
                 throw new ArgumentException($"Unknown action: {action}");
             }

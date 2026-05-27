@@ -45,6 +45,31 @@ namespace AIBridge.Editor
                 AIBridgeEditorText.T("Keep Running In Background", "后台保持运行"),
                 settings.KeepRunningInBackground);
 
+            var hybridClrInstalled = AIBridgeHybridClrUtility.IsHybridClrInstalled();
+            using (new EditorGUI.DisabledScope(!hybridClrInstalled))
+            {
+                settings.EnableRuntimeCodeExecution = EditorGUILayout.Toggle(
+                    AIBridgeEditorText.T("Enable Runtime Code Execution", "启用 Runtime 代码执行"),
+                    settings.EnableRuntimeCodeExecution);
+            }
+
+            if (!hybridClrInstalled)
+            {
+                EditorGUILayout.HelpBox(
+                    AIBridgeEditorText.T(
+                        "HybridCLR package is not installed. Runtime code execution will stay disabled to avoid IL2CPP Assembly.Load failures.",
+                        "当前未安装 HybridCLR 包。Runtime 代码执行会保持关闭，避免 IL2CPP 下 Assembly.Load 失败。"),
+                    MessageType.Info);
+            }
+            else if (settings.EnableRuntimeCodeExecution)
+            {
+                EditorGUILayout.HelpBox(
+                    AIBridgeEditorText.T(
+                        "Runtime code execution loads Roslyn-compiled DLLs in Player by Assembly.Load. Keep it for trusted debugging builds only.",
+                        "Runtime 代码执行会在 Player 中通过 Assembly.Load 加载 Roslyn 编译的 DLL。仅用于可信调试构建。"),
+                    MessageType.Warning);
+            }
+
             settings.EnableHttpTransport = EditorGUILayout.Toggle(
                 AIBridgeEditorText.T("Enable HTTP Transport", "启用 HTTP Transport"),
                 settings.EnableHttpTransport);

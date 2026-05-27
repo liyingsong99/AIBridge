@@ -19,7 +19,7 @@ namespace AIBridge.Runtime.Transports
         private const int DefaultCommandTimeoutMs = 30000;
         private const int MinCommandTimeoutMs = 100;
         private const int MaxCommandTimeoutMs = 300000;
-        private const int MaxRequestBytes = 1024 * 1024;
+        private const int MaxRequestBytes = 16 * 1024 * 1024;
         private const string HealthPath = "/aibridge/health";
         private const string CommandsPath = "/aibridge/commands";
         private const string ResultsPathPrefix = "/aibridge/results/";

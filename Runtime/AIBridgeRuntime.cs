@@ -3,9 +3,12 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using AIBridge.Internal.Json;
 using AIBridge.Runtime.Diagnostics;
 using AIBridge.Runtime.Transports;
@@ -31,6 +34,10 @@ namespace AIBridge.Runtime
         private const string ResultsDirectoryName = "results";
         private const string ScreenshotsDirectoryName = "screenshots";
         private const string HeartbeatFileName = "heartbeat.json";
+        private const string RuntimeCodeExecuteAction = "runtime.code.execute";
+        private const int MaxRuntimeCodeAssemblyBytes = 16 * 1024 * 1024;
+        private const int MaxRuntimeCodeResultDepth = 8;
+        private const int MaxRuntimeCodeCollectionItems = 512;
 
         private static readonly string[] BuiltInActions =
         {
@@ -40,6 +47,7 @@ namespace AIBridge.Runtime
             "runtime.logs.clear",
             "runtime.perf",
             "runtime.screenshot",
+            RuntimeCodeExecuteAction,
             "runtime.handlers"
         };
 
@@ -412,6 +420,8 @@ namespace AIBridge.Runtime
                     StartCoroutine(CaptureScreenshot(cmd));
                     asyncStarted = true;
                     return true;
+                case RuntimeCodeExecuteAction:
+                    return TryHandleRuntimeCodeExecute(cmd, out result, out asyncStarted);
                 default:
                     return false;
             }
@@ -546,6 +556,523 @@ namespace AIBridge.Runtime
             }
 
             WriteResult(result);
+        }
+
+        private bool TryHandleRuntimeCodeExecute(AIBridgeRuntimeCommand cmd, out AIBridgeRuntimeCommandResult result, out bool asyncStarted)
+        {
+            result = null;
+            asyncStarted = false;
+
+            string unavailableReason;
+            if (!IsRuntimeCodeExecutionAvailable(out unavailableReason))
+            {
+                result = AIBridgeRuntimeCommandResult.FromFailure(cmd.Id, unavailableReason);
+                return true;
+            }
+
+            if (runtimeSettings == null || !runtimeSettings.enableRuntimeCodeExecution)
+            {
+                result = AIBridgeRuntimeCommandResult.FromFailure(cmd.Id, "Runtime code execution is disabled in AIBridgeRuntimeSettings.");
+                return true;
+            }
+
+            if (!ReadBoolParam(cmd, "riskAccepted", false))
+            {
+                result = AIBridgeRuntimeCommandResult.FromFailure(cmd.Id, "runtime.code.execute requires riskAccepted=true.");
+                return true;
+            }
+
+            var assemblyBase64 = ReadStringParam(cmd, "assemblyBase64", null);
+            if (string.IsNullOrWhiteSpace(assemblyBase64))
+            {
+                result = AIBridgeRuntimeCommandResult.FromFailure(cmd.Id, "Missing assemblyBase64.");
+                return true;
+            }
+
+            byte[] assemblyBytes;
+            try
+            {
+                assemblyBytes = Convert.FromBase64String(assemblyBase64);
+            }
+            catch (Exception ex)
+            {
+                result = AIBridgeRuntimeCommandResult.FromFailure(cmd.Id, "Invalid assemblyBase64: " + ex.Message);
+                return true;
+            }
+
+            if (assemblyBytes.Length <= 0 || assemblyBytes.Length > MaxRuntimeCodeAssemblyBytes)
+            {
+                result = AIBridgeRuntimeCommandResult.FromFailure(
+                    cmd.Id,
+                    "Runtime code assembly size is invalid. bytes=" + assemblyBytes.Length.ToString(CultureInfo.InvariantCulture));
+                return true;
+            }
+
+            var actualSha256 = ComputeSha256(assemblyBytes);
+            var expectedSha256 = ReadStringParam(cmd, "sha256", null);
+            if (!string.IsNullOrEmpty(expectedSha256)
+                && !string.Equals(expectedSha256, actualSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                result = AIBridgeRuntimeCommandResult.FromFailure(cmd.Id, "Assembly sha256 mismatch.");
+                return true;
+            }
+
+            var startedAtUtc = DateTime.UtcNow;
+            RuntimeCodeInvocationContext context = null;
+            try
+            {
+                var assembly = Assembly.Load(assemblyBytes);
+                var entryTypeName = ReadStringParam(cmd, "entryType", null);
+                var methodName = ReadStringParam(cmd, "methodName", null);
+                Type entryType;
+                var method = ResolveRuntimeCodeMethod(assembly, entryTypeName, methodName, out entryType);
+                if (method == null)
+                {
+                    result = AIBridgeRuntimeCommandResult.FromFailure(cmd.Id, "Runtime code entry method was not found.");
+                    return true;
+                }
+
+                object[] args;
+                string argumentError;
+                if (!TryBuildRuntimeCodeArguments(method, cmd, out args, out argumentError))
+                {
+                    result = AIBridgeRuntimeCommandResult.FromFailure(cmd.Id, argumentError);
+                    return true;
+                }
+
+                context = new RuntimeCodeInvocationContext
+                {
+                    AssemblyName = assembly.GetName().Name,
+                    AssemblyBytes = assemblyBytes.Length,
+                    Sha256 = actualSha256,
+                    EntryType = entryType == null ? null : entryType.FullName,
+                    MethodName = method.Name,
+                    StartedAtUtc = startedAtUtc
+                };
+
+                object returnValue;
+                try
+                {
+                    returnValue = method.Invoke(null, args);
+                }
+                catch (TargetInvocationException ex)
+                {
+                    result = AIBridgeRuntimeCommandResult.FromFailure(cmd.Id, FormatRuntimeCodeException(ex));
+                    result.Data = BuildRuntimeCodeResultData(context, null, false, startedAtUtc, BuildRuntimeCodeExceptionData(ex));
+                    return true;
+                }
+
+                var task = returnValue as Task;
+                if (task != null)
+                {
+                    StartCoroutine(CompleteRuntimeCodeTask(cmd, context, task));
+                    asyncStarted = true;
+                    return true;
+                }
+
+                result = AIBridgeRuntimeCommandResult.FromSuccess(
+                    cmd.Id,
+                    BuildRuntimeCodeResultData(context, NormalizeRuntimeValue(returnValue), false, startedAtUtc, null));
+                return true;
+            }
+            catch (Exception ex)
+            {
+                result = AIBridgeRuntimeCommandResult.FromFailure(cmd.Id, FormatRuntimeCodeException(ex));
+                if (context != null)
+                {
+                    result.Data = BuildRuntimeCodeResultData(context, null, false, startedAtUtc, BuildRuntimeCodeExceptionData(ex));
+                }
+
+                return true;
+            }
+        }
+
+        private static bool IsRuntimeCodeExecutionAvailable(out string reason)
+        {
+#if AIBRIDGE_HYBRIDCLR_AVAILABLE
+            reason = null;
+            return true;
+#else
+            reason = "Runtime code execution requires HybridCLR package and scripting define AIBRIDGE_HYBRIDCLR_AVAILABLE.";
+            return false;
+#endif
+        }
+
+        private IEnumerator CompleteRuntimeCodeTask(AIBridgeRuntimeCommand cmd, RuntimeCodeInvocationContext context, Task task)
+        {
+            while (task != null && !task.IsCompleted)
+            {
+                yield return null;
+            }
+
+            AIBridgeRuntimeCommandResult result;
+            if (task == null)
+            {
+                result = AIBridgeRuntimeCommandResult.FromFailure(cmd.Id, "Runtime code async task was null.");
+            }
+            else if (task.IsFaulted)
+            {
+                var exception = task.Exception;
+                result = AIBridgeRuntimeCommandResult.FromFailure(cmd.Id, FormatRuntimeCodeException(exception));
+                result.Data = BuildRuntimeCodeResultData(context, null, true, context.StartedAtUtc, BuildRuntimeCodeExceptionData(exception));
+            }
+            else if (task.IsCanceled)
+            {
+                result = AIBridgeRuntimeCommandResult.FromFailure(cmd.Id, "Runtime code async task was canceled.");
+                result.Data = BuildRuntimeCodeResultData(context, null, true, context.StartedAtUtc, null);
+            }
+            else
+            {
+                result = AIBridgeRuntimeCommandResult.FromSuccess(
+                    cmd.Id,
+                    BuildRuntimeCodeResultData(context, NormalizeRuntimeValue(GetTaskResult(task)), true, context.StartedAtUtc, null));
+            }
+
+            WriteResult(result);
+        }
+
+        private static MethodInfo ResolveRuntimeCodeMethod(Assembly assembly, string entryTypeName, string methodName, out Type entryType)
+        {
+            entryType = null;
+            if (assembly == null)
+            {
+                return null;
+            }
+
+            var candidates = new List<Type>();
+            if (!string.IsNullOrWhiteSpace(entryTypeName))
+            {
+                var explicitType = assembly.GetType(entryTypeName, false);
+                if (explicitType != null)
+                {
+                    candidates.Add(explicitType);
+                }
+            }
+
+            if (candidates.Count == 0)
+            {
+                try
+                {
+                    candidates.AddRange(assembly.GetTypes());
+                }
+                catch (ReflectionTypeLoadException ex)
+                {
+                    if (ex.Types != null)
+                    {
+                        for (var i = 0; i < ex.Types.Length; i++)
+                        {
+                            if (ex.Types[i] != null)
+                            {
+                                candidates.Add(ex.Types[i]);
+                            }
+                        }
+                    }
+                }
+            }
+
+            var preferredNames = string.IsNullOrWhiteSpace(methodName)
+                ? new[] { "ExecuteAsync", "Execute" }
+                : new[] { methodName };
+
+            for (var typeIndex = 0; typeIndex < candidates.Count; typeIndex++)
+            {
+                var candidateType = candidates[typeIndex];
+                if (candidateType == null)
+                {
+                    continue;
+                }
+
+                for (var nameIndex = 0; nameIndex < preferredNames.Length; nameIndex++)
+                {
+                    var candidateMethod = candidateType.GetMethod(
+                        preferredNames[nameIndex],
+                        BindingFlags.Public | BindingFlags.Static);
+                    if (candidateMethod != null)
+                    {
+                        entryType = candidateType;
+                        return candidateMethod;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static bool TryBuildRuntimeCodeArguments(MethodInfo method, AIBridgeRuntimeCommand cmd, out object[] args, out string error)
+        {
+            args = null;
+            error = null;
+
+            var parameters = method.GetParameters();
+            if (parameters.Length == 0)
+            {
+                args = new object[0];
+                return true;
+            }
+
+            if (parameters.Length != 1)
+            {
+                error = "Runtime code entry method must accept 0 or 1 parameter.";
+                return false;
+            }
+
+            var parameterType = parameters[0].ParameterType;
+            if (parameterType == typeof(AIBridgeRuntimeCommand))
+            {
+                args = new object[] { cmd };
+                return true;
+            }
+
+            if (parameterType == typeof(Dictionary<string, object>))
+            {
+                args = new object[] { cmd.Params };
+                return true;
+            }
+
+            if (parameterType == typeof(string))
+            {
+                args = new object[] { AIBridgeJson.Serialize(cmd.Params, pretty: false) };
+                return true;
+            }
+
+            error = "Unsupported runtime code entry parameter type: " + parameterType.FullName;
+            return false;
+        }
+
+        private static object BuildRuntimeCodeResultData(
+            RuntimeCodeInvocationContext context,
+            object returnValue,
+            bool isAsync,
+            DateTime startedAtUtc,
+            object exception)
+        {
+            var elapsedMs = Math.Max(0.0, (DateTime.UtcNow - startedAtUtc).TotalMilliseconds);
+            return new
+            {
+                action = RuntimeCodeExecuteAction,
+                assemblyName = context == null ? null : context.AssemblyName,
+                assemblyBytes = context == null ? 0 : context.AssemblyBytes,
+                sha256 = context == null ? null : context.Sha256,
+                entryType = context == null ? null : context.EntryType,
+                methodName = context == null ? null : context.MethodName,
+                isAsync = isAsync,
+                elapsedMs = elapsedMs,
+                returnValue = returnValue,
+                exception = exception
+            };
+        }
+
+        private static object GetTaskResult(Task task)
+        {
+            if (task == null)
+            {
+                return null;
+            }
+
+            var type = task.GetType();
+            if (!type.IsGenericType)
+            {
+                return null;
+            }
+
+            var property = type.GetProperty("Result", BindingFlags.Public | BindingFlags.Instance);
+            return property == null ? null : property.GetValue(task, null);
+        }
+
+        private static string FormatRuntimeCodeException(Exception ex)
+        {
+            var unwrapped = UnwrapRuntimeCodeException(ex);
+            return unwrapped.GetType().Name + ": " + unwrapped.Message;
+        }
+
+        private static object BuildRuntimeCodeExceptionData(Exception ex)
+        {
+            var unwrapped = UnwrapRuntimeCodeException(ex);
+            return new
+            {
+                type = unwrapped.GetType().FullName,
+                message = unwrapped.Message,
+                stackTrace = unwrapped.StackTrace
+            };
+        }
+
+        private static Exception UnwrapRuntimeCodeException(Exception ex)
+        {
+            if (ex == null)
+            {
+                return new InvalidOperationException("Unknown runtime code exception.");
+            }
+
+            var targetInvocation = ex as TargetInvocationException;
+            if (targetInvocation != null && targetInvocation.InnerException != null)
+            {
+                return UnwrapRuntimeCodeException(targetInvocation.InnerException);
+            }
+
+            var aggregate = ex as AggregateException;
+            if (aggregate != null && aggregate.InnerException != null)
+            {
+                return UnwrapRuntimeCodeException(aggregate.InnerException);
+            }
+
+            return ex;
+        }
+
+        private static object NormalizeRuntimeValue(object value)
+        {
+            return NormalizeRuntimeValue(value, 0, new HashSet<object>(ReferenceEqualityComparer.Instance));
+        }
+
+        private static object NormalizeRuntimeValue(object value, int depth, HashSet<object> visited)
+        {
+            if (value == null)
+            {
+                return null;
+            }
+
+            if (depth > MaxRuntimeCodeResultDepth)
+            {
+                return new
+                {
+                    type = value.GetType().FullName,
+                    value = "<max depth reached>"
+                };
+            }
+
+            var type = value.GetType();
+            if (type.IsPrimitive || value is string || value is decimal)
+            {
+                return value;
+            }
+
+            if (value is DateTime dateTime)
+            {
+                return dateTime.ToString("o", CultureInfo.InvariantCulture);
+            }
+
+            if (value is DateTimeOffset dateTimeOffset)
+            {
+                return dateTimeOffset.ToString("o", CultureInfo.InvariantCulture);
+            }
+
+            if (value is TimeSpan timeSpan)
+            {
+                return timeSpan.ToString();
+            }
+
+            if (value is Guid || value is Enum)
+            {
+                return value.ToString();
+            }
+
+            var unityObject = value as UnityEngine.Object;
+            if (unityObject != null)
+            {
+                return new
+                {
+                    type = unityObject.GetType().FullName,
+                    name = unityObject.name,
+                    instanceId = unityObject.GetInstanceID()
+                };
+            }
+
+            if (!TryAddVisited(value, visited))
+            {
+                return new
+                {
+                    type = type.FullName,
+                    value = "<cycle>"
+                };
+            }
+
+            var dictionary = value as IDictionary;
+            if (dictionary != null)
+            {
+                var result = new Dictionary<string, object>();
+                var count = 0;
+                foreach (DictionaryEntry entry in dictionary)
+                {
+                    if (count >= MaxRuntimeCodeCollectionItems)
+                    {
+                        result["__truncated"] = true;
+                        break;
+                    }
+
+                    result[Convert.ToString(entry.Key, CultureInfo.InvariantCulture)] = NormalizeRuntimeValue(entry.Value, depth + 1, visited);
+                    count++;
+                }
+
+                return result;
+            }
+
+            var enumerable = value as IEnumerable;
+            if (enumerable != null)
+            {
+                var result = new List<object>();
+                var count = 0;
+                foreach (var item in enumerable)
+                {
+                    if (count >= MaxRuntimeCodeCollectionItems)
+                    {
+                        result.Add("<truncated>");
+                        break;
+                    }
+
+                    result.Add(NormalizeRuntimeValue(item, depth + 1, visited));
+                    count++;
+                }
+
+                return result;
+            }
+
+            var objectResult = new Dictionary<string, object>
+            {
+                ["type"] = type.FullName
+            };
+
+            var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
+            for (var i = 0; i < fields.Length; i++)
+            {
+                var field = fields[i];
+                objectResult[field.Name] = NormalizeRuntimeValue(field.GetValue(value), depth + 1, visited);
+            }
+
+            var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            for (var i = 0; i < properties.Length; i++)
+            {
+                var property = properties[i];
+                if (!property.CanRead || property.GetIndexParameters().Length > 0)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    objectResult[property.Name] = NormalizeRuntimeValue(property.GetValue(value, null), depth + 1, visited);
+                }
+                catch (Exception ex)
+                {
+                    objectResult[property.Name] = "<" + ex.GetType().Name + ">";
+                }
+            }
+
+            return objectResult;
+        }
+
+        private static bool TryAddVisited(object value, HashSet<object> visited)
+        {
+            if (value == null)
+            {
+                return true;
+            }
+
+            var type = value.GetType();
+            if (type.IsValueType || value is string)
+            {
+                return true;
+            }
+
+            return visited.Add(value);
         }
 
         private object BuildStatusData()
@@ -1455,12 +1982,22 @@ namespace AIBridge.Runtime
 
         internal Dictionary<string, object> BuildCapabilitiesData()
         {
+            string runtimeCodeUnavailableReason;
+            var runtimeCodeAvailable = IsRuntimeCodeExecutionAvailable(out runtimeCodeUnavailableReason);
+            if (runtimeCodeAvailable && (runtimeSettings == null || !runtimeSettings.enableRuntimeCodeExecution))
+            {
+                runtimeCodeAvailable = false;
+                runtimeCodeUnavailableReason = "Runtime code execution is disabled in AIBridgeRuntimeSettings.";
+            }
+
             return new Dictionary<string, object>
             {
                 ["perf"] = true,
                 ["diagnose"] = true,
                 ["screenshotPull"] = true,
                 ["logsClear"] = true,
+                ["runtimeCodeExecute"] = runtimeCodeAvailable,
+                ["runtimeCodeExecuteReason"] = runtimeCodeAvailable ? null : runtimeCodeUnavailableReason,
                 ["file"] = true,
                 ["http"] = _httpTransportServer != null && _httpTransportServer.IsRunning,
                 ["lanDiscovery"] = _lanDiscoveryServer != null && _lanDiscoveryServer.IsRunning,
@@ -1512,6 +2049,31 @@ namespace AIBridge.Runtime
             if (enableDebugLog)
             {
                 Debug.Log($"[AIBridgeRuntime] {message}");
+            }
+        }
+
+        private sealed class RuntimeCodeInvocationContext
+        {
+            public string AssemblyName;
+            public int AssemblyBytes;
+            public string Sha256;
+            public string EntryType;
+            public string MethodName;
+            public DateTime StartedAtUtc;
+        }
+
+        private sealed class ReferenceEqualityComparer : IEqualityComparer<object>
+        {
+            public static readonly ReferenceEqualityComparer Instance = new ReferenceEqualityComparer();
+
+            public new bool Equals(object x, object y)
+            {
+                return ReferenceEquals(x, y);
+            }
+
+            public int GetHashCode(object obj)
+            {
+                return obj == null ? 0 : RuntimeHelpers.GetHashCode(obj);
             }
         }
     }

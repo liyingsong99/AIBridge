@@ -11,6 +11,7 @@ namespace AIBridge.Runtime
         public string targetId;
         public string authToken;
         public string[] allowedActions = new string[0];
+        public bool enableRuntimeCodeExecution = true;
         public float heartbeatIntervalSeconds = 1f;
         public int logBufferSize = 500;
         public int maxResultBytes = 1048576;

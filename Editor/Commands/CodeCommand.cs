@@ -5,10 +5,13 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using AIBridge.Internal.Json;
 using UnityEditor;
@@ -22,8 +25,11 @@ namespace AIBridge.Editor
     public class CodeCommand : ICommand
     {
         private const string ExecuteAction = "execute";
+        private const string RuntimeExecuteAction = "runtime_execute";
         private const string StatusAction = "status";
         private const string CancelAction = "cancel";
+        private const string RuntimeCodeExecuteAction = "runtime.code.execute";
+        private const string RuntimeHttpCommandsPath = "/aibridge/commands";
         private const string CodeDirectoryName = "code";
         private const string CompiledDirectoryName = ".compiled";
         private const string FallbackCompilerProcessName = "dotnet";
@@ -32,6 +38,7 @@ namespace AIBridge.Editor
         private const int MaxTimeoutMs = 60000;
         private const int MaxInlineCodeLength = 4000;
         private const long MaxSourceFileBytes = 512 * 1024;
+        private const int RuntimeDispatchPollIntervalMs = 50;
         private const int MaxNormalizedDepth = 8;
         private const int MaxNormalizedCollectionItems = 512;
         private const int CompilerProbeTimeoutMs = 5000;
@@ -42,7 +49,7 @@ namespace AIBridge.Editor
             @"^(?<file>.+?)\((?<line>\d+),(?<column>\d+)\):\s*(?<severity>error|warning)\s*(?<code>[A-Z]+\d+):\s*(?<message>.*)$",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-        private static CodeAsyncOperation _activeOperation;
+        private static ICodeOperation _activeOperation;
 
         public string Type => "code";
         public bool RequiresRefresh => false;
@@ -54,6 +61,7 @@ Experimental and enabled by default in project settings. Disable **AIBridge/Sett
 ```bash
 $CLI code execute --file "".aibridge/code/check.csx"" --timeout 5000
 $CLI code execute --code ""Debug.Log(\""hello\""); return 123;""
+$CLI code runtime_execute --file "".aibridge/code/player_probe.csx"" --transport http --url http://127.0.0.1:27182 --timeout 10000
 $CLI code status
 $CLI code cancel
 ```
@@ -63,6 +71,7 @@ $CLI code cancel
 - `--file` must point to `.aibridge/code/*.cs` or `.aibridge/code/*.csx`.
 - `--code` is intended for short snippets only.
 - Prefer file mode for complex one-off Editor C# tasks: generated assets, structured analysis, diagnostics, Runtime/Public API calls, or multi-step UnityEditor API orchestration.
+- `code runtime_execute` compiles a runtime-safe DLL in Editor, sends it to AIBridgeRuntime, and invokes it in Player through `Assembly.Load` + reflection. It is enabled only when `com.code-philosophy.hybridclr` is installed.
 - For generation scripts, keep output under a clear folder such as `Assets/AIBridgeGenerated/<TaskName>/` and return structured result data.
 - For existing Prefab structure changes prefer `prefab patch --dryRun true`; for single properties prefer `inspector`; for simple scene object edits prefer `gameobject`/`transform`.
 - Snippets are wrapped as `object Execute()` or `Task<object> ExecuteAsync()` when `await` is present.
@@ -81,6 +90,11 @@ $CLI code cancel
                     return ExecuteCode(request);
                 }
 
+                if (string.Equals(action, RuntimeExecuteAction, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ExecuteRuntimeCode(request);
+                }
+
                 if (string.Equals(action, StatusAction, StringComparison.OrdinalIgnoreCase))
                 {
                     return CommandResult.Success(request.id, BuildStatusData());
@@ -91,7 +105,7 @@ $CLI code cancel
                     return CancelActiveOperation(request);
                 }
 
-                return CommandResult.Failure(request.id, $"Unknown action: {action}. Supported: execute, status, cancel");
+                return CommandResult.Failure(request.id, $"Unknown action: {action}. Supported: execute, runtime_execute, status, cancel");
             }
             catch (Exception ex)
             {
@@ -120,7 +134,7 @@ $CLI code cancel
 
             SourceText sourceText;
             string sourceError;
-            if (!TryResolveSource(request, out sourceText, out sourceError))
+            if (!TryResolveSource(request, CodeCompilationTarget.Editor, out sourceText, out sourceError))
             {
                 return FailureWithData(
                     request.id,
@@ -140,7 +154,7 @@ $CLI code cancel
             {
                 string assemblyPath;
                 List<string> compileErrors;
-                if (!CompileSource(session, out assemblyPath, out compileErrors))
+                if (!CompileSource(session, CodeCompilationTarget.Editor, out assemblyPath, out compileErrors))
                 {
                     stopwatch.Stop();
                     return FailureWithData(
@@ -178,6 +192,96 @@ $CLI code cancel
                 Application.logMessageReceived -= session.OnLogMessageReceived;
                 stopwatch.Stop();
                 return FailureWithData(request.id, "Code execution failed.", BuildResultData(session, null, new List<string>(), BuildExceptionInfo(ex), false, "failed"));
+            }
+        }
+
+        private CommandResult ExecuteRuntimeCode(CommandRequest request)
+        {
+            var settings = AIBridgeProjectSettings.Instance;
+            if (!settings.EnableCodeExecution || !settings.CodeExecutionRiskAccepted)
+            {
+                return FailureWithData(
+                    request.id,
+                    "Code execution is disabled. Enable it in AIBridge/Settings -> Basic -> Enable Code Execution.",
+                    BuildSettingsGateData(settings));
+            }
+
+            if (!AIBridgeHybridClrUtility.IsHybridClrInstalled())
+            {
+                return FailureWithData(
+                    request.id,
+                    "HybridCLR package is required for code runtime_execute.",
+                    BuildRuntimeCodeUnavailableData(settings));
+            }
+
+            if (_activeOperation != null)
+            {
+                return FailureWithData(
+                    request.id,
+                    "Another code execution is already running.",
+                    BuildBusyData());
+            }
+
+            SourceText sourceText;
+            string sourceError;
+            if (!TryResolveSource(request, CodeCompilationTarget.Runtime, out sourceText, out sourceError))
+            {
+                return FailureWithData(
+                    request.id,
+                    sourceError,
+                    new
+                    {
+                        enabled = true,
+                        source = "invalid"
+                    });
+            }
+
+            var timeoutMs = Mathf.Clamp(request.GetParam("timeout", DefaultTimeoutMs), MinTimeoutMs, MaxTimeoutMs);
+            var stopwatch = Stopwatch.StartNew();
+            var session = new CodeExecutionSession(request.id, sourceText, timeoutMs, stopwatch);
+
+            try
+            {
+                string assemblyPath;
+                List<string> compileErrors;
+                if (!CompileSource(session, CodeCompilationTarget.Runtime, out assemblyPath, out compileErrors))
+                {
+                    stopwatch.Stop();
+                    return FailureWithData(
+                        request.id,
+                        "Runtime code compilation failed.",
+                        BuildResultData(session, null, compileErrors, null, ContainsTimeoutError(compileErrors) ? (bool?)true : null, "compile_failed"));
+                }
+
+                session.CompiledAssemblyPath = assemblyPath;
+                var assemblyBytes = File.ReadAllBytes(assemblyPath);
+                var sha256 = ComputeSha256(assemblyBytes);
+
+                RuntimeDispatchOptions dispatchOptions;
+                string dispatchError;
+                if (!TryBuildRuntimeDispatchOptions(request, timeoutMs, out dispatchOptions, out dispatchError))
+                {
+                    stopwatch.Stop();
+                    return FailureWithData(
+                        request.id,
+                        dispatchError,
+                        BuildRuntimeDispatchResultData(session, assemblyBytes.Length, sha256, null, null, "dispatch_invalid", false));
+                }
+
+                var runtimeCommand = BuildRuntimeCodeCommand(request, sourceText, assemblyBytes, sha256, dispatchOptions);
+                var operation = new RuntimeCodeAsyncOperation(session, runtimeCommand, dispatchOptions, assemblyBytes.Length, sha256);
+                _activeOperation = operation;
+                EditorApplication.update -= OnAsyncUpdate;
+                EditorApplication.update += OnAsyncUpdate;
+                return null;
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                return FailureWithData(
+                    request.id,
+                    "Runtime code execution dispatch failed.",
+                    BuildResultData(session, null, new List<string>(), BuildExceptionInfo(ex), false, "failed"));
             }
         }
 
@@ -257,7 +361,7 @@ $CLI code cancel
             });
         }
 
-        private static bool TryResolveSource(CommandRequest request, out SourceText sourceText, out string error)
+        private static bool TryResolveSource(CommandRequest request, CodeCompilationTarget target, out SourceText sourceText, out string error)
         {
             sourceText = null;
             error = null;
@@ -312,7 +416,7 @@ $CLI code cancel
                     return false;
                 }
 
-                sourceText = BuildSourceText(File.ReadAllText(fullPath, Encoding.UTF8), "file", fullPath);
+                sourceText = BuildSourceText(File.ReadAllText(fullPath, Encoding.UTF8), "file", fullPath, target);
                 return true;
             }
 
@@ -322,16 +426,16 @@ $CLI code cancel
                 return false;
             }
 
-            sourceText = BuildSourceText(inlineCode, "inline", "inline");
+            sourceText = BuildSourceText(inlineCode, "inline", "inline", target);
             return true;
         }
 
-        private static SourceText BuildSourceText(string code, string sourceKind, string sourcePath)
+        private static SourceText BuildSourceText(string code, string sourceKind, string sourcePath, CodeCompilationTarget target)
         {
             var className = "AIBridgeCode_" + Guid.NewGuid().ToString("N");
             var containsAwait = code.IndexOf("await", StringComparison.Ordinal) >= 0;
             var leadingUsings = ExtractLeadingUsings(ref code);
-            var wrappedSource = WrapCode(className, code, leadingUsings, containsAwait);
+            var wrappedSource = WrapCode(className, code, leadingUsings, containsAwait, target);
             return new SourceText
             {
                 Kind = sourceKind,
@@ -339,7 +443,8 @@ $CLI code cancel
                 Code = code,
                 WrappedCode = wrappedSource,
                 ClassName = className,
-                IsAsync = containsAwait
+                IsAsync = containsAwait,
+                Target = target
             };
         }
 
@@ -372,7 +477,7 @@ $CLI code cancel
             return result;
         }
 
-        private static string WrapCode(string className, string body, IEnumerable<string> leadingUsings, bool isAsync)
+        private static string WrapCode(string className, string body, IEnumerable<string> leadingUsings, bool isAsync, CodeCompilationTarget target)
         {
             var builder = new StringBuilder();
             builder.AppendLine("using System;");
@@ -380,8 +485,16 @@ $CLI code cancel
             builder.AppendLine("using System.Collections.Generic;");
             builder.AppendLine("using System.Threading.Tasks;");
             builder.AppendLine("using UnityEngine;");
-            builder.AppendLine("using UnityEditor;");
-            builder.AppendLine("using AIBridge.Editor;");
+            if (target == CodeCompilationTarget.Editor)
+            {
+                builder.AppendLine("using UnityEditor;");
+                builder.AppendLine("using AIBridge.Editor;");
+            }
+            else
+            {
+                builder.AppendLine("using AIBridge.Runtime;");
+            }
+
             foreach (var usingLine in leadingUsings)
             {
                 builder.AppendLine(usingLine);
@@ -389,10 +502,25 @@ $CLI code cancel
 
             builder.AppendLine("public static class " + className);
             builder.AppendLine("{");
-            builder.AppendLine(isAsync
-                ? "    public static async Task<object> ExecuteAsync()"
-                : "    public static object Execute()");
+            if (target == CodeCompilationTarget.Runtime)
+            {
+                builder.AppendLine(isAsync
+                    ? "    public static async Task<object> ExecuteAsync(AIBridgeRuntimeCommand AIBridgeCommand)"
+                    : "    public static object Execute(AIBridgeRuntimeCommand AIBridgeCommand)");
+            }
+            else
+            {
+                builder.AppendLine(isAsync
+                    ? "    public static async Task<object> ExecuteAsync()"
+                    : "    public static object Execute()");
+            }
+
             builder.AppendLine("    {");
+            if (target == CodeCompilationTarget.Runtime)
+            {
+                builder.AppendLine("        var AIBridgeRuntimeArgs = AIBridgeCommand == null ? null : AIBridgeCommand.Params;");
+            }
+
             builder.AppendLine(body ?? string.Empty);
             if (ShouldAppendFallbackReturn(body))
             {
@@ -493,7 +621,7 @@ $CLI code cancel
             return char.IsLetterOrDigit(c) || c == '_';
         }
 
-        private static bool CompileSource(CodeExecutionSession session, out string assemblyPath, out List<string> compileErrors)
+        private static bool CompileSource(CodeExecutionSession session, CodeCompilationTarget target, out string assemblyPath, out List<string> compileErrors)
         {
             compileErrors = new List<string>();
             assemblyPath = null;
@@ -510,7 +638,7 @@ $CLI code cancel
             assemblyPath = Path.Combine(compiledDir, fileStem + ".dll");
             var responsePath = Path.Combine(compiledDir, fileStem + ".rsp");
             File.WriteAllText(sourcePath, session.Source.WrappedCode, Encoding.UTF8);
-            File.WriteAllText(responsePath, BuildCompilerResponseFile(sourcePath, assemblyPath, GetSupportedCSharpLanguageVersion()), Encoding.UTF8);
+            File.WriteAllText(responsePath, BuildCompilerResponseFile(sourcePath, assemblyPath, GetSupportedCSharpLanguageVersion(), target), Encoding.UTF8);
 
             CompilerInvocation compiler;
             List<string> compilerProbePaths;
@@ -630,7 +758,7 @@ $CLI code cancel
             return Version.TryParse(versionText, out version);
         }
 
-        private static string BuildCompilerResponseFile(string sourcePath, string assemblyPath, string languageVersion)
+        private static string BuildCompilerResponseFile(string sourcePath, string assemblyPath, string languageVersion, CodeCompilationTarget target)
         {
             var builder = new StringBuilder();
             builder.AppendLine("-nologo");
@@ -639,7 +767,7 @@ $CLI code cancel
             builder.AppendLine("-unsafe-");
             builder.AppendLine("-out:\"" + assemblyPath + "\"");
 
-            foreach (var reference in GetCompilationReferences())
+            foreach (var reference in GetCompilationReferences(target))
             {
                 builder.AppendLine("-reference:\"" + reference + "\"");
             }
@@ -648,10 +776,11 @@ $CLI code cancel
             return builder.ToString();
         }
 
-        private static IEnumerable<string> GetCompilationReferences()
+        private static IEnumerable<string> GetCompilationReferences(CodeCompilationTarget target)
         {
             return AppDomain.CurrentDomain.GetAssemblies()
                 .Where(assembly => !assembly.IsDynamic)
+                .Where(assembly => target == CodeCompilationTarget.Editor || IsRuntimeCompilationReference(assembly))
                 .Select(assembly =>
                 {
                     try
@@ -666,6 +795,68 @@ $CLI code cancel
                 .Where(path => !string.IsNullOrEmpty(path) && File.Exists(path))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static bool IsRuntimeCompilationReference(Assembly assembly)
+        {
+            if (assembly == null)
+            {
+                return false;
+            }
+
+            var name = assembly.GetName().Name ?? string.Empty;
+            if (IsEditorAssemblyName(name) || IsTestAssemblyName(name))
+            {
+                return false;
+            }
+
+            AssemblyName[] references;
+            try
+            {
+                references = assembly.GetReferencedAssemblies();
+            }
+            catch
+            {
+                references = new AssemblyName[0];
+            }
+
+            for (var i = 0; i < references.Length; i++)
+            {
+                var referenceName = references[i] == null ? string.Empty : references[i].Name;
+                if (IsEditorAssemblyName(referenceName))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsEditorAssemblyName(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                return false;
+            }
+
+            return string.Equals(name, "UnityEditor", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("UnityEditor.", StringComparison.OrdinalIgnoreCase)
+                || name.EndsWith(".Editor", StringComparison.OrdinalIgnoreCase)
+                || name.EndsWith("-Editor", StringComparison.OrdinalIgnoreCase)
+                || name.IndexOf(".Editor.", StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("Editor.Tests", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsTestAssemblyName(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                return false;
+            }
+
+            return name.IndexOf(".Tests", StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("TestRunner", StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("nunit", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static bool TryResolveCompiler(
@@ -1201,6 +1392,526 @@ $CLI code cancel
             };
         }
 
+        private static object BuildRuntimeDispatchResultData(
+            CodeExecutionSession session,
+            int assemblyBytes,
+            string sha256,
+            RuntimeDispatchOptions options,
+            RuntimeDispatchResult runtimeResult,
+            string status,
+            bool timedOut)
+        {
+            return new
+            {
+                enabled = true,
+                status = status,
+                source = session.Source.Kind,
+                sourcePath = session.Source.Path,
+                isAsync = session.Source.IsAsync,
+                elapsedMs = session.Stopwatch.ElapsedMilliseconds,
+                timeoutMs = session.TimeoutMs,
+                timedOut = timedOut,
+                compiledAssembly = new
+                {
+                    path = session.CompiledAssemblyPath,
+                    bytes = assemblyBytes,
+                    sha256 = sha256,
+                    entryType = session.Source.ClassName,
+                    methodName = session.Source.IsAsync ? "ExecuteAsync" : "Execute"
+                },
+                runtime = runtimeResult == null ? null : runtimeResult.ToData(),
+                dispatch = options == null ? null : options.ToData(),
+                compileErrors = new List<string>(),
+                diagnostics = session.CompilerDiagnostics ?? new List<CompilerDiagnostic>(),
+                compilerOutput = session.CompilerOutput,
+                compiler = BuildCompilerInfo(session),
+                compilerProbePaths = session.CompilerProbePaths ?? new List<string>(),
+                compilerProbeFailures = session.CompilerProbeFailures ?? new List<string>()
+            };
+        }
+
+        private static bool TryBuildRuntimeDispatchOptions(
+            CommandRequest request,
+            int timeoutMs,
+            out RuntimeDispatchOptions options,
+            out string error)
+        {
+            options = null;
+            error = null;
+
+            var transport = request.GetParam<string>("transport", "http");
+            if (string.IsNullOrWhiteSpace(transport))
+            {
+                transport = "http";
+            }
+
+            transport = transport.Trim().ToLowerInvariant();
+            var runtimeDirectory = ResolveRuntimeDirectory(request);
+            var target = request.GetParam<string>("target", "latest");
+            if (string.IsNullOrWhiteSpace(target))
+            {
+                target = "latest";
+            }
+
+            var token = request.GetParam<string>("token", null);
+            options = new RuntimeDispatchOptions
+            {
+                Transport = transport,
+                RuntimeDirectory = runtimeDirectory,
+                Target = target,
+                Token = token,
+                TimeoutMs = timeoutMs,
+                PollIntervalMs = RuntimeDispatchPollIntervalMs,
+                RuntimeCommandId = request.id + "_runtime"
+            };
+
+            if (string.Equals(transport, "http", StringComparison.OrdinalIgnoreCase))
+            {
+                var url = request.GetParam<string>("url", null);
+                if (string.IsNullOrWhiteSpace(url)
+                    && !TryResolveHttpUrlFromRuntimeDirectory(runtimeDirectory, target, out url))
+                {
+                    url = AIBridgeRuntimeBridgeEditorUtility.BuildLocalHttpUrl();
+                }
+
+                options.Url = NormalizeRuntimeHttpUrl(url);
+                if (string.IsNullOrEmpty(options.Url))
+                {
+                    error = "Runtime HTTP url is empty. Provide --url or start a Runtime target with HTTP transport.";
+                    return false;
+                }
+
+                return true;
+            }
+
+            if (string.Equals(transport, "file", StringComparison.OrdinalIgnoreCase))
+            {
+                RuntimeFileTargetInfo fileTarget;
+                if (!TryResolveRuntimeFileTarget(runtimeDirectory, target, out fileTarget, out error))
+                {
+                    return false;
+                }
+
+                options.Target = fileTarget.TargetId;
+                options.CommandPath = Path.Combine(fileTarget.CommandsPath, options.RuntimeCommandId + ".json");
+                options.ResultPath = Path.Combine(fileTarget.ResultsPath, options.RuntimeCommandId + ".json");
+                return true;
+            }
+
+            error = "Unsupported runtime transport: " + transport + ". Supported: http, file.";
+            return false;
+        }
+
+        private static Dictionary<string, object> BuildRuntimeCodeCommand(
+            CommandRequest request,
+            SourceText sourceText,
+            byte[] assemblyBytes,
+            string sha256,
+            RuntimeDispatchOptions options)
+        {
+            var parameters = new Dictionary<string, object>
+            {
+                ["assemblyBase64"] = Convert.ToBase64String(assemblyBytes),
+                ["sha256"] = sha256,
+                ["entryType"] = sourceText.ClassName,
+                ["methodName"] = sourceText.IsAsync ? "ExecuteAsync" : "Execute",
+                ["riskAccepted"] = true,
+                ["sourceKind"] = sourceText.Kind,
+                ["sourcePath"] = sourceText.Path,
+                ["requestParams"] = BuildRuntimeUserParams(request)
+            };
+
+            return new Dictionary<string, object>
+            {
+                ["id"] = options.RuntimeCommandId,
+                ["type"] = "runtime",
+                ["action"] = RuntimeCodeExecuteAction,
+                ["token"] = options.Token ?? string.Empty,
+                ["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                ["params"] = parameters
+            };
+        }
+
+        private static Dictionary<string, object> BuildRuntimeUserParams(CommandRequest request)
+        {
+            var result = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            if (request == null || request.@params == null)
+            {
+                return result;
+            }
+
+            foreach (var pair in request.@params)
+            {
+                if (IsRuntimeDispatchReservedParam(pair.Key))
+                {
+                    continue;
+                }
+
+                result[pair.Key] = pair.Value;
+            }
+
+            return result;
+        }
+
+        private static bool IsRuntimeDispatchReservedParam(string key)
+        {
+            return string.Equals(key, "action", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "file", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "code", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "timeout", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "transport", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "target", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "runtime-dir", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "runtimeDir", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "url", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "token", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string ResolveRuntimeDirectory(CommandRequest request)
+        {
+            var runtimeDirectory = request.GetParam<string>("runtime-dir", null);
+            if (string.IsNullOrWhiteSpace(runtimeDirectory))
+            {
+                runtimeDirectory = request.GetParam<string>("runtimeDir", null);
+            }
+
+            if (string.IsNullOrWhiteSpace(runtimeDirectory))
+            {
+                return AIBridgeRuntimeBridgeEditorUtility.GetRuntimeDirectory();
+            }
+
+            return Path.IsPathRooted(runtimeDirectory)
+                ? Path.GetFullPath(runtimeDirectory)
+                : Path.GetFullPath(Path.Combine(GetProjectRoot(), runtimeDirectory));
+        }
+
+        private static string NormalizeRuntimeHttpUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                return null;
+            }
+
+            return url.Trim().TrimEnd('/');
+        }
+
+        private static bool TryResolveHttpUrlFromRuntimeDirectory(string runtimeDirectory, string target, out string url)
+        {
+            url = null;
+            RuntimeFileTargetInfo fileTarget;
+            string error;
+            if (!TryResolveRuntimeFileTarget(runtimeDirectory, target, out fileTarget, out error)
+                || fileTarget == null
+                || fileTarget.Stale
+                || string.IsNullOrWhiteSpace(fileTarget.HttpUrl))
+            {
+                return false;
+            }
+
+            url = fileTarget.HttpUrl;
+            return true;
+        }
+
+        private static bool TryResolveRuntimeFileTarget(
+            string runtimeDirectory,
+            string target,
+            out RuntimeFileTargetInfo targetInfo,
+            out string error)
+        {
+            targetInfo = null;
+            error = null;
+
+            var targetsRoot = Path.Combine(runtimeDirectory, AIBridgeRuntimeBridgeEditorUtility.TargetsDirectoryName);
+            if (!Directory.Exists(targetsRoot))
+            {
+                error = "Runtime targets directory not found: " + targetsRoot;
+                return false;
+            }
+
+            var targets = new List<RuntimeFileTargetInfo>();
+            var directories = Directory.GetDirectories(targetsRoot);
+            for (var i = 0; i < directories.Length; i++)
+            {
+                var directory = directories[i];
+                var heartbeatPath = Path.Combine(directory, AIBridgeRuntimeBridgeEditorUtility.HeartbeatFileName);
+                var heartbeat = ReadJsonObject(heartbeatPath);
+                var targetId = GetDictionaryString(heartbeat, "targetId");
+                if (string.IsNullOrWhiteSpace(targetId))
+                {
+                    targetId = Path.GetFileName(directory);
+                }
+
+                var lastHeartbeat = ParseUtcTime(GetDictionaryString(heartbeat, "lastHeartbeatUtc"));
+                var stale = !lastHeartbeat.HasValue || DateTime.UtcNow - lastHeartbeat.Value > TimeSpan.FromSeconds(15);
+                targets.Add(new RuntimeFileTargetInfo
+                {
+                    TargetId = targetId,
+                    TargetPath = directory,
+                    CommandsPath = GetDictionaryString(heartbeat, "commandsPath") ?? Path.Combine(directory, AIBridgeRuntimeBridgeEditorUtility.CommandsDirectoryName),
+                    ResultsPath = GetDictionaryString(heartbeat, "resultsPath") ?? Path.Combine(directory, AIBridgeRuntimeBridgeEditorUtility.ResultsDirectoryName),
+                    HttpUrl = GetDictionaryString(heartbeat, "httpUrl"),
+                    LastHeartbeatUtc = lastHeartbeat,
+                    Stale = stale
+                });
+            }
+
+            if (targets.Count == 0)
+            {
+                error = "No Runtime targets found under: " + targetsRoot;
+                return false;
+            }
+
+            targets = targets
+                .OrderBy(item => item.Stale)
+                .ThenByDescending(item => item.LastHeartbeatUtc.HasValue ? item.LastHeartbeatUtc.Value : DateTime.MinValue)
+                .ThenBy(item => item.TargetId, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (string.IsNullOrWhiteSpace(target) || string.Equals(target, "latest", StringComparison.OrdinalIgnoreCase))
+            {
+                targetInfo = targets[0];
+                return true;
+            }
+
+            targetInfo = targets.FirstOrDefault(item => string.Equals(item.TargetId, target, StringComparison.OrdinalIgnoreCase));
+            if (targetInfo != null)
+            {
+                return true;
+            }
+
+            error = "Runtime target was not found: " + target;
+            return false;
+        }
+
+        private static Dictionary<string, object> ReadJsonObject(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                return null;
+            }
+
+            try
+            {
+                return AIBridgeJson.DeserializeObject(File.ReadAllText(path, Encoding.UTF8));
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string GetDictionaryString(Dictionary<string, object> data, string key)
+        {
+            if (data == null || !data.TryGetValue(key, out var value) || value == null)
+            {
+                return null;
+            }
+
+            return value.ToString();
+        }
+
+        private static DateTime? ParseUtcTime(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            DateTimeOffset parsed;
+            if (DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out parsed))
+            {
+                return parsed.UtcDateTime;
+            }
+
+            return null;
+        }
+
+        private static RuntimeDispatchResult DispatchRuntimeCommand(Dictionary<string, object> command, RuntimeDispatchOptions options)
+        {
+            return string.Equals(options.Transport, "file", StringComparison.OrdinalIgnoreCase)
+                ? DispatchRuntimeFileCommand(command, options)
+                : DispatchRuntimeHttpCommand(command, options);
+        }
+
+        private static RuntimeDispatchResult DispatchRuntimeHttpCommand(Dictionary<string, object> command, RuntimeDispatchOptions options)
+        {
+            var endpoint = options.Url + RuntimeHttpCommandsPath + "?timeoutMs=" + Math.Max(100, options.TimeoutMs).ToString(CultureInfo.InvariantCulture);
+            var body = AIBridgeJson.Serialize(command, pretty: false);
+            try
+            {
+                var request = (HttpWebRequest)WebRequest.Create(endpoint);
+                request.Method = "POST";
+                request.ContentType = "application/json";
+                request.Timeout = Math.Max(1000, options.TimeoutMs + 1000);
+                request.ReadWriteTimeout = request.Timeout;
+                if (!string.IsNullOrWhiteSpace(options.Token))
+                {
+                    request.Headers[HttpRequestHeader.Authorization] = "Bearer " + options.Token;
+                }
+
+                var bytes = Encoding.UTF8.GetBytes(body);
+                request.ContentLength = bytes.Length;
+                using (var stream = request.GetRequestStream())
+                {
+                    stream.Write(bytes, 0, bytes.Length);
+                }
+
+                using (var response = (HttpWebResponse)request.GetResponse())
+                using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
+                {
+                    return ParseRuntimeDispatchResponse(reader.ReadToEnd(), options, null);
+                }
+            }
+            catch (WebException ex)
+            {
+                var responseBody = ReadWebExceptionBody(ex);
+                if (!string.IsNullOrWhiteSpace(responseBody))
+                {
+                    return ParseRuntimeDispatchResponse(responseBody, options, ex.Message);
+                }
+
+                return RuntimeDispatchResult.Failure(options, "HTTP runtime dispatch failed: " + ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return RuntimeDispatchResult.Failure(options, "HTTP runtime dispatch failed: " + ex.Message);
+            }
+        }
+
+        private static RuntimeDispatchResult DispatchRuntimeFileCommand(Dictionary<string, object> command, RuntimeDispatchOptions options)
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(options.CommandPath));
+                Directory.CreateDirectory(Path.GetDirectoryName(options.ResultPath));
+
+                var json = AIBridgeJson.Serialize(command, pretty: false);
+                var tempPath = options.CommandPath + ".tmp";
+                File.WriteAllText(tempPath, json, new UTF8Encoding(false));
+                if (File.Exists(options.CommandPath))
+                {
+                    File.Delete(options.CommandPath);
+                }
+
+                File.Move(tempPath, options.CommandPath);
+
+                var startTime = DateTime.UtcNow;
+                while ((DateTime.UtcNow - startTime).TotalMilliseconds < options.TimeoutMs)
+                {
+                    if (File.Exists(options.ResultPath))
+                    {
+                        Thread.Sleep(10);
+                        var resultJson = File.ReadAllText(options.ResultPath, Encoding.UTF8);
+                        try { File.Delete(options.ResultPath); } catch { }
+                        return ParseRuntimeDispatchResponse(resultJson, options, null);
+                    }
+
+                    Thread.Sleep(options.PollIntervalMs);
+                }
+
+                try { if (File.Exists(options.CommandPath)) File.Delete(options.CommandPath); } catch { }
+                return RuntimeDispatchResult.Failure(options, "Timeout waiting for runtime result after " + options.TimeoutMs + "ms.");
+            }
+            catch (Exception ex)
+            {
+                return RuntimeDispatchResult.Failure(options, "File runtime dispatch failed: " + ex.Message);
+            }
+        }
+
+        private static RuntimeDispatchResult ParseRuntimeDispatchResponse(string json, RuntimeDispatchOptions options, string transportWarning)
+        {
+            try
+            {
+                var data = AIBridgeJson.DeserializeObject(json);
+                var success = ReadBool(data, "Success") ?? ReadBool(data, "success") ?? false;
+                var error = ReadString(data, "Error") ?? ReadString(data, "error");
+                return new RuntimeDispatchResult
+                {
+                    Success = success,
+                    Error = string.IsNullOrWhiteSpace(error) ? transportWarning : error,
+                    Result = data,
+                    Transport = options.Transport,
+                    Target = options.Target,
+                    Url = options.Url,
+                    RuntimeDirectory = options.RuntimeDirectory,
+                    RuntimeCommandId = options.RuntimeCommandId,
+                    CommandPath = options.CommandPath,
+                    ResultPath = options.ResultPath
+                };
+            }
+            catch (Exception ex)
+            {
+                return RuntimeDispatchResult.Failure(options, "Failed to parse runtime result: " + ex.Message);
+            }
+        }
+
+        private static bool? ReadBool(Dictionary<string, object> data, string key)
+        {
+            if (data == null || !data.TryGetValue(key, out var value) || value == null)
+            {
+                return null;
+            }
+
+            if (value is bool boolValue)
+            {
+                return boolValue;
+            }
+
+            bool parsed;
+            return bool.TryParse(value.ToString(), out parsed) ? parsed : (bool?)null;
+        }
+
+        private static string ReadString(Dictionary<string, object> data, string key)
+        {
+            if (data == null || !data.TryGetValue(key, out var value) || value == null)
+            {
+                return null;
+            }
+
+            return value.ToString();
+        }
+
+        private static string ReadWebExceptionBody(WebException ex)
+        {
+            if (ex == null || ex.Response == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                using (var stream = ex.Response.GetResponseStream())
+                using (var reader = new StreamReader(stream, Encoding.UTF8))
+                {
+                    return reader.ReadToEnd();
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string ComputeSha256(byte[] bytes)
+        {
+            if (bytes == null || bytes.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            using (var sha256 = SHA256.Create())
+            {
+                var hash = sha256.ComputeHash(bytes);
+                var builder = new StringBuilder(hash.Length * 2);
+                for (var i = 0; i < hash.Length; i++)
+                {
+                    builder.Append(hash[i].ToString("x2", CultureInfo.InvariantCulture));
+                }
+
+                return builder.ToString();
+            }
+        }
+
         private static object BuildCompilerInfo(CodeExecutionSession session)
         {
             if (session == null || session.Compiler == null)
@@ -1535,6 +2246,19 @@ $CLI code cancel
             };
         }
 
+        private static object BuildRuntimeCodeUnavailableData(AIBridgeProjectSettings settings)
+        {
+            return new
+            {
+                enabled = true,
+                runtimeCodeExecutionSetting = settings.RuntimeBridge.EnableRuntimeCodeExecution,
+                hybridClrPackage = AIBridgeHybridClrUtility.PackageName,
+                hybridClrInstalled = false,
+                requiredDefine = AIBridgeHybridClrUtility.HybridClrAvailableDefine,
+                source = "none"
+            };
+        }
+
         private static string GetProjectRoot()
         {
             return Path.GetDirectoryName(Application.dataPath);
@@ -1564,6 +2288,12 @@ $CLI code cancel
                    || normalizedPath.StartsWith(normalizedRoot + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
         }
 
+        private enum CodeCompilationTarget
+        {
+            Editor,
+            Runtime
+        }
+
         private sealed class SourceText
         {
             public string Kind;
@@ -1572,6 +2302,7 @@ $CLI code cancel
             public string WrappedCode;
             public string ClassName;
             public bool IsAsync;
+            public CodeCompilationTarget Target;
         }
 
         private sealed class CompilerInvocation
@@ -1659,7 +2390,15 @@ $CLI code cancel
             }
         }
 
-        private sealed class CodeAsyncOperation
+        private interface ICodeOperation
+        {
+            string RequestId { get; }
+            bool Step(out CommandResult result, out bool shouldRelease);
+            CommandResult CancelForOriginalRequest();
+            object BuildStatusData();
+        }
+
+        private sealed class CodeAsyncOperation : ICodeOperation
         {
             private readonly CodeExecutionSession _session;
             private readonly Task _task;
@@ -1803,6 +2542,250 @@ $CLI code cancel
                 var resultProperty = type.GetProperty("Result", BindingFlags.Public | BindingFlags.Instance);
                 return resultProperty != null ? resultProperty.GetValue(task, null) : null;
             }
+        }
+
+        private sealed class RuntimeCodeAsyncOperation : ICodeOperation
+        {
+            private readonly CodeExecutionSession _session;
+            private readonly Task<RuntimeDispatchResult> _task;
+            private readonly RuntimeDispatchOptions _options;
+            private readonly int _assemblyBytes;
+            private readonly string _sha256;
+            private bool _resultWritten;
+            private bool _timedOut;
+            private bool _cancelRequested;
+
+            public RuntimeCodeAsyncOperation(
+                CodeExecutionSession session,
+                Dictionary<string, object> command,
+                RuntimeDispatchOptions options,
+                int assemblyBytes,
+                string sha256)
+            {
+                _session = session;
+                _options = options;
+                _assemblyBytes = assemblyBytes;
+                _sha256 = sha256;
+                // Runtime Player 可能就是当前 Editor Play Mode；转发和等待放到后台线程，避免阻塞主线程处理 Runtime 命令。
+                _task = Task.Run(() => DispatchRuntimeCommand(command, options));
+            }
+
+            public string RequestId => _session.RequestId;
+
+            public bool Step(out CommandResult result, out bool shouldRelease)
+            {
+                result = null;
+                shouldRelease = false;
+
+                if (_task.IsCompleted)
+                {
+                    if (_session.Stopwatch.IsRunning)
+                    {
+                        _session.Stopwatch.Stop();
+                    }
+
+                    shouldRelease = true;
+                    if (_resultWritten)
+                    {
+                        return true;
+                    }
+
+                    if (_task.IsFaulted)
+                    {
+                        result = FailureWithData(
+                            _session.RequestId,
+                            "Runtime code dispatch failed.",
+                            BuildRuntimeDispatchResultData(_session, _assemblyBytes, _sha256, _options, null, "failed", false));
+                    }
+                    else if (_task.IsCanceled)
+                    {
+                        result = FailureWithData(
+                            _session.RequestId,
+                            "Runtime code dispatch was canceled.",
+                            BuildRuntimeDispatchResultData(_session, _assemblyBytes, _sha256, _options, null, "canceled", false));
+                    }
+                    else
+                    {
+                        var runtimeResult = _task.Result;
+                        if (runtimeResult != null && runtimeResult.Success)
+                        {
+                            result = CommandResult.Success(
+                                _session.RequestId,
+                                BuildRuntimeDispatchResultData(_session, _assemblyBytes, _sha256, _options, runtimeResult, "completed", false));
+                        }
+                        else
+                        {
+                            result = FailureWithData(
+                                _session.RequestId,
+                                runtimeResult == null ? "Runtime code execution failed." : runtimeResult.Error,
+                                BuildRuntimeDispatchResultData(_session, _assemblyBytes, _sha256, _options, runtimeResult, "runtime_failed", false));
+                        }
+                    }
+
+                    _resultWritten = true;
+                    return true;
+                }
+
+                if (!_timedOut && _session.Stopwatch.ElapsedMilliseconds >= _session.TimeoutMs)
+                {
+                    _timedOut = true;
+                    result = FailureWithData(
+                        _session.RequestId,
+                        "Runtime code execution timed out after " + _session.TimeoutMs + "ms.",
+                        BuildRuntimeDispatchResultData(_session, _assemblyBytes, _sha256, _options, null, "timed_out_waiting_for_runtime", true));
+                    _resultWritten = true;
+                    shouldRelease = true;
+                    return true;
+                }
+
+                return false;
+            }
+
+            public CommandResult CancelForOriginalRequest()
+            {
+                _cancelRequested = true;
+                if (_session.Stopwatch.IsRunning)
+                {
+                    _session.Stopwatch.Stop();
+                }
+
+                if (_resultWritten)
+                {
+                    return null;
+                }
+
+                _resultWritten = true;
+                return FailureWithData(
+                    _session.RequestId,
+                    "Runtime code execution was canceled.",
+                    BuildRuntimeDispatchResultData(_session, _assemblyBytes, _sha256, _options, null, "canceled", false));
+            }
+
+            public object BuildStatusData()
+            {
+                return new
+                {
+                    active = true,
+                    busy = true,
+                    status = GetStatusText(),
+                    requestId = _session.RequestId,
+                    runtimeCommandId = _options.RuntimeCommandId,
+                    source = _session.Source.Kind,
+                    sourcePath = _session.Source.Path,
+                    elapsedMs = _session.Stopwatch.ElapsedMilliseconds,
+                    timeoutMs = _session.TimeoutMs,
+                    timedOut = _timedOut,
+                    resultWritten = _resultWritten,
+                    dispatch = _options.ToData(),
+                    canCancel = true,
+                    hint = _timedOut
+                        ? "The CLI result has timed out, but runtime dispatch may still finish on the target."
+                        : "Runtime code execution is waiting for the target Player result."
+                };
+            }
+
+            private string GetStatusText()
+            {
+                if (_cancelRequested)
+                {
+                    return "cancel_requested";
+                }
+
+                if (_timedOut)
+                {
+                    return "timed_out_waiting_for_runtime";
+                }
+
+                return "running_runtime";
+            }
+        }
+
+        private sealed class RuntimeDispatchOptions
+        {
+            public string Transport;
+            public string RuntimeDirectory;
+            public string Target;
+            public string Url;
+            public string Token;
+            public int TimeoutMs;
+            public int PollIntervalMs;
+            public string RuntimeCommandId;
+            public string CommandPath;
+            public string ResultPath;
+
+            public object ToData()
+            {
+                return new
+                {
+                    transport = Transport,
+                    runtimeDirectory = RuntimeDirectory,
+                    target = Target,
+                    url = Url,
+                    timeoutMs = TimeoutMs,
+                    pollIntervalMs = PollIntervalMs,
+                    runtimeCommandId = RuntimeCommandId,
+                    commandPath = CommandPath,
+                    resultPath = ResultPath
+                };
+            }
+        }
+
+        private sealed class RuntimeDispatchResult
+        {
+            public bool Success;
+            public string Error;
+            public Dictionary<string, object> Result;
+            public string Transport;
+            public string RuntimeDirectory;
+            public string Target;
+            public string Url;
+            public string RuntimeCommandId;
+            public string CommandPath;
+            public string ResultPath;
+
+            public static RuntimeDispatchResult Failure(RuntimeDispatchOptions options, string error)
+            {
+                return new RuntimeDispatchResult
+                {
+                    Success = false,
+                    Error = error,
+                    Transport = options == null ? null : options.Transport,
+                    RuntimeDirectory = options == null ? null : options.RuntimeDirectory,
+                    Target = options == null ? null : options.Target,
+                    Url = options == null ? null : options.Url,
+                    RuntimeCommandId = options == null ? null : options.RuntimeCommandId,
+                    CommandPath = options == null ? null : options.CommandPath,
+                    ResultPath = options == null ? null : options.ResultPath
+                };
+            }
+
+            public object ToData()
+            {
+                return new
+                {
+                    success = Success,
+                    error = Error,
+                    transport = Transport,
+                    runtimeDirectory = RuntimeDirectory,
+                    target = Target,
+                    url = Url,
+                    runtimeCommandId = RuntimeCommandId,
+                    commandPath = CommandPath,
+                    resultPath = ResultPath,
+                    result = Result
+                };
+            }
+        }
+
+        private sealed class RuntimeFileTargetInfo
+        {
+            public string TargetId;
+            public string TargetPath;
+            public string CommandsPath;
+            public string ResultsPath;
+            public string HttpUrl;
+            public DateTime? LastHeartbeatUtc;
+            public bool Stale;
         }
     }
 }

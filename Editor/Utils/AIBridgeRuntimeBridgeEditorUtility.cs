@@ -403,6 +403,8 @@ namespace AIBridge.Editor
             runtime.runtimeSettings.targetId = source.TargetId ?? string.Empty;
             runtime.runtimeSettings.authToken = source.AuthToken ?? string.Empty;
             runtime.runtimeSettings.allowedActions = ParseAllowedActions(source.AllowedActions);
+            runtime.runtimeSettings.enableRuntimeCodeExecution =
+                source.EnableRuntimeCodeExecution && AIBridgeHybridClrUtility.IsHybridClrInstalled();
             runtime.runtimeSettings.heartbeatIntervalSeconds = source.HeartbeatIntervalSeconds;
             runtime.runtimeSettings.logBufferSize = Math.Max(1, source.LogBufferSize);
             runtime.runtimeSettings.maxResultBytes = Math.Max(1024, source.MaxResultBytes);

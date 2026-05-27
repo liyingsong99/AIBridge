@@ -92,6 +92,7 @@ namespace AIBridge.Runtime
 
             runtime.runtimeSettings.enableRuntimeBridge = true;
             runtime.runtimeSettings.allowInReleaseBuild = _releaseBuildAllowed;
+            runtime.runtimeSettings.enableRuntimeCodeExecution = IsRuntimeCodeExecutionAvailableByBuild();
             runtime.runtimeSettings.enableHttpTransport = true;
             runtime.runtimeSettings.httpBindAddress = DefaultHttpBindAddress;
             runtime.runtimeSettings.httpPort = DefaultHttpPort;
@@ -100,6 +101,15 @@ namespace AIBridge.Runtime
             gameObject.SetActive(true);
 
             Debug.Log("[AIBridgeRuntimeBootstrap] AIBridgeRuntime created by bootstrap. transport=" + TransportName + ". Default HTTP port=" + DefaultHttpPort + " (auto-increments if occupied). LAN: AIBridgeCLI runtime discover --udpPort " + DefaultDiscoveryUdpPort + " / 已通过 bootstrap 创建 AIBridgeRuntime。");
+        }
+
+        private static bool IsRuntimeCodeExecutionAvailableByBuild()
+        {
+#if AIBRIDGE_HYBRIDCLR_AVAILABLE
+            return true;
+#else
+            return false;
+#endif
         }
 
         private static AIBridgeRuntime FindExistingRuntime()
