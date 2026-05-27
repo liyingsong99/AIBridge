@@ -83,6 +83,13 @@ namespace AIBridge.Runtime
         private string _screenshotsPath;
         private string _heartbeatPath;
         private string _targetId;
+        private string _cachedProductName;
+        private string _cachedApplicationVersion;
+        private string _cachedUnityVersion;
+        private string _cachedPlatform;
+        private string _cachedDeviceName;
+        private bool _cachedIsEditor;
+        private bool _cachedIsDebugBuild;
 
         private readonly Queue<AIBridgeRuntimeCommand> _commandQueue = new Queue<AIBridgeRuntimeCommand>();
         private readonly List<IAIBridgeHandler> _handlers = new List<IAIBridgeHandler>();
@@ -220,6 +227,7 @@ namespace AIBridge.Runtime
             }
 
             _targetId = ResolveTargetId();
+            CacheMainThreadRuntimeInfo();
             _runtimeRootPath = ResolveRuntimeRootPath();
             _targetPath = Path.Combine(_runtimeRootPath, TargetsDirectoryName, _targetId);
             _commandsPath = Path.Combine(_targetPath, CommandsDirectoryName);
@@ -1779,17 +1787,29 @@ namespace AIBridge.Runtime
                 ["httpPort"] = GetActualHttpPort(),
                 ["httpBindAddress"] = runtimeSettings == null ? null : runtimeSettings.httpBindAddress,
                 ["runtimeVersion"] = RuntimeVersion,
-                ["productName"] = Application.productName,
-                ["applicationVersion"] = Application.version,
-                ["unityVersion"] = Application.unityVersion,
-                ["platform"] = Application.platform.ToString(),
-                ["deviceName"] = SystemInfo.deviceName,
-                ["isEditor"] = Application.isEditor,
-                ["isDebugBuild"] = Debug.isDebugBuild,
+                ["productName"] = _cachedProductName,
+                ["applicationVersion"] = _cachedApplicationVersion,
+                ["unityVersion"] = _cachedUnityVersion,
+                ["platform"] = _cachedPlatform,
+                ["deviceName"] = _cachedDeviceName,
+                ["isEditor"] = _cachedIsEditor,
+                ["isDebugBuild"] = _cachedIsDebugBuild,
                 ["uptimeSeconds"] = (DateTime.UtcNow - _startedAtUtc).TotalSeconds,
                 ["lastHeartbeatUtc"] = DateTime.UtcNow.ToString("o"),
                 ["capabilities"] = BuildCapabilitiesData()
             };
+        }
+
+        private void CacheMainThreadRuntimeInfo()
+        {
+            // 这些 Unity API 只能在主线程读取；HTTP health 由后台线程处理，只能使用这里缓存的稳定元信息。
+            _cachedProductName = Application.productName;
+            _cachedApplicationVersion = Application.version;
+            _cachedUnityVersion = Application.unityVersion;
+            _cachedPlatform = Application.platform.ToString();
+            _cachedDeviceName = SystemInfo.deviceName;
+            _cachedIsEditor = Application.isEditor;
+            _cachedIsDebugBuild = Debug.isDebugBuild;
         }
 
         internal void EnqueueHttpCommand(AIBridgeRuntimeCommand command)
