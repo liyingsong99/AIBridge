@@ -305,7 +305,7 @@ $CLI code_index diagnostics --file Assets/Scripts/Foo.cs
 
 该命令刻意保持只读：不做 rename、重构、自动修复或文件写入。语义 workspace 不可用时，fallback 结果会明确标记 `semantic=false`，`source` 为 `rg-fallback` 或 `text-fallback`。`doctor` 会直接报告快照缺失等问题；最终编译权威仍然是 `compile unity`。
 
-Unity Editor 可在 `AIBridge > Settings > Code Index` 中生成快照、配置启动后空闲预热、快照自动刷新、文本降级、PackageCache 源码是否纳入索引、忽略程序集/源码路径规则和退出清理策略。被排除的源码程序集仍会作为 metadata reference 保留，避免工程语义查询缺少包类型。`status` 会返回 `workspaceMode=unity-snapshot`、快照元数据、排除计数，以及 daemon 需要加载新快照时的 `stale=true`。
+Unity Editor 可在 `AIBridge > Settings > Code Index` 中生成快照、配置启动后空闲预热、快照自动刷新、文本降级、PackageCache 源码是否纳入索引、忽略程序集/源码路径规则和退出清理策略。预热阶段只加载轻量 snapshot name index；声明位置和全局唯一的索引成员定义可直接由快照返回，Roslyn 语义 workspace 会延迟到更复杂的定义、引用、诊断等语义查询真正需要时再构建。引用查询也会尽量使用 snapshot token index 缩小 Roslyn 候选文件范围。被排除的源码程序集仍会作为 metadata reference 保留，避免工程语义查询缺少包类型。`status` 会返回 `workspaceMode=unity-snapshot`、快照元数据、排除计数，以及 daemon 需要加载新快照时的 `stale=true`。
 
 </details>
 

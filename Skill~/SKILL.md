@@ -135,7 +135,7 @@ $CLI code_index callers --file Assets/Scripts/Foo.cs --line 42 --column 17
 $CLI code_index diagnostics --file Assets/Scripts/Foo.cs
 ```
 
-Results include `semantic`, `source`, `state`, `stale`, `workspaceMode`, snapshot metadata, excluded snapshot counts, `projectRoot`, and `solution`. Treat `semantic=false` as fallback text candidates only. Unity can generate/prewarm the snapshot from `AIBridge/Settings > Code Index`, where PackageCache source indexing and ignored assembly/source-path patterns can also be configured; if `status.stale=true`, the next semantic query refreshes from the latest snapshot when auto refresh is enabled.
+Results include `semantic`, `source`, `state`, `stale`, `workspaceMode`, snapshot metadata, excluded snapshot counts, `projectRoot`, and `solution`. Treat `semantic=false` as fallback text candidates only. Unity can generate/prewarm the snapshot from `AIBridge/Settings > Code Index`, where PackageCache source indexing and ignored assembly/source-path patterns can also be configured. Warmup loads the lightweight snapshot name index first; declaration and unique indexed member-definition lookups can return from the snapshot before Roslyn is loaded, and Roslyn semantic workspace construction is deferred until richer semantic queries need it. Reference queries use the snapshot token index to narrow Roslyn candidate files when possible. If `status.stale=true`, the next semantic query refreshes from the latest snapshot when auto refresh is enabled.
 
 ---
 

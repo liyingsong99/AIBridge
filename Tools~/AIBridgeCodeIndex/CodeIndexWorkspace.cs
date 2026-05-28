@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Immutable;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -21,6 +22,7 @@ namespace AIBridgeCodeIndex
         private const int SchemaVersion = 2;
         private const int ManifestFormatKind = 1;
         private const int AssemblyFormatKind = 2;
+        private const int TextIndexFormatKind = 3;
         private const string Magic = "AIBCI";
         private const string SnapshotRelativeDirectory = ".aibridge/code-index/snapshot";
         private const string ManifestFileName = "manifest.bin";
@@ -33,6 +35,9 @@ namespace AIBridgeCodeIndex
         private SnapshotManifest _manifest;
         private List<CodeIndexItem> _symbols = new List<CodeIndexItem>();
         private List<string> _workspaceWarnings = new List<string>();
+        private Dictionary<string, MetadataReference> _metadataReferenceCache = new Dictionary<string, MetadataReference>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, Document> _documentPathMap = new Dictionary<string, Document>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, HashSet<string>> _tokenDocumentIndex;
         private string _loadedManifestHash;
 
         public CodeIndexWorkspace(string projectRoot)
@@ -85,8 +90,7 @@ namespace AIBridgeCodeIndex
             await _gate.WaitAsync();
             try
             {
-                LoadSnapshotWorkspace();
-                _symbols = await BuildSymbolTableAsync(_solution);
+                LoadSnapshotIndex();
             }
             finally
             {
@@ -125,33 +129,40 @@ namespace AIBridgeCodeIndex
             }
         }
 
+        private void LoadSnapshotIndex()
+        {
+            var manifestPath = GetManifestPath();
+            var manifest = LoadSnapshotManifestWithAssemblies();
+            _workspaceWarnings = new List<string>();
+            var symbols = LoadNameIndexSymbols(manifest);
+
+            if (_workspace != null)
+            {
+                _workspace.Dispose();
+                _workspace = null;
+            }
+
+            _solution = null;
+            _metadataReferenceCache.Clear();
+            _documentPathMap.Clear();
+            _tokenDocumentIndex = null;
+            _symbols = symbols;
+            ApplyManifestStatus(manifest, loadedProjects: 0, loadedDocuments: 0);
+            _manifest = manifest;
+            _loadedManifestHash = ComputeFileHash(manifestPath);
+            StaleReason = null;
+            SnapshotExists = true;
+        }
+
         private void LoadSnapshotWorkspace()
         {
             var manifestPath = GetManifestPath();
-            SnapshotExists = File.Exists(manifestPath);
-            if (!SnapshotExists)
-            {
-                StaleReason = "missingSnapshot";
-                throw new FileNotFoundException("No Unity compilation snapshot found. Open the Unity project once or run Code Index prewarm from AIBridge settings.", manifestPath);
-            }
-
-            var manifest = ReadManifest(manifestPath);
-            ValidateSnapshotFiles(manifest);
+            var manifest = LoadSnapshotManifestWithAssemblies();
+            _workspaceWarnings = new List<string>();
 
             var workspace = new AdhocWorkspace();
             var solution = workspace.CurrentSolution;
             var projectIds = new Dictionary<string, ProjectId>(StringComparer.OrdinalIgnoreCase);
-            var assembliesById = manifest.Assemblies.ToDictionary(item => item.AssemblyId, StringComparer.OrdinalIgnoreCase);
-
-            for (var i = 0; i < manifest.Assemblies.Count; i++)
-            {
-                var assembly = ReadAssemblySnapshot(Path.Combine(GetSnapshotDirectory(), manifest.Assemblies[i].SnapshotFile));
-                manifest.Assemblies[i].Sources = assembly.Sources;
-                manifest.Assemblies[i].References = assembly.References;
-                manifest.Assemblies[i].Defines = assembly.Defines;
-                manifest.Assemblies[i].CompilerOptions = assembly.CompilerOptions;
-                manifest.Assemblies[i].ProjectReferenceAssemblyNames = assembly.ProjectReferenceAssemblyNames;
-            }
 
             for (var i = 0; i < manifest.Assemblies.Count; i++)
             {
@@ -213,7 +224,46 @@ namespace AIBridgeCodeIndex
             _workspace = workspace;
             _solution = solution;
             workspace.TryApplyChanges(solution);
+            RebuildDocumentPathMap();
 
+            ApplyManifestStatus(
+                manifest,
+                loadedProjects: _solution.Projects.Count(),
+                loadedDocuments: _solution.Projects.SelectMany(project => project.Documents).Count(IsCSharpDocument));
+            _manifest = manifest;
+            _loadedManifestHash = ComputeFileHash(manifestPath);
+            StaleReason = null;
+            SnapshotExists = true;
+        }
+
+        private SnapshotManifest LoadSnapshotManifestWithAssemblies()
+        {
+            var manifestPath = GetManifestPath();
+            SnapshotExists = File.Exists(manifestPath);
+            if (!SnapshotExists)
+            {
+                StaleReason = "missingSnapshot";
+                throw new FileNotFoundException("No Unity compilation snapshot found. Open the Unity project once or run Code Index prewarm from AIBridge settings.", manifestPath);
+            }
+
+            var manifest = ReadManifest(manifestPath);
+            ValidateSnapshotFiles(manifest);
+
+            for (var i = 0; i < manifest.Assemblies.Count; i++)
+            {
+                var assembly = ReadAssemblySnapshot(Path.Combine(GetSnapshotDirectory(), manifest.Assemblies[i].SnapshotFile));
+                manifest.Assemblies[i].Sources = assembly.Sources;
+                manifest.Assemblies[i].References = assembly.References;
+                manifest.Assemblies[i].Defines = assembly.Defines;
+                manifest.Assemblies[i].CompilerOptions = assembly.CompilerOptions;
+                manifest.Assemblies[i].ProjectReferenceAssemblyNames = assembly.ProjectReferenceAssemblyNames;
+            }
+
+            return manifest;
+        }
+
+        private void ApplyManifestStatus(SnapshotManifest manifest, int loadedProjects, int loadedDocuments)
+        {
             SnapshotVersion = manifest.SchemaVersion;
             GenerationId = manifest.GenerationId;
             AssemblyCount = manifest.Assemblies.Count;
@@ -223,12 +273,8 @@ namespace AIBridgeCodeIndex
             IncludePackageCacheSourceAssemblies = manifest.IncludePackageCacheSourceAssemblies;
             BuildTarget = manifest.BuildTarget;
             UnityVersion = manifest.UnityVersion;
-            LoadedProjects = _solution.Projects.Count();
-            LoadedDocuments = _solution.Projects.SelectMany(project => project.Documents).Count(IsCSharpDocument);
-            _manifest = manifest;
-            _loadedManifestHash = ComputeFileHash(manifestPath);
-            StaleReason = null;
-            SnapshotExists = true;
+            LoadedProjects = loadedProjects;
+            LoadedDocuments = loadedDocuments;
         }
 
         private void ValidateSnapshotFiles(SnapshotManifest manifest)
@@ -242,6 +288,179 @@ namespace AIBridgeCodeIndex
                     throw new FileNotFoundException("Unity compilation snapshot assembly file is missing.", record.SnapshotFile);
                 }
             }
+        }
+
+        private void EnsureSemanticWorkspaceLoaded()
+        {
+            if (_workspace != null && _solution != null)
+            {
+                return;
+            }
+
+            // 默认 warmup 只装载轻量索引；只有真正需要语义能力的查询才构建 Roslyn workspace。
+            LoadSnapshotWorkspace();
+        }
+
+        private List<CodeIndexItem> LoadNameIndexSymbols(SnapshotManifest manifest)
+        {
+            var result = new List<CodeIndexItem>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (manifest == null)
+            {
+                return result;
+            }
+
+            for (var i = 0; i < manifest.Assemblies.Count; i++)
+            {
+                var record = manifest.Assemblies[i];
+                var path = Path.Combine(GetSnapshotDirectory(), record.NameIndexFile);
+                if (!File.Exists(path))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                    using (var reader = new BinaryReader(stream, Encoding.UTF8))
+                    {
+                        ReadHeader(reader, TextIndexFormatKind);
+                        ReadString(reader);
+                        ReadString(reader);
+                        reader.ReadBoolean();
+                        var count = reader.ReadInt32();
+                        for (var j = 0; j < count; j++)
+                        {
+                            TryAddNameIndexEntry(result, seen, record.AssemblyName, ReadString(reader));
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _workspaceWarnings.Add("Failed to load name index " + path + ": " + ex.Message);
+                }
+            }
+
+            return result;
+        }
+
+        private Dictionary<string, HashSet<string>> GetTokenDocumentIndex()
+        {
+            if (_tokenDocumentIndex != null)
+            {
+                return _tokenDocumentIndex;
+            }
+
+            var result = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+            if (_manifest == null)
+            {
+                _tokenDocumentIndex = result;
+                return result;
+            }
+
+            for (var i = 0; i < _manifest.Assemblies.Count; i++)
+            {
+                var record = _manifest.Assemblies[i];
+                var path = Path.Combine(GetSnapshotDirectory(), record.TokenIndexFile);
+                if (!File.Exists(path))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                    using (var reader = new BinaryReader(stream, Encoding.UTF8))
+                    {
+                        ReadHeader(reader, TextIndexFormatKind);
+                        ReadString(reader);
+                        ReadString(reader);
+                        reader.ReadBoolean();
+                        var count = reader.ReadInt32();
+                        for (var j = 0; j < count; j++)
+                        {
+                            string name;
+                            string file;
+                            int line;
+                            if (!TryParseTextIndexEntry(ReadString(reader), out name, out file, out line))
+                            {
+                                continue;
+                            }
+
+                            HashSet<string> files;
+                            if (!result.TryGetValue(name, out files))
+                            {
+                                files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                                result[name] = files;
+                            }
+
+                            files.Add(file);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _workspaceWarnings.Add("Failed to load token index " + path + ": " + ex.Message);
+                }
+            }
+
+            _tokenDocumentIndex = result;
+            return result;
+        }
+
+        private static void TryAddNameIndexEntry(List<CodeIndexItem> result, HashSet<string> seen, string assemblyName, string entry)
+        {
+            string name;
+            string file;
+            int line;
+            if (!TryParseTextIndexEntry(entry, out name, out file, out line))
+            {
+                return;
+            }
+
+            var key = name + "|" + file + "|" + line;
+            if (!seen.Add(key))
+            {
+                return;
+            }
+
+            result.Add(new CodeIndexItem
+            {
+                kind = "symbol-index",
+                name = name,
+                container = assemblyName,
+                file = file,
+                line = line,
+                column = 1,
+                signature = assemblyName + ":" + name
+            });
+        }
+
+        private static bool TryParseTextIndexEntry(string entry, out string name, out string file, out int line)
+        {
+            name = null;
+            file = null;
+            line = 0;
+            if (string.IsNullOrWhiteSpace(entry))
+            {
+                return false;
+            }
+
+            var first = entry.IndexOf('|');
+            var second = first < 0 ? -1 : entry.IndexOf('|', first + 1);
+            if (first <= 0 || second <= first + 1 || second + 1 >= entry.Length)
+            {
+                return false;
+            }
+
+            name = entry.Substring(0, first);
+            file = entry.Substring(first + 1, second - first - 1);
+            if (!int.TryParse(entry.Substring(second + 1), out line))
+            {
+                line = 0;
+            }
+
+            return true;
         }
 
         private CodeIndexResponse QuerySymbol(string query)
@@ -267,6 +486,18 @@ namespace AIBridgeCodeIndex
 
         private async Task<CodeIndexResponse> QueryDefinitionAsync(Dictionary<string, object> parameters)
         {
+            CodeIndexResponse syntaxResponse;
+            if (TryQueryDeclarationDefinition(parameters, out syntaxResponse))
+            {
+                return syntaxResponse;
+            }
+
+            if (TryQueryIndexedDefinition(parameters, out syntaxResponse))
+            {
+                return syntaxResponse;
+            }
+
+            EnsureSemanticWorkspaceLoaded();
             var document = ResolveDocument(parameters, out var sourceText, out var position);
             var semanticModel = await document.GetSemanticModelAsync();
             var symbol = await SymbolFinder.FindSymbolAtPositionAsync(semanticModel, position, _workspace);
@@ -285,6 +516,7 @@ namespace AIBridgeCodeIndex
 
         private async Task<CodeIndexResponse> QueryReferencesAsync(Dictionary<string, object> parameters)
         {
+            EnsureSemanticWorkspaceLoaded();
             var document = ResolveDocument(parameters, out var sourceText, out var position);
             var semanticModel = await document.GetSemanticModelAsync();
             var symbol = await SymbolFinder.FindSymbolAtPositionAsync(semanticModel, position, _workspace);
@@ -292,7 +524,10 @@ namespace AIBridgeCodeIndex
 
             if (symbol != null)
             {
-                var references = await SymbolFinder.FindReferencesAsync(symbol, _solution);
+                var candidateDocuments = GetReferenceCandidateDocuments(symbol);
+                var references = candidateDocuments == null
+                    ? await SymbolFinder.FindReferencesAsync(symbol, _solution)
+                    : await SymbolFinder.FindReferencesAsync(symbol, _solution, candidateDocuments);
                 foreach (var referencedSymbol in references)
                 {
                     foreach (var reference in referencedSymbol.Locations)
@@ -310,8 +545,627 @@ namespace AIBridgeCodeIndex
                 .ToList());
         }
 
+        private bool TryQueryDeclarationDefinition(Dictionary<string, object> parameters, out CodeIndexResponse response)
+        {
+            response = null;
+
+            AssemblySnapshot assembly;
+            SourceText sourceText;
+            int position;
+            string fullPath;
+            string relativePath;
+            if (!TryResolveSnapshotSourcePosition(parameters, out assembly, out sourceText, out position, out fullPath, out relativePath))
+            {
+                return false;
+            }
+
+            var tree = CSharpSyntaxTree.ParseText(sourceText, BuildParseOptions(assembly), fullPath);
+            var root = tree.GetRoot();
+            var token = FindTokenAtPosition(root, sourceText, position);
+            var declaration = GetDeclarationForIdentifier(token);
+            if (declaration == null)
+            {
+                return false;
+            }
+
+            var identifier = GetDeclarationIdentifier(declaration);
+            if (identifier.RawKind == 0 || position < identifier.SpanStart || position > identifier.Span.End)
+            {
+                return false;
+            }
+
+            var item = BuildSyntaxDeclarationItem(declaration, identifier, relativePath, sourceText);
+            if (item == null)
+            {
+                return false;
+            }
+
+            response = BuildResponse(null, new List<CodeIndexItem> { item });
+            return true;
+        }
+
+        private bool TryQueryIndexedDefinition(Dictionary<string, object> parameters, out CodeIndexResponse response)
+        {
+            response = null;
+
+            AssemblySnapshot assembly;
+            SourceText sourceText;
+            int position;
+            string fullPath;
+            string relativePath;
+            if (!TryResolveSnapshotSourcePosition(parameters, out assembly, out sourceText, out position, out fullPath, out relativePath))
+            {
+                return false;
+            }
+
+            var tree = CSharpSyntaxTree.ParseText(sourceText, BuildParseOptions(assembly), fullPath);
+            var root = tree.GetRoot();
+            var token = FindTokenAtPosition(root, sourceText, position);
+            if (!token.IsKind(SyntaxKind.IdentifierToken) || !IsSafeIndexedDefinitionReference(token))
+            {
+                return false;
+            }
+
+            var matches = _symbols
+                .Where(item => string.Equals(item.name, token.ValueText, StringComparison.Ordinal))
+                .Take(2)
+                .ToList();
+            if (matches.Count != 1)
+            {
+                return false;
+            }
+
+            CodeIndexItem declarationItem;
+            if (TryBuildSyntaxDeclarationItem(matches[0], out declarationItem))
+            {
+                response = BuildResponse(null, new List<CodeIndexItem> { declarationItem });
+                return true;
+            }
+
+            response = BuildResponse(null, new List<CodeIndexItem> { matches[0] });
+            return true;
+        }
+
+        private bool TryResolveSnapshotSourcePosition(
+            Dictionary<string, object> parameters,
+            out AssemblySnapshot assembly,
+            out SourceText sourceText,
+            out int position,
+            out string fullPath,
+            out string relativePath)
+        {
+            assembly = null;
+            sourceText = null;
+            position = 0;
+            fullPath = null;
+            relativePath = null;
+
+            var file = GetString(parameters, "file");
+            var line = GetInt(parameters, "line");
+            var column = GetInt(parameters, "column");
+            if (string.IsNullOrWhiteSpace(file))
+            {
+                throw new ArgumentException("Missing required parameter: --file");
+            }
+
+            if (line <= 0 || column <= 0)
+            {
+                throw new ArgumentException("--line and --column must be positive 1-based numbers.");
+            }
+
+            if (_manifest == null)
+            {
+                LoadSnapshotIndex();
+            }
+
+            if (!TryFindSnapshotSource(file, out assembly, out fullPath, out relativePath) || !File.Exists(fullPath))
+            {
+                return false;
+            }
+
+            sourceText = SourceText.From(File.ReadAllText(fullPath, Encoding.UTF8), Encoding.UTF8);
+            if (line > sourceText.Lines.Count)
+            {
+                throw new ArgumentOutOfRangeException("line", "Line is outside the document.");
+            }
+
+            var textLine = sourceText.Lines[line - 1];
+            var zeroBasedColumn = Math.Max(0, column - 1);
+            var offsetInLine = Math.Min(zeroBasedColumn, Math.Max(0, textLine.End - textLine.Start));
+            position = textLine.Start + offsetInLine;
+            return true;
+        }
+
+        private bool TryFindSnapshotSource(string file, out AssemblySnapshot assembly, out string fullPath, out string relativePath)
+        {
+            assembly = null;
+            fullPath = null;
+            relativePath = null;
+            if (_manifest == null)
+            {
+                return false;
+            }
+
+            var requestedFullPath = Path.IsPathRooted(file)
+                ? Path.GetFullPath(file)
+                : Path.GetFullPath(Path.Combine(_projectRoot, file));
+            for (var i = 0; i < _manifest.Assemblies.Count; i++)
+            {
+                var record = _manifest.Assemblies[i];
+                for (var j = 0; j < record.Sources.Count; j++)
+                {
+                    var sourceFullPath = ResolveAbsolutePath(record.Sources[j].Path);
+                    if (string.Equals(sourceFullPath, requestedFullPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        assembly = record;
+                        fullPath = sourceFullPath;
+                        relativePath = record.Sources[j].Path;
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static SyntaxToken FindTokenAtPosition(SyntaxNode root, SourceText sourceText, int position)
+        {
+            if (root == null || sourceText == null || sourceText.Length == 0)
+            {
+                return default(SyntaxToken);
+            }
+
+            var safePosition = Math.Max(0, Math.Min(position, sourceText.Length - 1));
+            var token = root.FindToken(safePosition);
+            if (!token.IsKind(SyntaxKind.IdentifierToken) && safePosition > 0)
+            {
+                token = root.FindToken(safePosition - 1);
+            }
+
+            return token;
+        }
+
+        private static bool IsSafeIndexedDefinitionReference(SyntaxToken token)
+        {
+            var identifierName = token.Parent as IdentifierNameSyntax;
+            if (identifierName == null)
+            {
+                return false;
+            }
+
+            var memberAccess = identifierName.Parent as MemberAccessExpressionSyntax;
+            if (memberAccess != null && memberAccess.Name == identifierName)
+            {
+                return true;
+            }
+
+            var qualifiedName = identifierName.Parent as QualifiedNameSyntax;
+            return qualifiedName != null && qualifiedName.Right == identifierName;
+        }
+
+        private static SyntaxNode GetDeclarationForIdentifier(SyntaxToken token)
+        {
+            if (!token.IsKind(SyntaxKind.IdentifierToken))
+            {
+                return null;
+            }
+
+            var node = token.Parent;
+            var typeDeclaration = node as BaseTypeDeclarationSyntax;
+            if (typeDeclaration != null && typeDeclaration.Identifier == token)
+            {
+                return typeDeclaration;
+            }
+
+            var delegateDeclaration = node as DelegateDeclarationSyntax;
+            if (delegateDeclaration != null && delegateDeclaration.Identifier == token)
+            {
+                return delegateDeclaration;
+            }
+
+            var methodDeclaration = node as MethodDeclarationSyntax;
+            if (methodDeclaration != null && methodDeclaration.Identifier == token)
+            {
+                return methodDeclaration;
+            }
+
+            var constructorDeclaration = node as ConstructorDeclarationSyntax;
+            if (constructorDeclaration != null && constructorDeclaration.Identifier == token)
+            {
+                return constructorDeclaration;
+            }
+
+            var destructorDeclaration = node as DestructorDeclarationSyntax;
+            if (destructorDeclaration != null && destructorDeclaration.Identifier == token)
+            {
+                return destructorDeclaration;
+            }
+
+            var propertyDeclaration = node as PropertyDeclarationSyntax;
+            if (propertyDeclaration != null && propertyDeclaration.Identifier == token)
+            {
+                return propertyDeclaration;
+            }
+
+            var eventDeclaration = node as EventDeclarationSyntax;
+            if (eventDeclaration != null && eventDeclaration.Identifier == token)
+            {
+                return eventDeclaration;
+            }
+
+            var variableDeclaration = node as VariableDeclaratorSyntax;
+            if (variableDeclaration != null && variableDeclaration.Identifier == token)
+            {
+                return variableDeclaration;
+            }
+
+            var enumMemberDeclaration = node as EnumMemberDeclarationSyntax;
+            if (enumMemberDeclaration != null && enumMemberDeclaration.Identifier == token)
+            {
+                return enumMemberDeclaration;
+            }
+
+            var parameterDeclaration = node as ParameterSyntax;
+            if (parameterDeclaration != null && parameterDeclaration.Identifier == token)
+            {
+                return parameterDeclaration;
+            }
+
+            var typeParameterDeclaration = node as TypeParameterSyntax;
+            if (typeParameterDeclaration != null && typeParameterDeclaration.Identifier == token)
+            {
+                return typeParameterDeclaration;
+            }
+
+            return null;
+        }
+
+        private static SyntaxToken GetDeclarationIdentifier(SyntaxNode node)
+        {
+            var typeDeclaration = node as BaseTypeDeclarationSyntax;
+            if (typeDeclaration != null)
+            {
+                return typeDeclaration.Identifier;
+            }
+
+            var delegateDeclaration = node as DelegateDeclarationSyntax;
+            if (delegateDeclaration != null)
+            {
+                return delegateDeclaration.Identifier;
+            }
+
+            var methodDeclaration = node as MethodDeclarationSyntax;
+            if (methodDeclaration != null)
+            {
+                return methodDeclaration.Identifier;
+            }
+
+            var constructorDeclaration = node as ConstructorDeclarationSyntax;
+            if (constructorDeclaration != null)
+            {
+                return constructorDeclaration.Identifier;
+            }
+
+            var destructorDeclaration = node as DestructorDeclarationSyntax;
+            if (destructorDeclaration != null)
+            {
+                return destructorDeclaration.Identifier;
+            }
+
+            var propertyDeclaration = node as PropertyDeclarationSyntax;
+            if (propertyDeclaration != null)
+            {
+                return propertyDeclaration.Identifier;
+            }
+
+            var eventDeclaration = node as EventDeclarationSyntax;
+            if (eventDeclaration != null)
+            {
+                return eventDeclaration.Identifier;
+            }
+
+            var variableDeclaration = node as VariableDeclaratorSyntax;
+            if (variableDeclaration != null)
+            {
+                return variableDeclaration.Identifier;
+            }
+
+            var enumMemberDeclaration = node as EnumMemberDeclarationSyntax;
+            if (enumMemberDeclaration != null)
+            {
+                return enumMemberDeclaration.Identifier;
+            }
+
+            var parameterDeclaration = node as ParameterSyntax;
+            if (parameterDeclaration != null)
+            {
+                return parameterDeclaration.Identifier;
+            }
+
+            var typeParameterDeclaration = node as TypeParameterSyntax;
+            if (typeParameterDeclaration != null)
+            {
+                return typeParameterDeclaration.Identifier;
+            }
+
+            return default(SyntaxToken);
+        }
+
+        private static CodeIndexItem BuildSyntaxDeclarationItem(SyntaxNode declaration, SyntaxToken identifier, string relativePath, SourceText sourceText)
+        {
+            if (declaration == null || identifier.RawKind == 0 || sourceText == null)
+            {
+                return null;
+            }
+
+            var linePosition = sourceText.Lines.GetLinePosition(identifier.SpanStart);
+            var container = GetSyntaxDeclarationContainer(declaration);
+            var name = identifier.ValueText;
+            return new CodeIndexItem
+            {
+                kind = GetSyntaxDeclarationKind(declaration),
+                name = name,
+                container = container,
+                file = relativePath == null ? null : relativePath.Replace('\\', '/'),
+                line = linePosition.Line + 1,
+                column = linePosition.Character + 1,
+                signature = BuildSyntaxDeclarationSignature(declaration, name, container)
+            };
+        }
+
+        private static string GetSyntaxDeclarationKind(SyntaxNode declaration)
+        {
+            if (declaration is BaseTypeDeclarationSyntax || declaration is DelegateDeclarationSyntax)
+            {
+                return "namedtype";
+            }
+
+            if (declaration is MethodDeclarationSyntax || declaration is ConstructorDeclarationSyntax || declaration is DestructorDeclarationSyntax)
+            {
+                return "method";
+            }
+
+            if (declaration is PropertyDeclarationSyntax)
+            {
+                return "property";
+            }
+
+            if (declaration is EventDeclarationSyntax)
+            {
+                return "event";
+            }
+
+            var variable = declaration as VariableDeclaratorSyntax;
+            if (variable != null)
+            {
+                if (variable.Parent != null && variable.Parent.Parent is FieldDeclarationSyntax)
+                {
+                    return "field";
+                }
+
+                if (variable.Parent != null && variable.Parent.Parent is EventFieldDeclarationSyntax)
+                {
+                    return "event";
+                }
+
+                return "local";
+            }
+
+            if (declaration is EnumMemberDeclarationSyntax)
+            {
+                return "field";
+            }
+
+            if (declaration is ParameterSyntax)
+            {
+                return "parameter";
+            }
+
+            if (declaration is TypeParameterSyntax)
+            {
+                return "typeparameter";
+            }
+
+            return "symbol";
+        }
+
+        private static string GetSyntaxDeclarationContainer(SyntaxNode declaration)
+        {
+            var parts = new List<string>();
+            var namespaces = declaration.Ancestors().OfType<NamespaceDeclarationSyntax>().Reverse();
+            foreach (var namespaceDeclaration in namespaces)
+            {
+                parts.Add(namespaceDeclaration.Name.ToString());
+            }
+
+            var types = declaration.Ancestors().OfType<BaseTypeDeclarationSyntax>().Reverse();
+            foreach (var type in types)
+            {
+                parts.Add(type.Identifier.ValueText);
+            }
+
+            return parts.Count == 0 ? null : string.Join(".", parts);
+        }
+
+        private static string BuildSyntaxDeclarationSignature(SyntaxNode declaration, string name, string container)
+        {
+            var qualifiedName = string.IsNullOrEmpty(container) ? name : container + "." + name;
+            var methodDeclaration = declaration as MethodDeclarationSyntax;
+            if (methodDeclaration != null)
+            {
+                return qualifiedName + BuildParameterListSignature(methodDeclaration.ParameterList);
+            }
+
+            var constructorDeclaration = declaration as ConstructorDeclarationSyntax;
+            if (constructorDeclaration != null)
+            {
+                return qualifiedName + BuildParameterListSignature(constructorDeclaration.ParameterList);
+            }
+
+            var destructorDeclaration = declaration as DestructorDeclarationSyntax;
+            if (destructorDeclaration != null)
+            {
+                return qualifiedName + BuildParameterListSignature(destructorDeclaration.ParameterList);
+            }
+
+            var delegateDeclaration = declaration as DelegateDeclarationSyntax;
+            if (delegateDeclaration != null)
+            {
+                return qualifiedName + BuildParameterListSignature(delegateDeclaration.ParameterList);
+            }
+
+            return qualifiedName;
+        }
+
+        private static string BuildParameterListSignature(BaseParameterListSyntax parameterList)
+        {
+            if (parameterList == null || parameterList.Parameters.Count == 0)
+            {
+                return "()";
+            }
+
+            var parts = new List<string>();
+            foreach (var parameter in parameterList.Parameters)
+            {
+                var builder = new StringBuilder();
+                foreach (var modifier in parameter.Modifiers)
+                {
+                    if (builder.Length > 0)
+                    {
+                        builder.Append(' ');
+                    }
+
+                    builder.Append(modifier.Text);
+                }
+
+                if (parameter.Type != null)
+                {
+                    if (builder.Length > 0)
+                    {
+                        builder.Append(' ');
+                    }
+
+                    builder.Append(parameter.Type);
+                }
+
+                parts.Add(builder.Length == 0 ? parameter.Identifier.ValueText : builder.ToString());
+            }
+
+            return "(" + string.Join(", ", parts) + ")";
+        }
+
+        private bool TryBuildSyntaxDeclarationItem(CodeIndexItem indexItem, out CodeIndexItem declarationItem)
+        {
+            declarationItem = null;
+            if (indexItem == null || string.IsNullOrWhiteSpace(indexItem.file) || indexItem.line <= 0)
+            {
+                return false;
+            }
+
+            AssemblySnapshot assembly;
+            string fullPath;
+            string relativePath;
+            if (!TryFindSnapshotSource(indexItem.file, out assembly, out fullPath, out relativePath) || !File.Exists(fullPath))
+            {
+                return false;
+            }
+
+            var sourceText = SourceText.From(File.ReadAllText(fullPath, Encoding.UTF8), Encoding.UTF8);
+            if (indexItem.line > sourceText.Lines.Count)
+            {
+                return false;
+            }
+
+            var lineSpan = sourceText.Lines[indexItem.line - 1].Span;
+            var tree = CSharpSyntaxTree.ParseText(sourceText, BuildParseOptions(assembly), fullPath);
+            var root = tree.GetRoot();
+            foreach (var token in root.DescendantTokens())
+            {
+                if (token.SpanStart < lineSpan.Start)
+                {
+                    continue;
+                }
+
+                if (token.SpanStart >= lineSpan.End)
+                {
+                    break;
+                }
+
+                if (!token.IsKind(SyntaxKind.IdentifierToken) || !string.Equals(token.ValueText, indexItem.name, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var declaration = GetDeclarationForIdentifier(token);
+                if (declaration == null)
+                {
+                    continue;
+                }
+
+                declarationItem = BuildSyntaxDeclarationItem(declaration, token, relativePath, sourceText);
+                return declarationItem != null;
+            }
+
+            return false;
+        }
+
+        private IImmutableSet<Document> GetReferenceCandidateDocuments(ISymbol symbol)
+        {
+            if (symbol == null || string.IsNullOrWhiteSpace(symbol.Name) || !IsAsciiIdentifier(symbol.Name))
+            {
+                return null;
+            }
+
+            var tokenIndex = GetTokenDocumentIndex();
+            HashSet<string> files;
+            if (!tokenIndex.TryGetValue(symbol.Name, out files) || files.Count == 0)
+            {
+                return null;
+            }
+
+            if (_documentPathMap == null || _documentPathMap.Count == 0)
+            {
+                RebuildDocumentPathMap();
+            }
+
+            var builder = ImmutableHashSet.CreateBuilder<Document>();
+            foreach (var file in files)
+            {
+                var fullPath = ResolveAbsolutePath(file);
+                Document candidate;
+                if (!string.IsNullOrWhiteSpace(fullPath) && _documentPathMap.TryGetValue(fullPath, out candidate))
+                {
+                    builder.Add(candidate);
+                }
+            }
+
+            // token 索引只做候选文件剪枝；声明文件强制纳入，找不到候选时回退全量 Roslyn，避免漏结果。
+            foreach (var reference in symbol.DeclaringSyntaxReferences)
+            {
+                var path = reference.SyntaxTree == null ? null : reference.SyntaxTree.FilePath;
+                if (string.IsNullOrWhiteSpace(path))
+                {
+                    continue;
+                }
+
+                Document declarationDocument;
+                if (_documentPathMap.TryGetValue(Path.GetFullPath(path), out declarationDocument))
+                {
+                    builder.Add(declarationDocument);
+                }
+            }
+
+            if (builder.Count == 0 || (_documentPathMap != null && builder.Count >= _documentPathMap.Count))
+            {
+                return null;
+            }
+
+            return builder.ToImmutable();
+        }
+
         private async Task<CodeIndexResponse> QueryImplementationsAsync(Dictionary<string, object> parameters)
         {
+            EnsureSemanticWorkspaceLoaded();
             var type = await ResolveTypeSymbolAsync(GetString(parameters, "type"));
             var items = new List<CodeIndexItem>();
 
@@ -333,6 +1187,7 @@ namespace AIBridgeCodeIndex
 
         private async Task<CodeIndexResponse> QueryDerivedAsync(Dictionary<string, object> parameters)
         {
+            EnsureSemanticWorkspaceLoaded();
             var type = await ResolveTypeSymbolAsync(GetString(parameters, "type"));
             var items = new List<CodeIndexItem>();
 
@@ -372,6 +1227,7 @@ namespace AIBridgeCodeIndex
 
         private async Task<CodeIndexResponse> QueryCallersAsync(Dictionary<string, object> parameters)
         {
+            EnsureSemanticWorkspaceLoaded();
             var document = ResolveDocument(parameters, out var sourceText, out var position);
             var semanticModel = await document.GetSemanticModelAsync();
             var symbol = await SymbolFinder.FindSymbolAtPositionAsync(semanticModel, position, _workspace);
@@ -399,6 +1255,7 @@ namespace AIBridgeCodeIndex
 
         private async Task<CodeIndexResponse> QueryDiagnosticsAsync(Dictionary<string, object> parameters)
         {
+            EnsureSemanticWorkspaceLoaded();
             var file = GetString(parameters, "file");
             var diagnostics = new List<Diagnostic>();
 
@@ -470,15 +1327,48 @@ namespace AIBridgeCodeIndex
             var fullPath = Path.IsPathRooted(file)
                 ? Path.GetFullPath(file)
                 : Path.GetFullPath(Path.Combine(_projectRoot, file));
-            var document = _solution.Projects
-                .SelectMany(project => project.Documents)
-                .FirstOrDefault(item => string.Equals(Path.GetFullPath(item.FilePath ?? string.Empty), fullPath, StringComparison.OrdinalIgnoreCase));
+            if (_documentPathMap == null || _documentPathMap.Count == 0)
+            {
+                RebuildDocumentPathMap();
+            }
+
+            Document document;
+            if (!_documentPathMap.TryGetValue(fullPath, out document))
+            {
+                document = _solution.Projects
+                    .SelectMany(project => project.Documents)
+                    .FirstOrDefault(item => string.Equals(Path.GetFullPath(item.FilePath ?? string.Empty), fullPath, StringComparison.OrdinalIgnoreCase));
+            }
+
             if (document == null)
             {
                 throw new FileNotFoundException("File is not part of the loaded Unity snapshot workspace.", file);
             }
 
             return document;
+        }
+
+        private void RebuildDocumentPathMap()
+        {
+            var map = new Dictionary<string, Document>(StringComparer.OrdinalIgnoreCase);
+            if (_solution != null)
+            {
+                foreach (var document in _solution.Projects.SelectMany(project => project.Documents))
+                {
+                    if (!IsCSharpDocument(document))
+                    {
+                        continue;
+                    }
+
+                    var path = Path.GetFullPath(document.FilePath);
+                    if (!map.ContainsKey(path))
+                    {
+                        map.Add(path, document);
+                    }
+                }
+            }
+
+            _documentPathMap = map;
         }
 
         private async Task<INamedTypeSymbol> ResolveTypeSymbolAsync(string typeName)
@@ -759,7 +1649,7 @@ namespace AIBridgeCodeIndex
 
                 try
                 {
-                    result.Add(MetadataReference.CreateFromFile(path));
+                    result.Add(GetOrCreateMetadataReference(path));
                 }
                 catch (Exception ex)
                 {
@@ -768,6 +1658,19 @@ namespace AIBridgeCodeIndex
             }
 
             return result;
+        }
+
+        private MetadataReference GetOrCreateMetadataReference(string path)
+        {
+            MetadataReference reference;
+            if (_metadataReferenceCache.TryGetValue(path, out reference))
+            {
+                return reference;
+            }
+
+            reference = MetadataReference.CreateFromFile(path);
+            _metadataReferenceCache[path] = reference;
+            return reference;
         }
 
         private CSharpParseOptions BuildParseOptions(AssemblySnapshot record)
@@ -1016,6 +1919,31 @@ namespace AIBridgeCodeIndex
         {
             return !string.IsNullOrEmpty(value)
                 && value.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsAsciiIdentifier(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return false;
+            }
+
+            var first = value[0];
+            if (!(first == '_' || first >= 'A' && first <= 'Z' || first >= 'a' && first <= 'z'))
+            {
+                return false;
+            }
+
+            for (var i = 1; i < value.Length; i++)
+            {
+                var c = value[i];
+                if (!(c == '_' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9'))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static string GetString(Dictionary<string, object> parameters, string key)

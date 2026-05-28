@@ -249,6 +249,25 @@ namespace AIBridgeCodeIndex
             response.staleReason = _workspace.StaleReason;
             response.loadedProjects = _workspace.LoadedProjects;
             response.loadedDocuments = _workspace.LoadedDocuments;
+            lock (_statusLock)
+            {
+                _status.snapshotExists = _workspace.SnapshotExists;
+                _status.snapshotVersion = _workspace.SnapshotVersion;
+                _status.generationId = _workspace.GenerationId;
+                _status.assemblyCount = _workspace.AssemblyCount;
+                _status.sourceFileCount = _workspace.SourceFileCount;
+                _status.excludedAssemblyCount = _workspace.ExcludedAssemblyCount;
+                _status.excludedSourceFileCount = _workspace.ExcludedSourceFileCount;
+                _status.includePackageCacheSourceAssemblies = _workspace.IncludePackageCacheSourceAssemblies;
+                _status.buildTarget = _workspace.BuildTarget;
+                _status.unityVersion = _workspace.UnityVersion;
+                _status.staleReason = _workspace.StaleReason;
+                _status.loadedProjects = _workspace.LoadedProjects;
+                _status.loadedDocuments = _workspace.LoadedDocuments;
+                _status.updatedAt = DateTimeOffset.Now.ToString("o");
+            }
+
+            WriteStatus();
             return response;
         }
 
