@@ -16,6 +16,7 @@ namespace AIBridge.Editor
     public static class SkillInstaller
     {
         private const string SKILL_FILE_NAME = "SKILL.md";
+        private const string SKILL_INSTALL_MANIFEST_FILE_NAME = "aibridge-skill.json";
         private const string PACKAGE_NAME = "cn.lys.aibridge";
         private const string CLI_CACHE_FOLDER = ".aibridge/cli";
         private const string CODE_INDEX_FOLDER = "CodeIndex";
@@ -101,6 +102,34 @@ namespace AIBridge.Editor
             catch (Exception ex)
             {
                 AIBridgeLogger.LogError($"[SkillInstaller] Failed to install skill documentation: {ex.Message}");
+            }
+        }
+
+        internal static void RefreshInstalledIntegrationsNoDialog()
+        {
+            try
+            {
+                if (IsAssetImportWorker())
+                {
+                    return;
+                }
+
+                var projectRoot = GetProjectRoot();
+                var targets = GetSelectedTargets(projectRoot);
+                CleanupUnselectedTargets(projectRoot, targets);
+                if (targets.Count == 0)
+                {
+                    return;
+                }
+
+                CopyCliToCacheIfNeeded(projectRoot);
+                var results = InstallAssistantIntegrations(projectRoot, targets);
+                SkillPluginAdapter.GenerateForTargets(projectRoot, targets);
+                LogResults(results);
+            }
+            catch (Exception ex)
+            {
+                AIBridgeLogger.LogWarning("[SkillInstaller] Failed to refresh installed integrations: " + ex.Message);
             }
         }
 
@@ -455,7 +484,7 @@ namespace AIBridge.Editor
             return InstallAssistantIntegrations(projectRoot, AssistantIntegrationRegistry.GetTargets());
         }
 
-        private static List<AssistantIntegrationResult> InstallAssistantIntegrations(string projectRoot, IEnumerable<AssistantIntegrationTarget> targets)
+        internal static List<AssistantIntegrationResult> InstallAssistantIntegrations(string projectRoot, IEnumerable<AssistantIntegrationTarget> targets)
         {
             var results = new List<AssistantIntegrationResult>();
             var sourceSkillPath = GetSourceSkillPath();
@@ -563,6 +592,17 @@ namespace AIBridge.Editor
                 var targetSkillDir = Path.Combine(targetSkillRoot, skillName);
                 var targetSkillFile = Path.Combine(targetSkillDir, SKILL_FILE_NAME);
 
+                if (!ShouldInstallSkillDirectory(sourceSkillDir))
+                {
+                    if (Directory.Exists(targetSkillDir))
+                    {
+                        Directory.Delete(targetSkillDir, true);
+                        AIBridgeLogger.LogInfo("[SkillInstaller] Removed disabled Skill directory: " + targetSkillDir);
+                    }
+
+                    continue;
+                }
+
                 // 子目录 Skill 独立安装，先清空目标目录可避免删除源文件后残留旧资源。
                 if (Directory.Exists(targetSkillDir))
                 {
@@ -625,6 +665,11 @@ namespace AIBridge.Editor
                     continue;
                 }
 
+                if (string.Equals(Path.GetFileName(filePath), SKILL_INSTALL_MANIFEST_FILE_NAME, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
                 var targetFile = Path.Combine(targetDir, Path.GetFileName(filePath));
                 File.Copy(filePath, targetFile, true);
             }
@@ -653,6 +698,8 @@ namespace AIBridge.Editor
                 { "CSHARP_LANGUAGE_VERSION", csharpLanguageVersion },
                 { "UNITY_VERSION_RULE", AIBridgeEditorText.For(language, "Current Unity version: " + unityVersion, "当前项目 Unity 版本：" + unityVersion) },
                 { "CSHARP_VERSION_RULE", AIBridgeEditorText.For(language, "Current C# language requirement: compatible with " + csharpLanguageVersion + "; do not use newer syntax.", "当前项目 C# 语言版本要求：兼容 " + csharpLanguageVersion + "，禁止使用更高版本语法。") },
+                { "CAPABILITIES_TITLE", AIBridgeEditorText.For(language, "Current Capabilities", "当前能力状态") },
+                { "CODE_INDEX_CAPABILITY_RULE", BuildCodeIndexCapabilityRule(language) },
                 { "ROUTING_TITLE", AIBridgeEditorText.For(language, "Routing Rules", "路由原则") },
                 { "QUICK_TASK_RULE", AIBridgeEditorText.For(language, "Quick tasks: answer or execute directly for pure Q&A, code explanation, search/display, or tasks with no code or asset changes.", "快速任务：纯问答、代码解释、查找、显示、无代码或资源修改，直接回答或执行。") },
                 { "DEVELOPMENT_TASK_RULE", AIBridgeEditorText.For(language, "Development tasks: creating, modifying, fixing, refactoring C# code, Unity assets, Prefabs, Editor tools, package structure, tests, AGENTS.md, or Skills must load `aibridge-development-workflow` first.", "开发任务：创建、修改、修复、重构 C# 代码、Unity 资源、Prefab、Editor 工具、包结构、测试、AGENTS.md 或 Skills，必须优先加载 `aibridge-development-workflow`。") },
@@ -661,6 +708,71 @@ namespace AIBridge.Editor
                 { "WORKFLOW_SKILL_ENTRY", AIBridgeEditorText.For(language, "Load `aibridge-development-workflow` from `" + workflowSkillDocPath + "` before development tasks.", "开发任务先加载 `" + workflowSkillDocPath + "` 中的 `aibridge-development-workflow`。") },
                 { "SKILL_ROOT_RULE", AIBridgeEditorText.For(language, "AIBridge Skills are installed under `" + skillRootPath + "/<skill-name>/SKILL.md`; load sibling Skills from that directory only when the workflow requires them.", "AIBridge Skills 安装在 `" + skillRootPath + "/<skill-name>/SKILL.md`；仅在工作流要求时从该目录加载同级 Skill。") }
             };
+        }
+
+        private static string BuildCodeIndexCapabilityRule(AIBridgeEditorLanguage language)
+        {
+            if (AIBridgeProjectSettings.Instance.CodeIndex.EnableCodeIndex)
+            {
+                return AIBridgeEditorText.For(
+                    language,
+                    "Code Index: enabled. Load `aibridge-code-index` only when semantic symbol, definition, reference, caller, or diagnostic lookup is useful.",
+                    "Code Index：已启用。只有需要语义符号、定义、引用、调用者或诊断查询时才加载 `aibridge-code-index`。");
+            }
+
+            return AIBridgeEditorText.For(
+                language,
+                "Code Index: disabled. Do not call `code_index`; use `rg`, file reads, or regular AIBridge commands for code search.",
+                "Code Index：已关闭。不要调用 `code_index`；请使用 `rg`、文件读取或常规 AIBridge 命令搜索代码。");
+        }
+
+        private static bool ShouldInstallSkillDirectory(string sourceSkillDir)
+        {
+            string requiredFeature;
+            if (!TryReadRequiredFeature(sourceSkillDir, out requiredFeature))
+            {
+                return false;
+            }
+
+            return IsRequiredFeatureEnabled(requiredFeature);
+        }
+
+        private static bool TryReadRequiredFeature(string sourceSkillDir, out string requiredFeature)
+        {
+            requiredFeature = null;
+            var manifestPath = Path.Combine(sourceSkillDir, SKILL_INSTALL_MANIFEST_FILE_NAME);
+            if (!File.Exists(manifestPath))
+            {
+                return true;
+            }
+
+            try
+            {
+                var manifest = JsonUtility.FromJson<SkillInstallManifest>(File.ReadAllText(manifestPath, Encoding.UTF8));
+                requiredFeature = manifest == null ? null : manifest.requiredFeature;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                AIBridgeLogger.LogWarning("[SkillInstaller] Failed to read Skill install manifest: " + ex.Message);
+                return false;
+            }
+        }
+
+        private static bool IsRequiredFeatureEnabled(string requiredFeature)
+        {
+            if (string.IsNullOrWhiteSpace(requiredFeature))
+            {
+                return true;
+            }
+
+            if (string.Equals(requiredFeature, "code-index", StringComparison.OrdinalIgnoreCase))
+            {
+                return AIBridgeProjectSettings.Instance.CodeIndex.EnableCodeIndex;
+            }
+
+            AIBridgeLogger.LogWarning("[SkillInstaller] Unknown required Skill feature: " + requiredFeature);
+            return false;
         }
 
         internal static string ApplyProjectVersionTokens(string content)
@@ -870,6 +982,12 @@ namespace AIBridge.Editor
             }
 
             return false;
+        }
+
+        [Serializable]
+        private sealed class SkillInstallManifest
+        {
+            public string requiredFeature;
         }
 
         /// <summary>

@@ -19,6 +19,7 @@ namespace AIBridgeCLI.Commands
         private const string SnapshotDirectoryName = "snapshot";
         private const string DaemonDirectoryName = "CodeIndex";
         private const string DaemonAssemblyName = "AIBridgeCodeIndex";
+        private const string DisabledMessage = "Code Index is disabled in AIBridge settings. Enable AIBridge > Settings > Code Index > Enable Code Index, or use rg and normal file reads.";
         private static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings
         {
             NullValueHandling = NullValueHandling.Ignore
@@ -46,6 +47,10 @@ namespace AIBridgeCLI.Commands
         {
             var normalizedAction = string.IsNullOrWhiteSpace(action) ? "status" : action.Trim().ToLowerInvariant();
             var context = CodeIndexContext.Resolve(options);
+            if (!context.Enabled)
+            {
+                return await ExecuteDisabledAsync(normalizedAction, context, timeout);
+            }
 
             switch (normalizedAction)
             {
@@ -70,6 +75,21 @@ namespace AIBridgeCLI.Commands
             }
         }
 
+        private static async Task<JObject> ExecuteDisabledAsync(string normalizedAction, CodeIndexContext context, int timeout)
+        {
+            switch (normalizedAction)
+            {
+                case "status":
+                    return BuildDisabledStatus(context);
+                case "doctor":
+                    return BuildDisabledDoctor(context);
+                case "reset":
+                    return await ResetAsync(context, timeout);
+                default:
+                    return BuildDisabledFailure(context);
+            }
+        }
+
         private static async Task<JObject> QueryAsync(CodeIndexContext context, string action, Dictionary<string, string> options, int timeout)
         {
             ValidateQueryArguments(action, options);
@@ -90,11 +110,13 @@ namespace AIBridgeCLI.Commands
 
                 if (response.Value<bool>("success"))
                 {
+                    response["enabled"] = true;
                     return response;
                 }
 
                 if (!IsFallbackEnabled(context, options) || string.Equals(action, "diagnostics", StringComparison.OrdinalIgnoreCase))
                 {
+                    response["enabled"] = context.Enabled;
                     return response;
                 }
 
@@ -152,6 +174,7 @@ namespace AIBridgeCLI.Commands
             return new JObject
             {
                 ["success"] = true,
+                ["enabled"] = context.Enabled,
                 ["semantic"] = false,
                 ["source"] = "reset",
                 ["state"] = "reset",
@@ -296,6 +319,7 @@ namespace AIBridgeCLI.Commands
             {
                 ["success"] = true,
                 ["healthy"] = issues.Count == 0,
+                ["enabled"] = true,
                 ["semantic"] = reachable && IsReady(remote ?? status),
                 ["source"] = "doctor",
                 ["state"] = remote == null ? (status == null ? "missing" : status.Value<string>("state")) : remote.Value<string>("state"),
@@ -319,6 +343,28 @@ namespace AIBridgeCLI.Commands
                 ["daemon"] = daemon.DisplayPath,
                 ["issues"] = issues,
                 ["suggestions"] = suggestions
+            };
+        }
+
+        private static JObject BuildDisabledDoctor(CodeIndexContext context)
+        {
+            return new JObject
+            {
+                ["success"] = true,
+                ["healthy"] = false,
+                ["enabled"] = false,
+                ["semantic"] = false,
+                ["source"] = "settings",
+                ["state"] = "disabled",
+                ["stale"] = true,
+                ["projectRoot"] = context.ProjectRoot,
+                ["solution"] = context.SolutionPath,
+                ["workspaceMode"] = "unity-snapshot",
+                ["snapshotExists"] = File.Exists(context.SnapshotManifestPath),
+                ["snapshotPath"] = context.SnapshotManifestPath,
+                ["statusPath"] = context.StatusPath,
+                ["issues"] = new JArray("Code Index is disabled in AIBridge settings."),
+                ["suggestions"] = new JArray("Enable AIBridge > Settings > Code Index > Enable Code Index, or use rg and normal file reads.")
             };
         }
 
@@ -438,6 +484,7 @@ namespace AIBridgeCLI.Commands
                 return new JObject
                 {
                     ["success"] = true,
+                    ["enabled"] = context.Enabled,
                     ["semantic"] = false,
                     ["source"] = "status-file",
                     ["state"] = "missing",
@@ -456,6 +503,7 @@ namespace AIBridgeCLI.Commands
             return new JObject
             {
                 ["success"] = true,
+                ["enabled"] = context.Enabled,
                 ["semantic"] = IsReady(status),
                 ["source"] = "status-file",
                 ["state"] = status.Value<string>("state"),
@@ -482,6 +530,45 @@ namespace AIBridgeCLI.Commands
                 ["statusPath"] = context.StatusPath,
                 ["reachable"] = reachable,
                 ["message"] = status.Value<string>("message")
+            };
+        }
+
+        private static JObject BuildDisabledStatus(CodeIndexContext context)
+        {
+            return new JObject
+            {
+                ["success"] = true,
+                ["enabled"] = false,
+                ["semantic"] = false,
+                ["source"] = "settings",
+                ["state"] = "disabled",
+                ["stale"] = true,
+                ["projectRoot"] = context.ProjectRoot,
+                ["solution"] = context.SolutionPath,
+                ["workspaceMode"] = "unity-snapshot",
+                ["snapshotExists"] = File.Exists(context.SnapshotManifestPath),
+                ["snapshotPath"] = context.SnapshotManifestPath,
+                ["statusPath"] = context.StatusPath,
+                ["reachable"] = false,
+                ["message"] = DisabledMessage
+            };
+        }
+
+        private static JObject BuildDisabledFailure(CodeIndexContext context)
+        {
+            return new JObject
+            {
+                ["success"] = false,
+                ["enabled"] = false,
+                ["semantic"] = false,
+                ["source"] = "settings",
+                ["state"] = "disabled",
+                ["stale"] = true,
+                ["projectRoot"] = context.ProjectRoot,
+                ["solution"] = context.SolutionPath,
+                ["workspaceMode"] = "unity-snapshot",
+                ["snapshotExists"] = File.Exists(context.SnapshotManifestPath),
+                ["error"] = DisabledMessage
             };
         }
 
@@ -544,6 +631,7 @@ namespace AIBridgeCLI.Commands
             return new JObject
             {
                 ["success"] = true,
+                ["enabled"] = context.Enabled,
                 ["semantic"] = false,
                 ["source"] = source,
                 ["state"] = "fallback",
@@ -1020,6 +1108,7 @@ namespace AIBridgeCLI.Commands
             public string StatusPath { get; private set; }
             public bool HasUnityProjectMarkers { get; private set; }
             public int UnityPid { get; private set; }
+            public bool Enabled { get; private set; }
             public bool AutoRefresh { get; private set; }
             public bool FallbackToTextSearch { get; private set; }
             public bool IncludeSnapshotOnReset { get; private set; }
@@ -1042,6 +1131,7 @@ namespace AIBridgeCLI.Commands
                     SnapshotJsonPath = Path.Combine(snapshotDirectory, "manifest.json"),
                     StatusPath = Path.Combine(indexDirectory, "status.json"),
                     UnityPid = unityPid,
+                    Enabled = GetConfigBool(config, "enableCodeIndex", true),
                     AutoRefresh = ResolveBool(options, "auto-refresh", GetConfigBool(config, "autoRefreshOnFileChange", true)),
                     FallbackToTextSearch = ResolveBool(options, "fallback", GetConfigBool(config, "fallbackToTextSearch", true)),
                     IncludeSnapshotOnReset = ResolveBool(options, "include-snapshot", false),

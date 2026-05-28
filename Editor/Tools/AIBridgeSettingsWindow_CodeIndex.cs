@@ -26,6 +26,7 @@ namespace AIBridge.Editor
         private void DrawCodeIndexSettingsTab()
         {
             var settings = AIBridgeProjectSettings.Instance.CodeIndex;
+            var wasCodeIndexEnabled = settings.EnableCodeIndex;
 
             EditorGUILayout.LabelField(AIBridgeEditorText.T("Read-only Code Index", "只读 Code Index"), EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
@@ -41,6 +42,15 @@ namespace AIBridge.Editor
             settings.EnableCodeIndex = EditorGUILayout.Toggle(
                 AIBridgeEditorText.T("Enable Code Index", "启用 Code Index"),
                 settings.EnableCodeIndex);
+
+            if (!settings.EnableCodeIndex)
+            {
+                EditorGUILayout.HelpBox(
+                    AIBridgeEditorText.T(
+                        "Code Index is disabled. The aibridge-code-index Skill is removed from selected assistant integrations when Auto Install Skills is enabled; otherwise reinstall selected integrations manually.",
+                        "Code Index 已关闭。启用自动安装 Skills 时，会从已选 AI 工具集成中移除 aibridge-code-index；否则请手动重新安装选中集成。"),
+                    MessageType.Warning);
+            }
 
             using (new EditorGUI.DisabledScope(!settings.EnableCodeIndex))
             {
@@ -115,6 +125,19 @@ namespace AIBridge.Editor
                 settings.IgnoredSourcePathPatterns = settings.IgnoredSourcePathPatterns ?? AIBridgeProjectSettings.DefaultCodeIndexIgnoredSourcePathPatterns;
                 AIBridgeProjectSettings.Instance.SaveSettings();
                 AIBridgeCodeIndexEditorUtility.WriteCodeIndexConfig();
+
+                if (wasCodeIndexEnabled != settings.EnableCodeIndex)
+                {
+                    if (!settings.EnableCodeIndex)
+                    {
+                        AIBridgeCodeIndexEditorUtility.ShutdownDaemon(settings.CleanupModeOnQuit, 3000);
+                    }
+
+                    if (AIBridgeProjectSettings.Instance.AutoInstallSkills)
+                    {
+                        SkillInstaller.RefreshInstalledIntegrationsNoDialog();
+                    }
+                }
             }
 
             EditorGUILayout.Space(8);
@@ -134,20 +157,23 @@ namespace AIBridge.Editor
 
             EditorGUILayout.Space(8);
             EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button(AIBridgeEditorText.T("Generate Snapshot", "生成快照"), GUILayout.Height(24)))
+            using (new EditorGUI.DisabledScope(!settings.EnableCodeIndex))
             {
-                var success = AIBridgeCodeIndexSnapshotUtility.GenerateSnapshot(out var message);
-                Debug.Log(AIBridgeEditorText.T(
-                    success ? "[AIBridge] Code Index snapshot generated: " + message : "[AIBridge] Code Index snapshot failed: " + message,
-                    success ? "[AIBridge] Code Index 快照已生成：" + message : "[AIBridge] Code Index 快照生成失败：" + message));
-            }
+                if (GUILayout.Button(AIBridgeEditorText.T("Generate Snapshot", "生成快照"), GUILayout.Height(24)))
+                {
+                    var success = AIBridgeCodeIndexSnapshotUtility.GenerateSnapshot(out var message);
+                    Debug.Log(AIBridgeEditorText.T(
+                        success ? "[AIBridge] Code Index snapshot generated: " + message : "[AIBridge] Code Index snapshot failed: " + message,
+                        success ? "[AIBridge] Code Index 快照已生成：" + message : "[AIBridge] Code Index 快照生成失败：" + message));
+                }
 
-            if (GUILayout.Button(AIBridgeEditorText.T("Warmup Now", "立即预热"), GUILayout.Height(24)))
-            {
-                var started = AIBridgeCodeIndexEditorUtility.StartWarmupNoWait(manual: true);
-                Debug.Log(AIBridgeEditorText.T(
-                    started ? "[AIBridge] Code Index warmup started." : "[AIBridge] Code Index warmup was not started.",
-                    started ? "[AIBridge] Code Index 预热已启动。" : "[AIBridge] Code Index 预热未启动。"));
+                if (GUILayout.Button(AIBridgeEditorText.T("Warmup Now", "立即预热"), GUILayout.Height(24)))
+                {
+                    var started = AIBridgeCodeIndexEditorUtility.StartWarmupNoWait(manual: true);
+                    Debug.Log(AIBridgeEditorText.T(
+                        started ? "[AIBridge] Code Index warmup started." : "[AIBridge] Code Index warmup was not started.",
+                        started ? "[AIBridge] Code Index 预热已启动。" : "[AIBridge] Code Index 预热未启动。"));
+                }
             }
 
             if (GUILayout.Button(AIBridgeEditorText.T("Shutdown", "关闭索引"), GUILayout.Height(24)))

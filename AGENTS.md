@@ -45,8 +45,9 @@
    - unity yaml：`unity-yaml-editing/references/unity-yaml-reference.md`
 7. 未实现 `ICommandSkillDocProvider` 的旧命令继续使用 `ICommand.SkillDescription`，并写入默认 reference
 8. SkillInstaller 自动安装 `Skill~/SKILL.md` 和 `Skill~/*/SKILL.md`；新增 Skill 不要修改 RootRule 索引或安装器路由
-9. 面向 AI 的 Skill / SkillDescription / command reference 必须精简凝练，只保留调用方式、关键约束和必要决策规则，避免冗余解释性说明
-10. 面向用户的编辑器面板、README、HelpBox、Tooltip 可以解释功能影响、默认行为和使用说明；不要把这类用户说明混入面向 AI 的提示词
+9. 需要受功能开关控制的可选 Skill，在 Skill 目录放 `aibridge-skill.json` 并声明 `requiredFeature`，不要把功能说明硬塞进主 Skill
+10. 面向 AI 的 Skill / SkillDescription / command reference 必须精简凝练，只保留调用方式、关键约束和必要决策规则，避免冗余解释性说明
+11. 面向用户的编辑器面板、README、HelpBox、Tooltip 可以解释功能影响、默认行为和使用说明；不要把这类用户说明混入面向 AI 的提示词
 
 ## 模板维护规则
 1. `Templates~/ProjectRules/AGENTS.zh-CN.md` 和 `Templates~/ProjectRules/AGENTS.en-US.md` 是安装到 Unity 项目的示例文件

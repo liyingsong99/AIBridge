@@ -71,6 +71,7 @@ namespace AIBridge.Editor.Tests
             AIBridgeProjectSettings.Instance.SkillRootDirectory = AIBridgeProjectSettings.DefaultSkillRootDirectory;
             AIBridgeProjectSettings.Instance.EditorLanguage = AIBridgeEditorLanguage.English;
             AIBridgeProjectSettings.Instance.EditorLanguageInitialized = true;
+            AIBridgeProjectSettings.Instance.CodeIndex.EnableCodeIndex = AIBridgeProjectSettings.DefaultCodeIndexEnabled;
         }
     }
 }

@@ -1,7 +1,7 @@
 ---
 templateId: unity-integration
 assistant: aibridge
-version: 6
+version: 7
 target: root-rule
 ---
 ## AIBridge Bootstrap
@@ -18,6 +18,9 @@ $CLI editor log --message "Hello" --logType Warning
 **{{PROJECT_VERSION_TITLE}}**:
 - {{UNITY_VERSION_RULE}}
 - {{CSHARP_VERSION_RULE}}
+
+**{{CAPABILITIES_TITLE}}**:
+- {{CODE_INDEX_CAPABILITY_RULE}}
 
 **{{ROUTING_TITLE}}**:
 - {{QUICK_TASK_RULE}}

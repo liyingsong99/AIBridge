@@ -84,7 +84,7 @@ namespace AIBridge.Editor
         public static bool StartWarmupNoWait(bool manual)
         {
             var settings = AIBridgeProjectSettings.Instance.CodeIndex;
-            if (!manual && (!settings.EnableCodeIndex || !settings.PrewarmOnUnityStartup))
+            if (!settings.EnableCodeIndex || (!manual && !settings.PrewarmOnUnityStartup))
             {
                 return false;
             }
