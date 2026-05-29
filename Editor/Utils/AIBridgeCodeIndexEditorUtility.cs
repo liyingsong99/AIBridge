@@ -5,6 +5,7 @@ using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using UnityEditor;
+using UnityEditor.Compilation;
 using UnityEngine;
 
 namespace AIBridge.Editor
@@ -21,10 +22,17 @@ namespace AIBridge.Editor
         private const string TempDirectoryName = "temp";
         private const string LogsDirectoryName = "logs";
         private const int StartupRetryDelaySeconds = 2;
+        private const double PostCompileRefreshDelaySeconds = 1.0;
+        private const string PendingPostCompileRefreshSessionKey = "AIBridge.CodeIndex.PendingPostCompileRefresh";
 
         private static bool _startupPrewarmScheduled;
         private static bool _startupPrewarmStarted;
         private static double _startupPrewarmTime;
+        private static bool _snapshotRefreshPending;
+        private static bool _snapshotRefreshManual;
+        private static bool _snapshotRefreshStartWarmup;
+        private static double _snapshotRefreshTime;
+        private static string _snapshotRefreshReason;
 
         static AIBridgeCodeIndexEditorUtility()
         {
@@ -33,8 +41,10 @@ namespace AIBridge.Editor
                 return;
             }
 
-            EditorApplication.delayCall += ScheduleStartupPrewarm;
+            EditorApplication.delayCall += InitializeDelayedCodeIndex;
             EditorApplication.quitting += ShutdownOnEditorQuitting;
+            CompilationPipeline.compilationFinished -= OnCompilationFinished;
+            CompilationPipeline.compilationFinished += OnCompilationFinished;
         }
 
         public static string GetIndexDirectory()
@@ -89,6 +99,22 @@ namespace AIBridge.Editor
                 return false;
             }
 
+            return ScheduleSnapshotRefresh(manual, startWarmup: true, reason: manual ? "manualWarmup" : "startupPrewarm");
+        }
+
+        public static bool ScheduleSnapshotRefresh(bool manual)
+        {
+            return ScheduleSnapshotRefresh(manual, startWarmup: false, reason: manual ? "manualSnapshot" : "autoRefresh");
+        }
+
+        private static bool RunWarmupNoWait(bool manual)
+        {
+            var settings = AIBridgeProjectSettings.Instance.CodeIndex;
+            if (!settings.EnableCodeIndex || (!manual && !settings.PrewarmOnUnityStartup))
+            {
+                return false;
+            }
+
             WriteCodeIndexConfig();
             if (!AIBridgeCodeIndexSnapshotUtility.GenerateSnapshot(out var snapshotMessage))
             {
@@ -115,6 +141,30 @@ namespace AIBridge.Editor
                        + " --unity-pid " + Process.GetCurrentProcess().Id
                        + " --auto-refresh " + ToCliBool(settings.AutoRefreshOnFileChange);
             return StartCli(cliPath, args, waitForExit: false, timeoutMs: 1000);
+        }
+
+        private static bool RunSnapshotRefresh(bool manual)
+        {
+            var settings = AIBridgeProjectSettings.Instance.CodeIndex;
+            if (!settings.EnableCodeIndex)
+            {
+                return false;
+            }
+
+            WriteCodeIndexConfig();
+            var success = AIBridgeCodeIndexSnapshotUtility.GenerateSnapshot(out var message);
+            if (manual)
+            {
+                UnityEngine.Debug.Log(AIBridgeEditorText.T(
+                    success ? "[AIBridge] Code Index snapshot generated: " + message : "[AIBridge] Code Index snapshot failed: " + message,
+                    success ? "[AIBridge] Code Index 快照已生成：" + message : "[AIBridge] Code Index 快照生成失败：" + message));
+            }
+            else if (!success)
+            {
+                AIBridgeLogger.LogWarning("[CodeIndex] Failed to generate Unity compilation snapshot: " + message);
+            }
+
+            return success;
         }
 
         public static void ShutdownDaemon(string cleanupMode, int timeoutMs)
@@ -172,6 +222,16 @@ namespace AIBridge.Editor
             return "$CLI " + commandBody;
         }
 
+        private static void InitializeDelayedCodeIndex()
+        {
+            if (RestorePendingPostCompileRefresh())
+            {
+                return;
+            }
+
+            ScheduleStartupPrewarm();
+        }
+
         private static void ScheduleStartupPrewarm()
         {
             if (_startupPrewarmScheduled || Application.isBatchMode)
@@ -182,6 +242,11 @@ namespace AIBridge.Editor
             var settings = AIBridgeProjectSettings.Instance.CodeIndex;
             WriteCodeIndexConfig();
             if (!settings.EnableCodeIndex || !settings.PrewarmOnUnityStartup)
+            {
+                return;
+            }
+
+            if (settings.AutoRefreshOnFileChange && SessionState.GetBool(PendingPostCompileRefreshSessionKey, false))
             {
                 return;
             }
@@ -215,6 +280,121 @@ namespace AIBridge.Editor
             _startupPrewarmStarted = true;
             EditorApplication.update -= TryStartupPrewarm;
             StartWarmupNoWait(manual: false);
+        }
+
+        private static void OnCompilationFinished(object context)
+        {
+            var settings = AIBridgeProjectSettings.Instance.CodeIndex;
+            if (!settings.EnableCodeIndex || !settings.AutoRefreshOnFileChange)
+            {
+                return;
+            }
+
+            SessionState.SetBool(PendingPostCompileRefreshSessionKey, true);
+            ScheduleSnapshotRefresh(manual: false, startWarmup: settings.PrewarmOnUnityStartup, reason: "compilationFinished");
+        }
+
+        private static bool RestorePendingPostCompileRefresh()
+        {
+            if (!SessionState.GetBool(PendingPostCompileRefreshSessionKey, false))
+            {
+                return false;
+            }
+
+            SessionState.SetBool(PendingPostCompileRefreshSessionKey, false);
+            var settings = AIBridgeProjectSettings.Instance.CodeIndex;
+            if (!settings.EnableCodeIndex || !settings.AutoRefreshOnFileChange)
+            {
+                return false;
+            }
+
+            return ScheduleSnapshotRefresh(manual: false, startWarmup: settings.PrewarmOnUnityStartup, reason: "postReloadCompilationFinished");
+        }
+
+        private static bool ScheduleSnapshotRefresh(bool manual, bool startWarmup, string reason)
+        {
+            if (Application.isBatchMode)
+            {
+                return false;
+            }
+
+            var settings = AIBridgeProjectSettings.Instance.CodeIndex;
+            if (!settings.EnableCodeIndex)
+            {
+                return false;
+            }
+
+            if (!manual && !startWarmup && !settings.AutoRefreshOnFileChange)
+            {
+                return false;
+            }
+
+            WriteCodeIndexConfig();
+            _snapshotRefreshPending = true;
+            _snapshotRefreshManual = _snapshotRefreshManual || manual;
+            _snapshotRefreshStartWarmup = _snapshotRefreshStartWarmup || startWarmup;
+            _snapshotRefreshReason = reason;
+            _snapshotRefreshTime = Math.Max(_snapshotRefreshTime, EditorApplication.timeSinceStartup + PostCompileRefreshDelaySeconds);
+            if (startWarmup)
+            {
+                _startupPrewarmStarted = true;
+                _startupPrewarmScheduled = true;
+                EditorApplication.update -= TryStartupPrewarm;
+            }
+
+            EditorApplication.update -= TryRunScheduledSnapshotRefresh;
+            EditorApplication.update += TryRunScheduledSnapshotRefresh;
+            return true;
+        }
+
+        private static void TryRunScheduledSnapshotRefresh()
+        {
+            if (!_snapshotRefreshPending)
+            {
+                EditorApplication.update -= TryRunScheduledSnapshotRefresh;
+                return;
+            }
+
+            if (EditorApplication.timeSinceStartup < _snapshotRefreshTime)
+            {
+                return;
+            }
+
+            if (!IsEditorIdleForCodeIndex())
+            {
+                _snapshotRefreshTime = EditorApplication.timeSinceStartup + StartupRetryDelaySeconds;
+                return;
+            }
+
+            var manual = _snapshotRefreshManual;
+            var startWarmup = _snapshotRefreshStartWarmup;
+            var reason = _snapshotRefreshReason;
+            _snapshotRefreshPending = false;
+            _snapshotRefreshManual = false;
+            _snapshotRefreshStartWarmup = false;
+            _snapshotRefreshTime = 0;
+            _snapshotRefreshReason = null;
+            EditorApplication.update -= TryRunScheduledSnapshotRefresh;
+            SessionState.SetBool(PendingPostCompileRefreshSessionKey, false);
+
+            // snapshot 生成会做文件 hash 和 token 扫描，必须等编译/导入结束后再落到主线程。
+            if (startWarmup)
+            {
+                RunWarmupNoWait(manual);
+            }
+            else
+            {
+                RunSnapshotRefresh(manual);
+            }
+
+            AIBridgeLogger.LogDebug("[CodeIndex] Snapshot refresh completed. reason=" + (reason ?? "unknown"));
+        }
+
+        private static bool IsEditorIdleForCodeIndex()
+        {
+            return !EditorApplication.isCompiling
+                   && !EditorApplication.isUpdating
+                   && !EditorApplication.isPlayingOrWillChangePlaymode;
         }
 
         private static void ShutdownOnEditorQuitting()

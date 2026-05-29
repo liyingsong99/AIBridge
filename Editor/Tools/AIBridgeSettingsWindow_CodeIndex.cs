@@ -161,18 +161,18 @@ namespace AIBridge.Editor
             {
                 if (GUILayout.Button(AIBridgeEditorText.T("Generate Snapshot", "生成快照"), GUILayout.Height(24)))
                 {
-                    var success = AIBridgeCodeIndexSnapshotUtility.GenerateSnapshot(out var message);
+                    var success = AIBridgeCodeIndexEditorUtility.ScheduleSnapshotRefresh(manual: true);
                     Debug.Log(AIBridgeEditorText.T(
-                        success ? "[AIBridge] Code Index snapshot generated: " + message : "[AIBridge] Code Index snapshot failed: " + message,
-                        success ? "[AIBridge] Code Index 快照已生成：" + message : "[AIBridge] Code Index 快照生成失败：" + message));
+                        success ? "[AIBridge] Code Index snapshot refresh scheduled." : "[AIBridge] Code Index snapshot refresh was not scheduled.",
+                        success ? "[AIBridge] Code Index 快照刷新已排队。" : "[AIBridge] Code Index 快照刷新未排队。"));
                 }
 
                 if (GUILayout.Button(AIBridgeEditorText.T("Warmup Now", "立即预热"), GUILayout.Height(24)))
                 {
                     var started = AIBridgeCodeIndexEditorUtility.StartWarmupNoWait(manual: true);
                     Debug.Log(AIBridgeEditorText.T(
-                        started ? "[AIBridge] Code Index warmup started." : "[AIBridge] Code Index warmup was not started.",
-                        started ? "[AIBridge] Code Index 预热已启动。" : "[AIBridge] Code Index 预热未启动。"));
+                        started ? "[AIBridge] Code Index warmup scheduled." : "[AIBridge] Code Index warmup was not scheduled.",
+                        started ? "[AIBridge] Code Index 预热已排队。" : "[AIBridge] Code Index 预热未排队。"));
                 }
             }
 
