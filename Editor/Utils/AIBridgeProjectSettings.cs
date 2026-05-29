@@ -128,7 +128,7 @@ namespace AIBridge.Editor
         public const int DefaultRuntimeBridgeHttpPort = 27182;
         public const bool DefaultRuntimeBridgeEnableLanDiscovery = true;
         public const int DefaultRuntimeBridgeDiscoveryUdpPort = 27183;
-        public const bool DefaultCodeIndexEnabled = true;
+        public const bool DefaultCodeIndexEnabled = false;
         public const bool DefaultCodeIndexPrewarmOnUnityStartup = true;
         public const int DefaultCodeIndexWarmupDelaySeconds = 10;
         public const string DefaultCodeIndexWarmupMode = "light";

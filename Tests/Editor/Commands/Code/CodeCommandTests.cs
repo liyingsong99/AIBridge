@@ -58,7 +58,7 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void ProjectSettings_DefaultsToCodeExecutionEnabled()
+        public void ProjectSettings_DefaultsToCodeExecutionEnabledAndCodeIndexDisabled()
         {
             var settings = ScriptableObject.CreateInstance<AIBridgeProjectSettings>();
 
@@ -66,6 +66,7 @@ namespace AIBridge.Editor.Tests
             {
                 Assert.That(settings.EnableCodeExecution, Is.True);
                 Assert.That(settings.CodeExecutionRiskAccepted, Is.True);
+                Assert.That(settings.CodeIndex.EnableCodeIndex, Is.False);
             }
             finally
             {

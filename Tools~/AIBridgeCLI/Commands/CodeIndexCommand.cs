@@ -1131,7 +1131,7 @@ namespace AIBridgeCLI.Commands
                     SnapshotJsonPath = Path.Combine(snapshotDirectory, "manifest.json"),
                     StatusPath = Path.Combine(indexDirectory, "status.json"),
                     UnityPid = unityPid,
-                    Enabled = GetConfigBool(config, "enableCodeIndex", true),
+                    Enabled = GetConfigBool(config, "enableCodeIndex", false),
                     AutoRefresh = ResolveBool(options, "auto-refresh", GetConfigBool(config, "autoRefreshOnFileChange", true)),
                     FallbackToTextSearch = ResolveBool(options, "fallback", GetConfigBool(config, "fallbackToTextSearch", true)),
                     IncludeSnapshotOnReset = ResolveBool(options, "include-snapshot", false),
