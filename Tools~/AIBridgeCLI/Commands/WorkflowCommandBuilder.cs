@@ -60,7 +60,12 @@ namespace AIBridgeCLI.Commands
             ["clean"] = new List<ParameterInfo>
             {
                 new ParameterInfo("older-than", "Run age threshold, e.g. 30d, 12h", false, "30d"),
-                new ParameterInfo("dry-run", "Only list candidates without deleting", false, "true")
+                new ParameterInfo("dry-run", "Only list candidates without deleting", false, "true"),
+                new ParameterInfo("keep-failed", "Keep failed or blocked runs even when they are old", false, "true"),
+                new ParameterInfo("keep-latest", "Keep the newest N runs regardless of age", false, "20"),
+                new ParameterInfo("max-delete", "Maximum number of runs to delete in one clean call", false, "100"),
+                new ParameterInfo("save-settings", "Persist clean options to .aibridge/workflows/settings.json", false, "false"),
+                new ParameterInfo("auto-clean", "Enable automatic clean before workflow run-cli when settings are saved", false, "false")
             }
         };
 
@@ -81,6 +86,8 @@ namespace AIBridgeCLI.Commands
             sb.AppendLine("  AIBridgeCLI workflow init --recipe runtime-ui-validation");
             sb.AppendLine("  AIBridgeCLI workflow run-cli --file .aibridge/workflows/recipes/runtime-target-sweep.aibridge-workflow.json");
             sb.AppendLine("  AIBridgeCLI workflow report --run wf_20260529_213000_ab12cd34 --format markdown");
+            sb.AppendLine("  AIBridgeCLI workflow clean --older-than 3d --dry-run false --keep-failed true --keep-latest 20");
+            sb.AppendLine("  AIBridgeCLI workflow clean --older-than 3d --save-settings true --auto-clean true");
             return sb.ToString();
         }
     }

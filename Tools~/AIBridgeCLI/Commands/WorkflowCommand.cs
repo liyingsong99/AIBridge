@@ -182,33 +182,29 @@ namespace AIBridgeCLI.Commands
 
         private static int ExecuteClean(Dictionary<string, string> options, OutputMode outputMode)
         {
-            var olderThan = GetOption(options, "older-than", "30d");
+            var settings = WorkflowSettings.Load();
+            var olderThan = GetOption(options, "older-than", settings.AutoCleanOlderThan ?? "30d");
             var dryRun = GetBool(options, "dry-run", true);
-            var cutoff = DateTime.UtcNow - ParseAge(olderThan);
-            var runsDirectory = WorkflowPathHelper.GetRunsDirectory();
-            var candidates = new List<object>();
-            if (Directory.Exists(runsDirectory))
+            var keepFailed = GetBool(options, "keep-failed", settings.KeepFailed);
+            var keepLatest = GetInt(options, "keep-latest", settings.KeepLatest);
+            var maxDelete = GetInt(options, "max-delete", settings.MaxDeletePerRun);
+            var result = WorkflowCleaner.Clean(new WorkflowCleanOptions
             {
-                foreach (var directory in Directory.GetDirectories(runsDirectory))
-                {
-                    var info = new DirectoryInfo(directory);
-                    if (info.LastWriteTimeUtc > cutoff)
-                    {
-                        continue;
-                    }
+                OlderThan = olderThan,
+                DryRun = dryRun,
+                KeepFailed = keepFailed,
+                KeepLatest = keepLatest,
+                MaxDeletePerRun = maxDelete
+            });
 
-                    candidates.Add(new
-                    {
-                        runId = info.Name,
-                        path = WorkflowPathHelper.ToDisplayPath(info.FullName),
-                        lastWriteTimeUtc = info.LastWriteTimeUtc.ToString("o")
-                    });
-
-                    if (!dryRun)
-                    {
-                        Directory.Delete(info.FullName, true);
-                    }
-                }
+            if (GetBool(options, "save-settings", false))
+            {
+                settings.AutoCleanEnabled = GetBool(options, "auto-clean", settings.AutoCleanEnabled);
+                settings.AutoCleanOlderThan = olderThan;
+                settings.KeepFailed = keepFailed;
+                settings.KeepLatest = keepLatest;
+                settings.MaxDeletePerRun = maxDelete;
+                settings.Save();
             }
 
             return PrintResult(new CommandResult
@@ -216,10 +212,9 @@ namespace AIBridgeCLI.Commands
                 success = true,
                 data = new
                 {
-                    dryRun = dryRun,
-                    olderThan = olderThan,
-                    count = candidates.Count,
-                    candidates = candidates
+                    clean = result,
+                    settings = settings,
+                    settingsPath = WorkflowPathHelper.ToDisplayPath(WorkflowSettings.GetSettingsPath())
                 }
             }, outputMode);
         }
@@ -270,31 +265,15 @@ namespace AIBridgeCLI.Commands
             return value.Equals("true", StringComparison.OrdinalIgnoreCase) || value == "1";
         }
 
-        private static TimeSpan ParseAge(string value)
+        private static int GetInt(Dictionary<string, string> options, string key, int defaultValue)
         {
-            if (string.IsNullOrWhiteSpace(value))
+            if (!options.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
             {
-                return TimeSpan.FromDays(30);
+                return defaultValue;
             }
 
-            value = value.Trim();
-            var unit = value[value.Length - 1];
-            var numberText = char.IsLetter(unit) ? value.Substring(0, value.Length - 1) : value;
-            if (!double.TryParse(numberText, out var number))
-            {
-                return TimeSpan.FromDays(30);
-            }
-
-            switch (char.ToLowerInvariant(unit))
-            {
-                case 'h':
-                    return TimeSpan.FromHours(number);
-                case 'm':
-                    return TimeSpan.FromMinutes(number);
-                case 'd':
-                default:
-                    return TimeSpan.FromDays(number);
-            }
+            return int.TryParse(value, out var intValue) ? intValue : defaultValue;
         }
+
     }
 }

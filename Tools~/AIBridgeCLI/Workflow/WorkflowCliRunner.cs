@@ -30,6 +30,10 @@ namespace AIBridgeCLI.Workflow
             var manifest = string.IsNullOrWhiteSpace(resumeRunId)
                 ? CreateManifest(doc, store)
                 : store.LoadManifest();
+            if (string.IsNullOrWhiteSpace(resumeRunId))
+            {
+                ApplyAutoCleanSummary(manifest);
+            }
 
             manifest.Status = "running";
             manifest.EndedAtUtc = null;
@@ -293,6 +297,25 @@ namespace AIBridgeCLI.Workflow
                 || string.Equals(step.Kind, "manual", StringComparison.OrdinalIgnoreCase));
             manifest.Summary.ArtifactCount = manifest.ArtifactRefs.Count;
             manifest.Summary.FailedGateCount = manifest.GateResults.Count(gate => string.Equals(gate.Status, "failed", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static void ApplyAutoCleanSummary(WorkflowRunManifest manifest)
+        {
+            try
+            {
+                var result = WorkflowCleaner.AutoClean();
+                if (result == null)
+                {
+                    return;
+                }
+
+                manifest.Summary.AutoCleanCandidateCount = result.Count;
+                manifest.Summary.AutoCleanDeletedCount = result.DeletedCount;
+            }
+            catch (Exception ex)
+            {
+                manifest.Summary.AutoCleanError = ex.Message;
+            }
         }
     }
 }

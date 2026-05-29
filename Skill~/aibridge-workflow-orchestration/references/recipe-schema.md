@@ -23,9 +23,13 @@ $CLI workflow run-cli --file ".aibridge/workflows/recipes/runtime-target-sweep.a
 $CLI workflow status --run <runId>
 $CLI workflow report --run <runId> --format markdown
 $CLI workflow clean --older-than 30d --dry-run true
+$CLI workflow clean --older-than 3d --dry-run false --keep-failed true --keep-latest 20
+$CLI workflow clean --older-than 3d --save-settings true --auto-clean true
 ```
 
 `run-cli` executes only deterministic `cli`, `barrier`, and `report` steps. It records `agent` and `manual` steps as `skipped_requires_external_executor`; external tools such as Codex, Claude, or Cursor remain responsible for those steps.
+
+`clean` is safe by default (`dry-run=true`). Persisted auto-clean settings live in `.aibridge/workflows/settings.json`; when `autoCleanEnabled=true`, `workflow run-cli` opportunistically removes old runs before starting a new run while respecting `keepFailed`, `keepLatest`, and `maxDeletePerRun`.
 
 ## Recipe Shape
 
@@ -125,7 +129,7 @@ Standard kinds:
 - `validation-report`
 - `workflow-report`
 
-Screenshots, GIFs, and readable output files are copied into the run artifact directory when they are under the copy limit. Large files may be referenced by `sourcePath`.
+Screenshots, GIFs, and Runtime screenshots are referenced from their existing `.aibridge` cache paths by default. Readable non-image output files are copied into the run artifact directory when they are under the copy limit; large files may be referenced by `sourcePath`.
 
 ## Gates
 

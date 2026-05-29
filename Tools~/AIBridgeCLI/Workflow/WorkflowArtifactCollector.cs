@@ -128,7 +128,7 @@ namespace AIBridgeCLI.Workflow
             var extension = Path.GetExtension(sourcePath);
             var payloadPath = Path.Combine(directory, "payload" + extension);
             var fileInfo = new FileInfo(sourcePath);
-            var copied = fileInfo.Length <= DefaultCopyLimitBytes;
+            var copied = !ShouldReferenceExistingFile(kind) && fileInfo.Length <= DefaultCopyLimitBytes;
             string artifactPath;
             string sha256 = ReadSha256(execution.Result) ?? ComputeSha256(sourcePath);
 
@@ -143,6 +143,11 @@ namespace AIBridgeCLI.Workflow
                 artifactPath = sourcePath;
             }
 
+            // 截图/GIF 已由 AIBridge 缓存到 .aibridge 下；workflow 默认只登记引用，避免重复复制大图像产物。
+            var summary = copied
+                ? "File artifact copied from result field `" + sourceField + "`."
+                : "File artifact referenced from result field `" + sourceField + "`.";
+
             return new WorkflowArtifactRef
             {
                 ArtifactId = artifactId,
@@ -153,7 +158,7 @@ namespace AIBridgeCLI.Workflow
                 SourceCommandId = execution.CommandId,
                 Sha256 = sha256,
                 ContentType = GuessContentType(sourcePath),
-                Summary = "File artifact collected from result field `" + sourceField + "`.",
+                Summary = summary,
                 Copied = copied,
                 CreatedAtUtc = DateTime.UtcNow.ToString("o")
             };
@@ -285,6 +290,13 @@ namespace AIBridgeCLI.Workflow
             }
 
             return "screenshot";
+        }
+
+        private static bool ShouldReferenceExistingFile(string kind)
+        {
+            return string.Equals(kind, "screenshot", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(kind, "gif", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(kind, "runtime-screenshot", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string CreateArtifactId(string kind, string commandId, int index)

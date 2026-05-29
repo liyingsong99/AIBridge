@@ -173,6 +173,15 @@ namespace AIBridgeCLI.Workflow
 
         [JsonProperty("failedGateCount")]
         public int FailedGateCount { get; set; }
+
+        [JsonProperty("autoCleanCandidateCount")]
+        public int AutoCleanCandidateCount { get; set; }
+
+        [JsonProperty("autoCleanDeletedCount")]
+        public int AutoCleanDeletedCount { get; set; }
+
+        [JsonProperty("autoCleanError")]
+        public string AutoCleanError { get; set; }
     }
 
     public class WorkflowPhaseState

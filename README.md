@@ -143,9 +143,12 @@ $CLI workflow run-cli --file ".aibridge/workflows/recipes/runtime-target-sweep.a
 $CLI workflow status --run wf_20260529_213000_ab12cd34
 $CLI workflow report --run wf_20260529_213000_ab12cd34 --format markdown
 $CLI workflow clean --older-than 30d --dry-run true
+$CLI workflow clean --older-than 3d --save-settings true --auto-clean true
 ```
 
 Built-in recipes include `unity-change-implementation`, `unity-sharded-review`, `runtime-target-sweep`, `runtime-ui-validation`, `prefab-asset-sweep`, and `bug-hunter-loop`.
+
+Workflow cleanup is conservative by default: `clean` starts in dry-run mode. Auto cleanup is enabled only when saved in `.aibridge/workflows/settings.json`; `run-cli` then removes old runs before starting while preserving failed/blocked runs and the newest retained runs according to settings.
 
 Use `dialog status` when Unity commands time out and the Editor may be blocked by a modal save/confirm dialog. When no dialog is detected, compact JSON omits `blockedByDialog` and `dialogs`; missing fields mean no dialog. macOS dialog inspection/clicking requires Accessibility permission. Unity commands can opt into explicit timeout handling, for example `--on-dialog cancel` or `--on-dialog discard`.
 

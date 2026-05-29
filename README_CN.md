@@ -143,9 +143,12 @@ $CLI workflow run-cli --file ".aibridge/workflows/recipes/runtime-target-sweep.a
 $CLI workflow status --run wf_20260529_213000_ab12cd34
 $CLI workflow report --run wf_20260529_213000_ab12cd34 --format markdown
 $CLI workflow clean --older-than 30d --dry-run true
+$CLI workflow clean --older-than 3d --save-settings true --auto-clean true
 ```
 
 内置 recipes 包括 `unity-change-implementation`、`unity-sharded-review`、`runtime-target-sweep`、`runtime-ui-validation`、`prefab-asset-sweep` 和 `bug-hunter-loop`。
+
+Workflow 清理默认保守：`clean` 默认只 dry-run。只有保存到 `.aibridge/workflows/settings.json` 后才会启用自动清理；之后 `run-cli` 开始前会按设置清理旧 run，并保留失败/阻塞 run 和最新保留数量。
 
 Unity 命令超时且怀疑 Editor 被保存/确认弹窗阻塞时，使用 `dialog status` 检查。未检测到弹窗时，精简 JSON 不返回 `blockedByDialog` 和 `dialogs` 字段；字段不存在即表示无弹窗。macOS 检查和点击弹窗需要 Accessibility 权限。Unity 命令可显式指定超时处理，例如 `--on-dialog cancel` 或 `--on-dialog discard`。
 
