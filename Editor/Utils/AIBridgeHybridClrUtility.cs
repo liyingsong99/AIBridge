@@ -8,12 +8,14 @@ namespace AIBridge.Editor
     {
         public const string PackageName = "com.code-philosophy.hybridclr";
         public const string HybridClrAvailableDefine = "AIBRIDGE_HYBRIDCLR_AVAILABLE";
+        private const string PackageAssetPath = "Packages/" + PackageName;
 
         public static bool IsHybridClrInstalled()
         {
             try
             {
-                var packageInfo = PackageInfo.FindForPackageName(PackageName);
+                // Unity 2021 没有按包名查询的公开 API，使用包路径查询保持 2019.4+ 兼容。
+                var packageInfo = PackageInfo.FindForAssetPath(PackageAssetPath);
                 if (packageInfo != null)
                 {
                     return true;

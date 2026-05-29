@@ -25,12 +25,14 @@
 - 编译.\Tools~\AIBridgeCLI\AIBridgeCLI.csproj 项目确认无报错
 - 检查所有Runtime和Editor下的代码文件都有生成相应的meta文件
 - 检查编辑器面板新增或修改的用户可见文本已适配英文和简体中文
+- 涉及 Unity API 或编译兼容性时，必须确保 `package.json` 声明的最低 Unity 2019.4 到 Unity 6000.x 兼容；能访问对应编辑器时至少验证 Unity 2019.4 和 Unity 6000.x 编译，无法验证的版本必须明确说明
 
 ## 代码硬约束
 1. C# 代码必须兼容 C# 9.0，禁止 C# 10.0+ 语法
 2. Unity 对象判空必须显式使用 `!= null`，禁止对 Unity 对象使用 `?.`
 3. 业务配置、路径、魔法数字不得散落硬编码；必要时定义常量或读取配置
 4. 避免重复代码；同一业务规则重复出现时应提取公共方法或工具类
+5. 新增或修改 Unity Editor/Runtime API 调用时，禁止直接依赖高版本 API 破坏低版本编译；版本差异必须用 Unity 版本宏、反射或集中封装处理
 
 ## SkillDoc 生成规则
 1. 主 `Skill~/SKILL.md` 保持轻量，只放 CLI 调用入口、核心规则和 reference 索引

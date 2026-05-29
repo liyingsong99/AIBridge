@@ -11,13 +11,10 @@ namespace AIBridge.Editor
 {
     public partial class InspectorCommand
     {
-#if !UNITY_2021_1_OR_NEWER
-        // Unity 2019 下 gradientValue 对外不可见，这里集中用反射兜底，避免分散访问。
         private static readonly System.Reflection.PropertyInfo GradientValueReflectionProperty =
             typeof(SerializedProperty).GetProperty(
                 "gradientValue",
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
-#endif
 
         private bool TryGetValuesDictionary(CommandRequest request, out Dictionary<string, object> values, out string error)
         {
@@ -406,7 +403,7 @@ namespace AIBridge.Editor
             return false;
         }
 
-        // 统一封装 Gradient 读取，避免业务分支直接依赖 Unity 版本差异。
+        // Unity 各版本对 gradientValue 的公开程度不同，统一用反射避免编译期 API 差异。
         private static bool TryGetGradientPropertyValue(SerializedProperty prop, out Gradient gradient)
         {
             gradient = null;
@@ -415,10 +412,6 @@ namespace AIBridge.Editor
                 return false;
             }
 
-#if UNITY_2021_1_OR_NEWER
-            gradient = prop.gradientValue;
-            return true;
-#else
             if (GradientValueReflectionProperty == null || GradientValueReflectionProperty.GetGetMethod(true) == null)
             {
                 return false;
@@ -426,10 +419,9 @@ namespace AIBridge.Editor
 
             gradient = GradientValueReflectionProperty.GetValue(prop, null) as Gradient;
             return true;
-#endif
         }
 
-        // 统一封装 Gradient 写入，低版本走反射，高版本保持直接赋值。
+        // Unity 各版本对 gradientValue 的公开程度不同，统一用反射避免编译期 API 差异。
         private static bool TrySetGradientPropertyValue(SerializedProperty prop, Gradient gradient)
         {
             if (prop == null)
@@ -437,10 +429,6 @@ namespace AIBridge.Editor
                 return false;
             }
 
-#if UNITY_2021_1_OR_NEWER
-            prop.gradientValue = gradient;
-            return true;
-#else
             if (GradientValueReflectionProperty == null || GradientValueReflectionProperty.GetSetMethod(true) == null)
             {
                 return false;
@@ -448,7 +436,6 @@ namespace AIBridge.Editor
 
             GradientValueReflectionProperty.SetValue(prop, gradient, null);
             return true;
-#endif
         }
 
         private static object BuildObjectReferenceValue(UnityEngine.Object objectReference)
