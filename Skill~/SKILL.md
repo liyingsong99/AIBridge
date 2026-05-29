@@ -44,7 +44,7 @@ Most Unity-side commands require an `action` such as `asset search` or `inspecto
 - For complex prefab asset edits, use the `aibridge-prefab-patch` skill and prefer `prefab patch --ops <file>` with dry-run first.
 - In PowerShell, avoid inline complex `--json`; build JSON in a variable, escape embedded quotes for native EXE argument passing, and pass command parameters directly, especially `inspector set_properties --values $values`.
 - `focus` is Windows CLI-only. `dialog` is CLI-only, uses Windows window APIs or macOS Accessibility permission, and omits dialog fields when no modal dialog is detected. `screenshot game` and `screenshot gif` require Play Mode; `screenshot scene_view` works in Edit mode when a Scene view is open.
-- `input` requires Play Mode and an active EventSystem; use it with `gameview`, `screenshot`, and `get_logs` for UI interaction checks.
+- `input` requires Play Mode and an active EventSystem; use it with `gameview`, `screenshot`, and `get_logs` for UI interaction checks. Pixel and normalized coordinate input uses Unity screen coordinates with a fixed bottom-left origin.
 - `runtime` is CLI-only and talks to `AIBridgeRuntime` inside a Player or Play Mode target. Use `runtime list_targets` first, then target `latest` or a specific target id.
 - Code Index is a separate optional Skill. Use `aibridge-code-index` only when that Skill is installed and project rules say Code Index is enabled; otherwise use `rg`, file reads, and regular AIBridge commands.
 
@@ -97,6 +97,7 @@ Play Mode only. Use the generated command reference for all actions and paramete
 
 ```bash
 $CLI input click --path "Canvas/StartButton"
+$CLI input click_pct --x 0.5 --y 0.5
 $CLI input drag --path "Canvas/Item" --toPath "Canvas/Slot" --frames 12
 ```
 

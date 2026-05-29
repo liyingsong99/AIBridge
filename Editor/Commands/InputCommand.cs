@@ -20,6 +20,8 @@ namespace AIBridge.Editor
         private const int MinLongPressDurationMs = 1;
         private const int MaxLongPressDurationMs = 60000;
         private const int LeftMousePointerId = -1;
+        private const string NormalizedCoordinateSpace = "unity-screen-normalized";
+        private const string UnityScreenOrigin = "bottom-left";
 
         private static InputAsyncOperation _activeOperation;
 
@@ -33,6 +35,7 @@ namespace AIBridge.Editor
 ```bash
 $CLI input click --path ""Canvas/StartButton""
 $CLI input click_at --x 960 --y 540
+$CLI input click_pct --x 0.5 --y 0.5
 $CLI input drag --path ""Canvas/Item"" --toPath ""Canvas/Slot"" --frames 12
 $CLI input long_press --instanceId 12345 --duration-ms 800
 ```
@@ -40,6 +43,7 @@ $CLI input long_press --instanceId 12345 --duration-ms 800
 **Actions:**
 - `click`: click a GameObject by `--path` or `--instanceId`
 - `click_at`: click screen coordinates with `--x` and `--y`
+- `click_pct`: click normalized Unity screen coordinates with `--x` and `--y` in `[0, 1]`; origin is always bottom-left
 - `drag`: drag from `--path`/`--instanceId` to `--toPath`/`--toInstanceId` or `--toX --toY`
 - `long_press`: hold a target for `--duration-ms` milliseconds
 
@@ -57,12 +61,14 @@ Recommended flow: `editor play` -> `scene get_hierarchy` -> `input click` -> `ge
                         return Click(request);
                     case "click_at":
                         return ClickAt(request);
+                    case "click_pct":
+                        return ClickPct(request);
                     case "drag":
                         return Drag(request);
                     case "long_press":
                         return LongPress(request);
                     default:
-                        return CommandResult.Failure(request.id, $"Unknown action: {action}. Supported: click, click_at, drag, long_press");
+                        return CommandResult.Failure(request.id, $"Unknown action: {action}. Supported: click, click_at, click_pct, drag, long_press");
                 }
             }
             catch (Exception ex)
@@ -142,6 +148,49 @@ Recommended flow: `editor play` -> `scene get_hierarchy` -> `input click` -> `ge
             {
                 action = "click_at",
                 position = BuildVector2Info(position),
+                raycastTarget = BuildObjectInfo(pressState.RaycastTarget),
+                pointerPress = BuildObjectInfo(pressState.PointerPress),
+                clickHandler = BuildObjectInfo(pressState.ClickHandler)
+            });
+        }
+
+        private CommandResult ClickPct(CommandRequest request)
+        {
+            Vector2 normalizedPosition;
+            string error;
+            if (!TryGetNormalizedPosition(request, out normalizedPosition, out error))
+            {
+                return CommandResult.Failure(request.id, error);
+            }
+
+            CommandResult validation;
+            if (!ValidateRuntimeInput(request.id, out validation))
+            {
+                return validation;
+            }
+
+            Vector2 screenPosition;
+            if (!TryConvertNormalizedPositionToScreenPoint(normalizedPosition, out screenPosition, out error))
+            {
+                return CommandResult.Failure(request.id, error);
+            }
+
+            PointerPressState pressState;
+            if (!TryCreatePointerPress(screenPosition, null, false, out pressState, out error))
+            {
+                return CommandResult.Failure(request.id, error);
+            }
+
+            FinishClick(pressState);
+
+            return CommandResult.Success(request.id, new
+            {
+                action = "click_pct",
+                normalizedPosition = BuildVector2Info(normalizedPosition),
+                coordinateSpace = NormalizedCoordinateSpace,
+                origin = UnityScreenOrigin,
+                screenSize = BuildScreenSizeInfo(),
+                screenPosition = BuildVector2Info(screenPosition),
                 raycastTarget = BuildObjectInfo(pressState.RaycastTarget),
                 pointerPress = BuildObjectInfo(pressState.PointerPress),
                 clickHandler = BuildObjectInfo(pressState.ClickHandler)
@@ -357,6 +406,62 @@ Recommended flow: `editor play` -> `scene get_hierarchy` -> `input click` -> `ge
             return false;
         }
 
+        private static bool TryGetNormalizedPosition(
+            CommandRequest request,
+            out Vector2 normalizedPosition,
+            out string error)
+        {
+            normalizedPosition = Vector2.zero;
+
+            if (request.HasParam("origin"))
+            {
+                error = "click_pct uses Unity normalized screen coordinates with bottom-left origin. The --origin option is not supported.";
+                return false;
+            }
+
+            float x;
+            float y;
+            if (!TryGetRequiredFloat(request, "x", out x, out error) || !TryGetRequiredFloat(request, "y", out y, out error))
+            {
+                return false;
+            }
+
+            if (!IsNormalizedCoordinate(x))
+            {
+                error = "--x must be between 0 and 1 for click_pct.";
+                return false;
+            }
+
+            if (!IsNormalizedCoordinate(y))
+            {
+                error = "--y must be between 0 and 1 for click_pct.";
+                return false;
+            }
+
+            normalizedPosition = new Vector2(x, y);
+            error = null;
+            return true;
+        }
+
+        private static bool TryConvertNormalizedPositionToScreenPoint(
+            Vector2 normalizedPosition,
+            out Vector2 screenPosition,
+            out string error)
+        {
+            screenPosition = Vector2.zero;
+
+            if (Screen.width <= 0 || Screen.height <= 0)
+            {
+                error = "Screen size is unavailable for click_pct.";
+                return false;
+            }
+
+            // click_pct 使用 Unity 屏幕坐标约定：左下为原点，避免截图原点和 Unity 原点混用。
+            screenPosition = new Vector2(normalizedPosition.x * Screen.width, normalizedPosition.y * Screen.height);
+            error = null;
+            return true;
+        }
+
         private static bool TryGetRequiredFloat(CommandRequest request, string key, out float value, out string error)
         {
             value = request.GetParam(key, float.NaN);
@@ -368,6 +473,11 @@ Recommended flow: `editor play` -> `scene get_hierarchy` -> `input click` -> `ge
 
             error = null;
             return true;
+        }
+
+        private static bool IsNormalizedCoordinate(float value)
+        {
+            return !float.IsNaN(value) && !float.IsInfinity(value) && value >= 0f && value <= 1f;
         }
 
         private static bool TryResolveScreenPoint(GameObject target, out Vector2 position, out string positionMode, out string error)
@@ -686,6 +796,15 @@ Recommended flow: `editor play` -> `scene get_hierarchy` -> `input click` -> `ge
             {
                 x = value.x,
                 y = value.y
+            };
+        }
+
+        private static object BuildScreenSizeInfo()
+        {
+            return new
+            {
+                width = Screen.width,
+                height = Screen.height
             };
         }
 

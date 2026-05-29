@@ -7,7 +7,7 @@
 English | [中文](./README_CN.md)
 
 ![Unity 2019.4+](https://img.shields.io/badge/Unity-2019.4%2B-black?style=flat-square&logo=unity)
-![Package 1.4.2](https://img.shields.io/badge/Package-1.4.2-5b6cff?style=flat-square)
+![Package 1.4.3](https://img.shields.io/badge/Package-1.4.3-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
@@ -41,7 +41,7 @@ For Editor automation, AIBridge uses file-based command requests and result file
 
 - **Unity asset and object inspection**: find assets, read scene hierarchies, inspect components and SerializedProperty values, then write through Unity-aware APIs.
 - **Prefab and scene automation**: use simple Inspector field edits, Prefab Patch dry-runs, multi-step batch scripts, and task continuation across domain reloads.
-- **UGUI runtime input simulation**: in Play Mode, the `input` command can click, click screen coordinates, drag, and long-press EventSystem UI for button, inventory, and runtime panel checks.
+- **UGUI runtime input simulation**: in Play Mode, the `input` command can click, click Unity screen coordinates, click normalized Unity screen coordinates, drag, and long-press EventSystem UI for button, inventory, and runtime panel checks.
 - **Player Runtime Bridge**: an `AIBridgeRuntime` component inside a built Player can expose runtime status, logs, screenshots, performance samples, project allowlisted handlers, and HybridCLR-gated runtime code execution for Development Build and mobile debugging.
 - **Read-only Code Index**: when enabled, `code_index` starts an IDE-independent daemon that reads Unity compilation snapshots for symbol, definition, reference, implementation, caller, and diagnostic queries. It is disabled by default and reports `semantic=false` when it falls back to text search.
 - **Workflow recipes and run artifacts**: `workflow` CLI commands can list, validate, plan, initialize, and run deterministic CLI steps from built-in Unity workflow recipes, then write a project-local run manifest, command results, artifacts, gates, and Markdown report under `.aibridge/workflows/runs/`.
@@ -261,12 +261,13 @@ $script | & "./.aibridge/cli/AIBridgeCLI.exe" multi --stdin
 
 ### Runtime Input And Visual Verification
 
-The `input` command automates UGUI/EventSystem interaction in Play Mode. It requires an active `EventSystem` in the current scene. You can target objects by hierarchy path or instance ID, click screen coordinates, drag between UI targets, or perform a long press.
+The `input` command automates UGUI/EventSystem interaction in Play Mode. It requires an active `EventSystem` in the current scene. You can target objects by hierarchy path or instance ID, click screen coordinates, click normalized screen coordinates, drag between UI targets, or perform a long press. Both pixel and normalized coordinate actions use Unity screen coordinates with a bottom-left origin; `click_pct` accepts `x` and `y` values from `0` to `1`.
 
 ```bash
 $CLI editor play
 $CLI input click --path "Canvas/StartButton"
 $CLI input click_at --x 960 --y 540
+$CLI input click_pct --x 0.5 --y 0.5
 $CLI input drag --path "Canvas/Item" --toPath "Canvas/Slot" --frames 12
 $CLI input long_press --instanceId 12345 --duration-ms 800
 

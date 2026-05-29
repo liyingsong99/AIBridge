@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using AIBridgeCLI.Core;
 
 namespace AIBridgeCLI.Commands
@@ -14,7 +15,7 @@ namespace AIBridgeCLI.Commands
 
         public override string[] Actions => new[]
         {
-            "click", "click_at", "drag", "long_press"
+            "click", "click_at", "click_pct", "drag", "long_press"
         };
 
         protected override Dictionary<string, List<ParameterInfo>> ActionParameters => new Dictionary<string, List<ParameterInfo>>
@@ -28,6 +29,11 @@ namespace AIBridgeCLI.Commands
             {
                 new ParameterInfo("x", "Screen X coordinate (bottom-left origin)", true),
                 new ParameterInfo("y", "Screen Y coordinate (bottom-left origin)", true)
+            },
+            ["click_pct"] = new List<ParameterInfo>
+            {
+                new ParameterInfo("x", "Normalized Unity screen X coordinate, 0 to 1 (bottom-left origin)", true),
+                new ParameterInfo("y", "Normalized Unity screen Y coordinate, 0 to 1 (bottom-left origin)", true)
             },
             ["drag"] = new List<ParameterInfo>
             {
@@ -75,6 +81,16 @@ namespace AIBridgeCLI.Commands
             {
                 RequireTarget(@params, "path", "instanceId");
             }
+            else if (string.Equals(action, "click_pct", StringComparison.OrdinalIgnoreCase))
+            {
+                if (HasValue(@params, "origin"))
+                {
+                    throw new ArgumentException("click_pct uses Unity normalized screen coordinates with bottom-left origin. --origin is not supported.");
+                }
+
+                ValidateNormalizedCoordinate(@params, "x");
+                ValidateNormalizedCoordinate(@params, "y");
+            }
             else if (string.Equals(action, "drag", StringComparison.OrdinalIgnoreCase))
             {
                 RequireTarget(@params, "path", "instanceId");
@@ -93,6 +109,29 @@ namespace AIBridgeCLI.Commands
                         throw new ArgumentException("--frames must be between 3 and 60.");
                     }
                 }
+            }
+        }
+
+        private static void ValidateNormalizedCoordinate(Dictionary<string, object> @params, string key)
+        {
+            if (!HasValue(@params, key))
+            {
+                return;
+            }
+
+            double value;
+            try
+            {
+                value = Convert.ToDouble(@params[key], CultureInfo.InvariantCulture);
+            }
+            catch (Exception ex)
+            {
+                throw new ArgumentException($"--{key} must be a number between 0 and 1.", ex);
+            }
+
+            if (double.IsNaN(value) || double.IsInfinity(value) || value < 0d || value > 1d)
+            {
+                throw new ArgumentException($"--{key} must be between 0 and 1.");
             }
         }
 
