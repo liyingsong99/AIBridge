@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "name": "runtime-target-sweep",
+  "title": "Runtime Target Sweep",
+  "description": "Collect status, logs, screenshot, and perf evidence from Runtime targets and summarize target health.",
+  "version": "1.0.0",
+  "inputs": {
+    "target": {
+      "description": "Runtime target id, latest, URL-backed target, or platform selector.",
+      "default": "latest"
+    },
+    "collectScreenshot": {
+      "description": "Whether to collect a runtime screenshot.",
+      "default": true
+    },
+    "collectPerf": {
+      "description": "Whether to collect a short runtime perf sample.",
+      "default": true
+    }
+  },
+  "phases": [
+    {
+      "id": "discover",
+      "type": "serial",
+      "description": "List known Runtime targets.",
+      "steps": [
+        {
+          "id": "runtime-list-targets",
+          "kind": "cli",
+          "description": "Read cached runtime targets without mutating Unity state.",
+          "command": "runtime list_targets",
+          "outputs": [
+            "RuntimeTargetRef",
+            "ArtifactRef"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "collect",
+      "type": "serial",
+      "description": "Collect Runtime evidence for the selected target.",
+      "dependsOn": [
+        "discover"
+      ],
+      "steps": [
+        {
+          "id": "runtime-status",
+          "kind": "cli",
+          "description": "Check target reachability and status.",
+          "command": "runtime status --target {{target}}",
+          "outputs": [
+            "RuntimeTargetRef",
+            "ValidationResult"
+          ]
+        },
+        {
+          "id": "runtime-error-logs",
+          "kind": "cli",
+          "description": "Collect recent runtime errors.",
+          "command": "runtime logs --target {{target}} --logType Error --count 50",
+          "outputs": [
+            "ValidationResult",
+            "ArtifactRef"
+          ]
+        },
+        {
+          "id": "runtime-screenshot",
+          "kind": "cli",
+          "description": "Collect screenshot evidence when the target supports it.",
+          "command": "runtime screenshot --target {{target}}",
+          "outputs": [
+            "ArtifactRef"
+          ]
+        },
+        {
+          "id": "runtime-perf",
+          "kind": "cli",
+          "description": "Collect a short performance sample.",
+          "command": "runtime perf --target {{target}} --duration 5s",
+          "outputs": [
+            "ValidationResult",
+            "ArtifactRef"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "compare",
+      "type": "barrier",
+      "description": "Compare collected evidence and summarize health differences.",
+      "dependsOn": [
+        "collect"
+      ],
+      "steps": [
+        {
+          "id": "compare-target-health",
+          "kind": "barrier",
+          "description": "Merge status, log, screenshot, and perf evidence.",
+          "outputs": [
+            "ValidationResult"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "report",
+      "type": "report",
+      "description": "Write target table, failures, and artifact references.",
+      "dependsOn": [
+        "compare"
+      ],
+      "steps": [
+        {
+          "id": "write-runtime-sweep-report",
+          "kind": "report",
+          "description": "Generate the Runtime target sweep report.",
+          "outputs": [
+            "ArtifactRef"
+          ]
+        }
+      ]
+    }
+  ],
+  "gates": [
+    {
+      "id": "runtime-reachable",
+      "kind": "runtimeReachable",
+      "required": true
+    },
+    {
+      "id": "runtime-errors",
+      "kind": "runtimeErrors",
+      "required": true,
+      "threshold": {
+        "max": 0
+      }
+    },
+    {
+      "id": "runtime-screenshot-exists",
+      "kind": "screenshotExists",
+      "required": false
+    }
+  ],
+  "artifacts": [
+    {
+      "kind": "runtime-status",
+      "description": "Runtime target status result.",
+      "required": true
+    },
+    {
+      "kind": "runtime-log",
+      "description": "Runtime error log result.",
+      "required": true
+    },
+    {
+      "kind": "runtime-screenshot",
+      "description": "Runtime screenshot payload when available.",
+      "required": false
+    },
+    {
+      "kind": "runtime-perf",
+      "description": "Runtime performance sample.",
+      "required": false
+    }
+  ]
+}

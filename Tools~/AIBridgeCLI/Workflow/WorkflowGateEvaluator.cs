@@ -1,0 +1,338 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using Newtonsoft.Json.Linq;
+
+namespace AIBridgeCLI.Workflow
+{
+    public static class WorkflowGateEvaluator
+    {
+        public static List<WorkflowGateResult> Evaluate(WorkflowRecipe recipe, WorkflowRunManifest manifest)
+        {
+            var results = new List<WorkflowGateResult>();
+            if (recipe == null || recipe.Gates == null)
+            {
+                return results;
+            }
+
+            foreach (var gate in recipe.Gates)
+            {
+                results.Add(EvaluateGate(gate, manifest));
+            }
+
+            return results;
+        }
+
+        private static WorkflowGateResult EvaluateGate(WorkflowGate gate, WorkflowRunManifest manifest)
+        {
+            if (gate == null)
+            {
+                return CreateResult(null, null, false, "blocked", null, "Gate is null.");
+            }
+
+            switch ((gate.Kind ?? string.Empty).Trim())
+            {
+                case "unityCompile":
+                    return EvaluateCommandSuccess(gate, manifest, "compile unity", "Unity compile command passed.");
+                case "dotnetBuild":
+                    return EvaluateCommandSuccess(gate, manifest, "compile dotnet", "dotnet build command passed.");
+                case "testRun":
+                    return EvaluateCommandSuccess(gate, manifest, "test run", "Unity test run passed.");
+                case "consoleErrors":
+                    return EvaluateLogErrors(gate, manifest, "console-log", "get_logs", "Console error count");
+                case "runtimeErrors":
+                    return EvaluateLogErrors(gate, manifest, "runtime-log", "runtime logs", "Runtime error count");
+                case "screenshotExists":
+                    return EvaluateScreenshotExists(gate, manifest);
+                case "runtimeReachable":
+                    return EvaluateRuntimeReachable(gate, manifest);
+                case "artifactRequired":
+                    return EvaluateArtifactRequired(gate, manifest);
+                case "externalVerdict":
+                    return CreateResult(gate, "skipped", new List<string>(), "External verdict is not imported in this CLI-only run.");
+                default:
+                    return CreateResult(gate, "blocked", new List<string>(), "Unsupported gate kind: " + gate.Kind + ".");
+            }
+        }
+
+        private static WorkflowGateResult EvaluateCommandSuccess(
+            WorkflowGate gate,
+            WorkflowRunManifest manifest,
+            string commandPrefix,
+            string successMessage)
+        {
+            var evidence = new List<string>();
+            foreach (var commandResult in manifest.CommandResults)
+            {
+                if (StartsWithCommand(commandResult.Command, commandPrefix))
+                {
+                    evidence.Add(commandResult.CommandId);
+                    if (commandResult.Success)
+                    {
+                        return CreateResult(gate, "passed", evidence, successMessage);
+                    }
+                }
+            }
+
+            return evidence.Count == 0
+                ? CreateResult(gate, "skipped", evidence, "No command result matched `" + commandPrefix + "`.")
+                : CreateResult(gate, "failed", evidence, "No successful `" + commandPrefix + "` command result found.");
+        }
+
+        private static WorkflowGateResult EvaluateLogErrors(
+            WorkflowGate gate,
+            WorkflowRunManifest manifest,
+            string artifactKind,
+            string commandPrefix,
+            string label)
+        {
+            var max = ReadThresholdInt(gate, "max", 0);
+            var evidence = new List<string>();
+            var totalErrors = 0;
+            foreach (var commandResult in manifest.CommandResults)
+            {
+                if (!StartsWithCommand(commandResult.Command, commandPrefix))
+                {
+                    continue;
+                }
+
+                evidence.Add(commandResult.CommandId);
+                totalErrors += CountErrorsInResult(commandResult.ResultPath);
+            }
+
+            if (evidence.Count == 0)
+            {
+                foreach (var artifact in manifest.ArtifactRefs)
+                {
+                    if (string.Equals(artifact.Kind, artifactKind, StringComparison.OrdinalIgnoreCase))
+                    {
+                        evidence.Add(artifact.ArtifactId);
+                    }
+                }
+            }
+
+            if (evidence.Count == 0)
+            {
+                return CreateResult(gate, "skipped", evidence, "No log evidence found.");
+            }
+
+            return totalErrors <= max
+                ? CreateResult(gate, "passed", evidence, label + " <= " + max + ".")
+                : CreateResult(gate, "failed", evidence, label + " is " + totalErrors + ", max allowed is " + max + ".");
+        }
+
+        private static WorkflowGateResult EvaluateScreenshotExists(WorkflowGate gate, WorkflowRunManifest manifest)
+        {
+            var evidence = new List<string>();
+            foreach (var artifact in manifest.ArtifactRefs)
+            {
+                if (!IsScreenshotKind(artifact.Kind))
+                {
+                    continue;
+                }
+
+                evidence.Add(artifact.ArtifactId);
+                var path = ResolveArtifactPath(artifact.Path);
+                if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+                {
+                    return CreateResult(gate, "passed", evidence, "Screenshot artifact exists.");
+                }
+            }
+
+            return evidence.Count == 0
+                ? CreateResult(gate, "skipped", evidence, "No screenshot artifact found.")
+                : CreateResult(gate, "failed", evidence, "Screenshot artifacts were referenced but files were not found.");
+        }
+
+        private static WorkflowGateResult EvaluateRuntimeReachable(WorkflowGate gate, WorkflowRunManifest manifest)
+        {
+            var evidence = new List<string>();
+            foreach (var commandResult in manifest.CommandResults)
+            {
+                if (StartsWithCommand(commandResult.Command, "runtime status")
+                    || StartsWithCommand(commandResult.Command, "runtime ping")
+                    || StartsWithCommand(commandResult.Command, "runtime list_targets")
+                    || StartsWithCommand(commandResult.Command, "runtime discover"))
+                {
+                    evidence.Add(commandResult.CommandId);
+                    if (commandResult.Success)
+                    {
+                        return CreateResult(gate, "passed", evidence, "Runtime command returned successfully.");
+                    }
+                }
+            }
+
+            return evidence.Count == 0
+                ? CreateResult(gate, "skipped", evidence, "No runtime reachability evidence found.")
+                : CreateResult(gate, "failed", evidence, "Runtime reachability commands failed.");
+        }
+
+        private static WorkflowGateResult EvaluateArtifactRequired(WorkflowGate gate, WorkflowRunManifest manifest)
+        {
+            var artifactKind = gate.ArtifactKind;
+            var min = gate.Min ?? ReadThresholdInt(gate, "min", 1);
+            var evidence = new List<string>();
+            foreach (var artifact in manifest.ArtifactRefs)
+            {
+                if (string.IsNullOrWhiteSpace(artifactKind)
+                    || string.Equals(artifact.Kind, artifactKind, StringComparison.OrdinalIgnoreCase))
+                {
+                    evidence.Add(artifact.ArtifactId);
+                }
+            }
+
+            return evidence.Count >= min
+                ? CreateResult(gate, "passed", evidence, "Artifact requirement met.")
+                : CreateResult(gate, "failed", evidence, "Artifact requirement not met: " + evidence.Count + " < " + min + ".");
+        }
+
+        private static WorkflowGateResult CreateResult(WorkflowGate gate, string status, List<string> evidence, string message)
+        {
+            return CreateResult(gate == null ? null : gate.Id, gate == null ? null : gate.Kind, gate != null && gate.Required, status, evidence, message, gate == null ? null : gate.Threshold);
+        }
+
+        private static WorkflowGateResult CreateResult(string gateId, string kind, bool required, string status, List<string> evidence, string message, JObject threshold = null)
+        {
+            return new WorkflowGateResult
+            {
+                GateId = gateId,
+                Kind = kind,
+                Required = required,
+                Status = status,
+                Threshold = threshold,
+                EvidenceRefs = evidence ?? new List<string>(),
+                Message = message
+            };
+        }
+
+        private static bool StartsWithCommand(string command, string prefix)
+        {
+            return !string.IsNullOrWhiteSpace(command)
+                && command.Trim().StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static int ReadThresholdInt(WorkflowGate gate, string key, int defaultValue)
+        {
+            if (gate == null || gate.Threshold == null)
+            {
+                return defaultValue;
+            }
+
+            if (gate.Threshold.TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var token)
+                && token.Type == JTokenType.Integer)
+            {
+                return token.Value<int>();
+            }
+
+            return defaultValue;
+        }
+
+        private static int CountErrorsInResult(string resultPath)
+        {
+            var path = ResolveArtifactPath(resultPath);
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                return 0;
+            }
+
+            try
+            {
+                var root = JObject.Parse(File.ReadAllText(path));
+                if (TryReadInt(root, "errorCount", out var errorCount))
+                {
+                    return errorCount;
+                }
+
+                var payload = root["data"] as JObject;
+                if (payload != null && TryReadInt(payload, "errorCount", out errorCount))
+                {
+                    return errorCount;
+                }
+
+                var nestedData = payload == null ? null : payload["data"] as JObject;
+                if (nestedData != null && TryReadInt(nestedData, "errorCount", out errorCount))
+                {
+                    return errorCount;
+                }
+
+                return CountLogEntries(root);
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private static int CountLogEntries(JToken token)
+        {
+            var count = 0;
+            var obj = token as JObject;
+            if (obj != null)
+            {
+                if (obj.TryGetValue("logType", StringComparison.OrdinalIgnoreCase, out var logType)
+                    || obj.TryGetValue("type", StringComparison.OrdinalIgnoreCase, out logType))
+                {
+                    var text = logType.ToString();
+                    if (text.Equals("Error", StringComparison.OrdinalIgnoreCase)
+                        || text.Equals("Exception", StringComparison.OrdinalIgnoreCase)
+                        || text.Equals("Assert", StringComparison.OrdinalIgnoreCase))
+                    {
+                        count++;
+                    }
+                }
+
+                foreach (var property in obj.Properties())
+                {
+                    count += CountLogEntries(property.Value);
+                }
+            }
+
+            var array = token as JArray;
+            if (array != null)
+            {
+                foreach (var item in array)
+                {
+                    count += CountLogEntries(item);
+                }
+            }
+
+            return count;
+        }
+
+        private static bool TryReadInt(JObject obj, string key, out int value)
+        {
+            value = 0;
+            if (obj != null
+                && obj.TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var token)
+                && token.Type == JTokenType.Integer)
+            {
+                value = token.Value<int>();
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsScreenshotKind(string kind)
+        {
+            return string.Equals(kind, "screenshot", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(kind, "runtime-screenshot", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(kind, "gif", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string ResolveArtifactPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            if (Path.IsPathRooted(path))
+            {
+                return path;
+            }
+
+            return Path.GetFullPath(Path.Combine(WorkflowPathHelper.GetProjectRoot(), path));
+        }
+    }
+}

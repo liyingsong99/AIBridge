@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "name": "unity-sharded-review",
+  "title": "Unity Sharded Review",
+  "description": "Review a broad Unity scope by shard, merge findings, adversarially verify claims, and report confirmed issues only.",
+  "version": "1.0.0",
+  "inputs": {
+    "scopePaths": {
+      "description": "Directories, assemblies, packages, or files to review."
+    },
+    "reviewGoal": {
+      "description": "Bug, regression, compatibility, or architecture focus for the review."
+    },
+    "maxShardCount": {
+      "description": "Maximum number of review shards.",
+      "default": 4
+    }
+  },
+  "phases": [
+    {
+      "id": "shard",
+      "type": "serial",
+      "description": "Split the review scope into independent read-only shards.",
+      "steps": [
+        {
+          "id": "plan-shards",
+          "kind": "agent",
+          "role": "shard-planner",
+          "description": "Return shard ids, paths, and review focus.",
+          "outputs": [
+            "PlanItem"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "parallel-review",
+      "type": "parallel",
+      "description": "Review each shard read-only and emit evidence-backed findings.",
+      "dependsOn": [
+        "shard"
+      ],
+      "itemSource": "outputs.plan-shards",
+      "steps": [
+        {
+          "id": "review-shard",
+          "kind": "agent",
+          "role": "reviewer",
+          "description": "Inspect one shard without editing files and return Finding[].",
+          "outputs": [
+            "Finding"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "deduplicate",
+      "type": "barrier",
+      "description": "Merge duplicate findings by file, line, claim, and evidence.",
+      "dependsOn": [
+        "parallel-review"
+      ],
+      "steps": [
+        {
+          "id": "dedupe-findings",
+          "kind": "barrier",
+          "description": "Return normalized Finding[] with duplicates removed.",
+          "outputs": [
+            "Finding"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "adversarial-verify",
+      "type": "serial",
+      "description": "Verify each claim against concrete repository evidence.",
+      "dependsOn": [
+        "deduplicate"
+      ],
+      "steps": [
+        {
+          "id": "verify-findings",
+          "kind": "agent",
+          "role": "verifier",
+          "description": "Return Verdict[] using confirmed, refuted, or uncertain.",
+          "outputs": [
+            "Verdict"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "report",
+      "type": "report",
+      "description": "Report confirmed findings first and list evidence gaps separately.",
+      "dependsOn": [
+        "adversarial-verify"
+      ],
+      "steps": [
+        {
+          "id": "write-review-report",
+          "kind": "report",
+          "description": "Generate a review report grounded in confirmed evidence.",
+          "outputs": [
+            "ArtifactRef"
+          ]
+        }
+      ]
+    }
+  ],
+  "gates": [
+    {
+      "id": "confirmed-verdicts",
+      "kind": "externalVerdict",
+      "required": false,
+      "allow": [
+        "confirmed"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "kind": "validation-report",
+      "description": "Confirmed findings and uncertain evidence gaps.",
+      "required": true
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "name": "cli-smoke",
+  "title": "CLI Smoke",
+  "description": "Validate a built-in workflow recipe through workflow run-cli without requiring Unity Editor.",
+  "version": "1.0.0",
+  "inputs": {},
+  "phases": [
+    {
+      "id": "validate-template",
+      "type": "serial",
+      "description": "Run a CLI-only nested workflow validation command.",
+      "steps": [
+        {
+          "id": "validate-runtime-target-sweep",
+          "kind": "cli",
+          "description": "Validate the built-in runtime target sweep recipe.",
+          "command": "workflow validate --recipe runtime-target-sweep",
+          "outputs": [
+            "ValidationResult",
+            "ArtifactRef"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "report",
+      "type": "report",
+      "description": "Generate a smoke run report.",
+      "dependsOn": [
+        "validate-template"
+      ],
+      "steps": [
+        {
+          "id": "write-smoke-report",
+          "kind": "report",
+          "description": "Generate the smoke report.",
+          "outputs": [
+            "ArtifactRef"
+          ]
+        }
+      ]
+    }
+  ],
+  "gates": [
+    {
+      "id": "command-result-present",
+      "kind": "artifactRequired",
+      "required": true,
+      "artifactKind": "command-result",
+      "min": 1
+    }
+  ],
+  "artifacts": [
+    {
+      "kind": "command-result",
+      "description": "Nested workflow validate command result.",
+      "required": true
+    },
+    {
+      "kind": "workflow-report",
+      "description": "Smoke run report.",
+      "required": true
+    }
+  ]
+}

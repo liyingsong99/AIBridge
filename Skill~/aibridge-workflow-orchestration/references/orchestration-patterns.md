@@ -12,7 +12,7 @@ Purpose: choose safe workflow structure for AIBridge tasks that need more than a
 | Runtime Bridge | Player or Play Mode data plane for status, logs, screenshots, perf, handlers, and calls | Agent scheduling or workflow recipe execution |
 | Code Index | Read-only semantic code evidence | Runtime state, asset mutation, or project build validation |
 
-P0 is documentation only. It does not add a `workflow` CLI, scheduler, recipe validator, Editor panel, or cross-tool agent runtime.
+Current workflow CLI support covers recipe list/validate/plan/init, deterministic `run-cli` steps, run artifacts, gates, and reports. It is not a cross-tool agent runtime; `agent` and `manual` steps still require an external executor.
 
 ## Pattern Selection
 

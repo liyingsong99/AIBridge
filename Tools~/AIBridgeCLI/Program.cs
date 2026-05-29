@@ -111,6 +111,12 @@ namespace AIBridgeCLI
                 return CodeIndexCommand.Execute(parsed.Action, parsed.Options, timeout, noWait, outputMode);
             }
 
+            // Handle workflow command (CLI-only recipe schema, run artifacts, gates, reports)
+            if (parsed.CommandType.Equals("workflow", StringComparison.OrdinalIgnoreCase))
+            {
+                return WorkflowCommand.Execute(parsed.Action, parsed.Options, timeout, outputMode);
+            }
+
             // Handle compile dotnet command (CLI-only, no Unity communication needed)
             if (parsed.CommandType.Equals("compile", StringComparison.OrdinalIgnoreCase)
                 && parsed.Action?.Equals("dotnet", StringComparison.OrdinalIgnoreCase) == true)

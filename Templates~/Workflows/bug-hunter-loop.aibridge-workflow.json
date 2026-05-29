@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 1,
+  "name": "bug-hunter-loop",
+  "title": "Bug Hunter Loop",
+  "description": "Iteratively collect evidence, generate candidate causes, verify claims, implement one confirmed fix, and validate.",
+  "version": "1.0.0",
+  "inputs": {
+    "initialEvidence": {
+      "description": "Logs, screenshots, repro steps, test failures, or Runtime symptoms."
+    },
+    "maxIterations": {
+      "description": "Maximum investigation iterations.",
+      "default": 2
+    },
+    "stopWhen": {
+      "description": "Stop condition such as compile passes, no console errors, or confirmed repro fixed."
+    }
+  },
+  "phases": [
+    {
+      "id": "collect-evidence",
+      "type": "serial",
+      "description": "Collect deterministic evidence before proposing causes.",
+      "steps": [
+        {
+          "id": "check-console-errors",
+          "kind": "cli",
+          "description": "Read recent Unity Console errors.",
+          "command": "get_logs --logType Error --count 50",
+          "outputs": [
+            "ValidationResult",
+            "ArtifactRef"
+          ]
+        },
+        {
+          "id": "collect-extra-evidence",
+          "kind": "manual",
+          "role": "evidence-collector",
+          "description": "Collect tests, screenshots, Runtime status/logs, or Code Index clues relevant to initialEvidence.",
+          "outputs": [
+            "ArtifactRef",
+            "ValidationResult"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "candidate-generation",
+      "type": "serial",
+      "description": "Generate candidate root causes from evidence only.",
+      "dependsOn": [
+        "collect-evidence"
+      ],
+      "steps": [
+        {
+          "id": "generate-candidates",
+          "kind": "agent",
+          "role": "candidate-generator",
+          "description": "Return evidence-backed Finding[] without editing.",
+          "outputs": [
+            "Finding"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "adversarial-verify",
+      "type": "serial",
+      "description": "Verify candidate claims independently.",
+      "dependsOn": [
+        "candidate-generation"
+      ],
+      "steps": [
+        {
+          "id": "verify-candidates",
+          "kind": "agent",
+          "role": "verifier",
+          "description": "Return Verdict[] with confirmed, refuted, or uncertain status.",
+          "outputs": [
+            "Verdict"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "implement-one",
+      "type": "serial",
+      "description": "Implement only the highest-value confirmed fix in this iteration.",
+      "dependsOn": [
+        "adversarial-verify"
+      ],
+      "steps": [
+        {
+          "id": "apply-one-fix",
+          "kind": "manual",
+          "role": "implementer",
+          "description": "Apply one confirmed fix serially and leave unconfirmed candidates untouched.",
+          "outputs": [
+            "PatchProposal"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "validate",
+      "type": "serial",
+      "description": "Validate after the fix using repeatable gates.",
+      "dependsOn": [
+        "implement-one"
+      ],
+      "steps": [
+        {
+          "id": "compile-unity",
+          "kind": "cli",
+          "description": "Validate Unity compilation.",
+          "command": "compile unity",
+          "outputs": [
+            "ValidationResult"
+          ]
+        },
+        {
+          "id": "check-console-errors-after-fix",
+          "kind": "cli",
+          "description": "Read Unity Console errors after the fix.",
+          "command": "get_logs --logType Error --count 50",
+          "outputs": [
+            "ValidationResult",
+            "ArtifactRef"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "loop-or-report",
+      "type": "report",
+      "description": "Stop when budget is reached, no confirmed candidate remains, or validation passes.",
+      "dependsOn": [
+        "validate"
+      ],
+      "steps": [
+        {
+          "id": "write-bug-hunter-report",
+          "kind": "report",
+          "description": "Generate the loop summary, fix evidence, and remaining candidates.",
+          "outputs": [
+            "ArtifactRef"
+          ]
+        }
+      ]
+    }
+  ],
+  "gates": [
+    {
+      "id": "confirmed-candidate",
+      "kind": "externalVerdict",
+      "required": false,
+      "allow": [
+        "confirmed"
+      ]
+    },
+    {
+      "id": "unity-compile",
+      "kind": "unityCompile",
+      "required": true
+    },
+    {
+      "id": "console-errors",
+      "kind": "consoleErrors",
+      "required": true,
+      "threshold": {
+        "max": 0
+      }
+    },
+    {
+      "id": "tests",
+      "kind": "testRun",
+      "required": false,
+      "threshold": {
+        "maxFailed": 0
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "kind": "console-log",
+      "description": "Console evidence before and after the fix.",
+      "required": true
+    },
+    {
+      "kind": "patch-proposal",
+      "description": "Confirmed fix proposal.",
+      "required": false
+    },
+    {
+      "kind": "workflow-report",
+      "description": "Loop report with evidence and remaining risks.",
+      "required": true
+    }
+  ]
+}

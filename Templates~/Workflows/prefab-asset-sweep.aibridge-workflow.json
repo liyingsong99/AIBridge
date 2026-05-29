@@ -1,0 +1,196 @@
+{
+  "schemaVersion": 1,
+  "name": "prefab-asset-sweep",
+  "title": "Prefab Asset Sweep",
+  "description": "Inspect many Prefab, Scene, or asset files in parallel, merge patch proposals, then apply approved writes serially.",
+  "version": "1.0.0",
+  "inputs": {
+    "assetSearch": {
+      "description": "Search expression, directory, or GUID list for target assets."
+    },
+    "propertyRules": {
+      "description": "Rules for inspected components, serialized properties, or references."
+    },
+    "dryRunOnly": {
+      "description": "When true, stop after dry-run validation.",
+      "default": true
+    }
+  },
+  "phases": [
+    {
+      "id": "search-assets",
+      "type": "serial",
+      "description": "Find candidate assets for read-only inspection.",
+      "steps": [
+        {
+          "id": "search-candidates",
+          "kind": "manual",
+          "role": "asset-searcher",
+          "description": "Use asset search or repository file search to list candidates.",
+          "outputs": [
+            "ArtifactRef"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "parallel-inspect",
+      "type": "parallel",
+      "description": "Inspect candidates read-only. Parallel writes to Prefab, Scene, .asset, or .meta files are forbidden.",
+      "dependsOn": [
+        "search-assets"
+      ],
+      "itemSource": "outputs.search-candidates",
+      "steps": [
+        {
+          "id": "inspect-asset",
+          "kind": "agent",
+          "role": "asset-inspector",
+          "description": "Inspect one asset shard and return Finding[] and PatchProposal[] without editing.",
+          "outputs": [
+            "Finding",
+            "PatchProposal"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "proposal-barrier",
+      "type": "barrier",
+      "description": "Merge patch proposals and remove conflicting writes before any serialized asset edit.",
+      "dependsOn": [
+        "parallel-inspect"
+      ],
+      "steps": [
+        {
+          "id": "merge-patch-proposals",
+          "kind": "barrier",
+          "description": "Return an ordered PatchProposal[] with explicit file ownership.",
+          "outputs": [
+            "PatchProposal"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dry-run",
+      "type": "serial",
+      "description": "Dry-run proposed serialized changes before applying them.",
+      "dependsOn": [
+        "proposal-barrier"
+      ],
+      "steps": [
+        {
+          "id": "dry-run-patches",
+          "kind": "manual",
+          "role": "validator",
+          "description": "Run prefab patch dry-run or equivalent checks for proposed edits.",
+          "outputs": [
+            "ValidationResult",
+            "ArtifactRef"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "serial-apply",
+      "type": "serial",
+      "description": "Apply approved writes serially only after dry-run review.",
+      "dependsOn": [
+        "dry-run"
+      ],
+      "steps": [
+        {
+          "id": "apply-approved-patches",
+          "kind": "manual",
+          "role": "implementer",
+          "description": "Apply approved patch proposals one at a time. Never write the same serialized asset concurrently.",
+          "outputs": [
+            "ValidationResult"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "validate",
+      "type": "serial",
+      "description": "Compile and check logs after serial writes.",
+      "dependsOn": [
+        "serial-apply"
+      ],
+      "steps": [
+        {
+          "id": "compile-unity",
+          "kind": "cli",
+          "description": "Validate Unity compilation.",
+          "command": "compile unity",
+          "outputs": [
+            "ValidationResult"
+          ]
+        },
+        {
+          "id": "check-console-errors",
+          "kind": "cli",
+          "description": "Collect Unity Console errors.",
+          "command": "get_logs --logType Error --count 50",
+          "outputs": [
+            "ValidationResult",
+            "ArtifactRef"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "report",
+      "type": "report",
+      "description": "Report changed assets, dry-run evidence, and validation result.",
+      "dependsOn": [
+        "validate"
+      ],
+      "steps": [
+        {
+          "id": "write-prefab-sweep-report",
+          "kind": "report",
+          "description": "Generate the Prefab asset sweep report.",
+          "outputs": [
+            "ArtifactRef"
+          ]
+        }
+      ]
+    }
+  ],
+  "gates": [
+    {
+      "id": "patch-proposal-present",
+      "kind": "artifactRequired",
+      "required": false,
+      "artifactKind": "patch-proposal",
+      "min": 1
+    },
+    {
+      "id": "unity-compile",
+      "kind": "unityCompile",
+      "required": true
+    },
+    {
+      "id": "console-errors",
+      "kind": "consoleErrors",
+      "required": true,
+      "threshold": {
+        "max": 0
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "kind": "patch-proposal",
+      "description": "Merged patch proposal list before serial application.",
+      "required": true
+    },
+    {
+      "kind": "validation-report",
+      "description": "Dry-run, compile, and log validation.",
+      "required": true
+    }
+  ]
+}

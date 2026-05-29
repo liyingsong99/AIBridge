@@ -44,6 +44,7 @@ For Editor automation, AIBridge uses file-based command requests and result file
 - **UGUI runtime input simulation**: in Play Mode, the `input` command can click, click screen coordinates, drag, and long-press EventSystem UI for button, inventory, and runtime panel checks.
 - **Player Runtime Bridge**: an `AIBridgeRuntime` component inside a built Player can expose runtime status, logs, screenshots, performance samples, project allowlisted handlers, and HybridCLR-gated runtime code execution for Development Build and mobile debugging.
 - **Read-only Code Index**: when enabled, `code_index` starts an IDE-independent daemon that reads Unity compilation snapshots for symbol, definition, reference, implementation, caller, and diagnostic queries. It is disabled by default and reports `semantic=false` when it falls back to text search.
+- **Workflow recipes and run artifacts**: `workflow` CLI commands can list, validate, plan, initialize, and run deterministic CLI steps from built-in Unity workflow recipes, then write a project-local run manifest, command results, artifacts, gates, and Markdown report under `.aibridge/workflows/runs/`.
 - **Roslyn temporary C# execution**: controlled `code execute` runs `.aibridge/code/*.cs` or `.csx` temporary scripts inside Unity Editor for complex one-off asset generation, structured analysis, diagnostics, and Runtime/Public API calls. It is enabled by default in Settings and can be disabled there for untrusted projects or callers.
 - **Visual and log validation**: capture Game/Scene view screenshots or GIFs, read Console logs, run Unity compilation, and invoke tests so agents can close the loop on changes.
 
@@ -128,6 +129,23 @@ $CLI test status
 ```
 
 Use `compile unity` for Unity validation. `compile dotnet` is only an extra solution build check and is not a replacement for Unity compilation.
+
+### Workflow Recipes
+
+Workflow recipes are deterministic run-artifact templates, not a built-in LLM scheduler. `workflow run-cli` executes CLI, barrier, and report steps, while `agent` and `manual` steps are recorded for Codex, Claude, Cursor, or a human executor.
+
+```bash
+$CLI workflow list
+$CLI workflow validate --recipe runtime-target-sweep
+$CLI workflow plan --recipe runtime-ui-validation --format markdown
+$CLI workflow init --recipe runtime-ui-validation
+$CLI workflow run-cli --file ".aibridge/workflows/recipes/runtime-target-sweep.aibridge-workflow.json"
+$CLI workflow status --run wf_20260529_213000_ab12cd34
+$CLI workflow report --run wf_20260529_213000_ab12cd34 --format markdown
+$CLI workflow clean --older-than 30d --dry-run true
+```
+
+Built-in recipes include `unity-change-implementation`, `unity-sharded-review`, `runtime-target-sweep`, `runtime-ui-validation`, `prefab-asset-sweep`, and `bug-hunter-loop`.
 
 Use `dialog status` when Unity commands time out and the Editor may be blocked by a modal save/confirm dialog. When no dialog is detected, compact JSON omits `blockedByDialog` and `dialogs`; missing fields mean no dialog. macOS dialog inspection/clicking requires Accessibility permission. Unity commands can opt into explicit timeout handling, for example `--on-dialog cancel` or `--on-dialog discard`.
 

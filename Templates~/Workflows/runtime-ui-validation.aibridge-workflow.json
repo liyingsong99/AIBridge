@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "name": "runtime-ui-validation",
+  "title": "Runtime UI Validation",
+  "description": "Validate a Play Mode or Player UI path by performing actions, collecting screenshots and logs, and recording a verdict.",
+  "version": "1.0.0",
+  "inputs": {
+    "target": {
+      "description": "Runtime target id or latest.",
+      "default": "latest"
+    },
+    "actions": {
+      "description": "Click, drag, type, or runtime handler actions to perform."
+    },
+    "expectedState": {
+      "description": "Expected visible or runtime state after actions."
+    }
+  },
+  "phases": [
+    {
+      "id": "prepare",
+      "type": "serial",
+      "description": "Confirm the Runtime target is reachable before actions run.",
+      "steps": [
+        {
+          "id": "runtime-status",
+          "kind": "cli",
+          "description": "Check target status.",
+          "command": "runtime status --target {{target}}",
+          "outputs": [
+            "RuntimeTargetRef",
+            "ValidationResult"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "perform-actions",
+      "type": "serial",
+      "description": "Execute UI actions serially to avoid input-state races.",
+      "dependsOn": [
+        "prepare"
+      ],
+      "steps": [
+        {
+          "id": "run-actions",
+          "kind": "manual",
+          "role": "action-runner",
+          "description": "Run the requested click, drag, type, or runtime handler actions in order.",
+          "outputs": [
+            "ValidationResult"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "collect-evidence",
+      "type": "serial",
+      "description": "Collect logs and screenshot evidence after the UI path.",
+      "dependsOn": [
+        "perform-actions"
+      ],
+      "steps": [
+        {
+          "id": "runtime-error-logs",
+          "kind": "cli",
+          "description": "Collect recent runtime errors.",
+          "command": "runtime logs --target {{target}} --logType Error --count 50",
+          "outputs": [
+            "ValidationResult",
+            "ArtifactRef"
+          ]
+        },
+        {
+          "id": "runtime-screenshot",
+          "kind": "cli",
+          "description": "Capture UI state after actions.",
+          "command": "runtime screenshot --target {{target}}",
+          "outputs": [
+            "ArtifactRef"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "verdict",
+      "type": "serial",
+      "description": "Compare evidence against expectedState.",
+      "dependsOn": [
+        "collect-evidence"
+      ],
+      "steps": [
+        {
+          "id": "ui-verdict",
+          "kind": "agent",
+          "role": "visual-log-validator",
+          "description": "Return a confirmed, refuted, or uncertain Verdict from screenshots, logs, and expectedState.",
+          "outputs": [
+            "Verdict"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "report",
+      "type": "report",
+      "description": "Report actions, screenshot, logs, and verdict.",
+      "dependsOn": [
+        "verdict"
+      ],
+      "steps": [
+        {
+          "id": "write-ui-validation-report",
+          "kind": "report",
+          "description": "Generate the UI validation report.",
+          "outputs": [
+            "ArtifactRef"
+          ]
+        }
+      ]
+    }
+  ],
+  "gates": [
+    {
+      "id": "runtime-reachable",
+      "kind": "runtimeReachable",
+      "required": true
+    },
+    {
+      "id": "runtime-errors",
+      "kind": "runtimeErrors",
+      "required": true,
+      "threshold": {
+        "max": 0
+      }
+    },
+    {
+      "id": "screenshot-exists",
+      "kind": "screenshotExists",
+      "required": true
+    },
+    {
+      "id": "ui-verdict-confirmed",
+      "kind": "externalVerdict",
+      "required": false,
+      "allow": [
+        "confirmed"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "kind": "runtime-log",
+      "description": "Runtime error log result.",
+      "required": true
+    },
+    {
+      "kind": "runtime-screenshot",
+      "description": "UI screenshot after actions.",
+      "required": true
+    }
+  ]
+}

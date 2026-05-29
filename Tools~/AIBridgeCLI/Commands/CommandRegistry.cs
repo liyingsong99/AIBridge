@@ -40,6 +40,7 @@ namespace AIBridgeCLI.Commands
             Register(new CodeCommandBuilder());
             Register(new RuntimeCommandBuilder());
             Register(new CodeIndexCommandBuilder());
+            Register(new WorkflowCommandBuilder());
 
             _initialized = true;
         }

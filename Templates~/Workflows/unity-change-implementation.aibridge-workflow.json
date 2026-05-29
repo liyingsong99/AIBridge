@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "name": "unity-change-implementation",
+  "title": "Unity Change Implementation",
+  "description": "Implement a scoped Unity or AIBridge package change and collect compile, log, and optional runtime evidence.",
+  "version": "1.0.0",
+  "inputs": {
+    "request": {
+      "description": "User request or implementation goal."
+    },
+    "scope": {
+      "description": "Files, package, scene, or subsystem in scope."
+    },
+    "validationLevel": {
+      "description": "compile-only, compile-and-logs, or runtime-or-screenshot.",
+      "default": "compile-and-logs"
+    }
+  },
+  "phases": [
+    {
+      "id": "analyze",
+      "type": "serial",
+      "description": "Analyze existing implementation patterns, constraints, and risks.",
+      "steps": [
+        {
+          "id": "analyze-request",
+          "kind": "agent",
+          "role": "analyzer",
+          "description": "Return PlanItem[] and risk notes for the scoped request.",
+          "outputs": [
+            "PlanItem"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "implement",
+      "type": "serial",
+      "description": "Apply the approved change serially in the main worktree.",
+      "dependsOn": [
+        "analyze"
+      ],
+      "steps": [
+        {
+          "id": "implement-change",
+          "kind": "manual",
+          "role": "implementer",
+          "description": "Edit code, assets, or package files in the requested scope.",
+          "outputs": [
+            "PatchProposal"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "validate",
+      "type": "serial",
+      "description": "Collect deterministic Unity evidence.",
+      "dependsOn": [
+        "implement"
+      ],
+      "steps": [
+        {
+          "id": "compile-unity",
+          "kind": "cli",
+          "description": "Trigger Unity compilation and wait for the result.",
+          "command": "compile unity",
+          "outputs": [
+            "ValidationResult"
+          ]
+        },
+        {
+          "id": "check-console-errors",
+          "kind": "cli",
+          "description": "Collect recent Unity Console errors.",
+          "command": "get_logs --logType Error --count 50",
+          "outputs": [
+            "ValidationResult",
+            "ArtifactRef"
+          ]
+        },
+        {
+          "id": "optional-visual-runtime",
+          "kind": "manual",
+          "description": "When validationLevel is runtime-or-screenshot, run a targeted screenshot or runtime validation command.",
+          "outputs": [
+            "ValidationResult",
+            "ArtifactRef"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "report",
+      "type": "report",
+      "description": "Summarize implementation, evidence, gates, and remaining risks.",
+      "dependsOn": [
+        "validate"
+      ],
+      "steps": [
+        {
+          "id": "write-report",
+          "kind": "report",
+          "description": "Generate the workflow report from collected artifacts.",
+          "outputs": [
+            "ArtifactRef"
+          ]
+        }
+      ]
+    }
+  ],
+  "gates": [
+    {
+      "id": "unity-compile",
+      "kind": "unityCompile",
+      "required": true
+    },
+    {
+      "id": "console-errors",
+      "kind": "consoleErrors",
+      "required": true,
+      "threshold": {
+        "max": 0
+      }
+    },
+    {
+      "id": "visual-evidence",
+      "kind": "screenshotExists",
+      "required": false
+    }
+  ],
+  "artifacts": [
+    {
+      "kind": "validation-report",
+      "description": "Compile and log validation result.",
+      "required": true
+    },
+    {
+      "kind": "workflow-report",
+      "description": "Final Markdown report.",
+      "required": true
+    }
+  ]
+}

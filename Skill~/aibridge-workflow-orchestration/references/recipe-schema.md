@@ -1,121 +1,151 @@
 # Recipe Schema
 
-Purpose: define the P0 documentation convention for AIBridge workflow recipes. P0 recipes are not executed or validated by the AIBridge CLI.
+Purpose: define AIBridge workflow recipe JSON files used by `workflow validate`, `workflow plan`, `workflow init`, and `workflow run-cli`.
 
-## File Locations
-
-Use these locations for recipe documents when a project adopts them:
+## Locations
 
 ```text
-.aibridge/workflows/<name>.aibridge-workflow.json
 Templates~/Workflows/<name>.aibridge-workflow.json
+.aibridge/workflows/recipes/<name>.aibridge-workflow.json
+.aibridge/workflows/runs/<runId>/
 ```
 
-Project-local recipes live under `.aibridge/workflows/`. Package templates live under `Templates~/Workflows/`.
+Package templates live under `Templates~/Workflows`. Project-local recipes live under `.aibridge/workflows/recipes`. A run writes its manifest, inputs, phase/step state, command results, artifacts, gates, and report under `.aibridge/workflows/runs/<runId>/`.
 
-## Top-Level Shape
+## CLI
+
+```bash
+$CLI workflow list
+$CLI workflow validate --recipe runtime-target-sweep
+$CLI workflow plan --recipe runtime-ui-validation --format markdown
+$CLI workflow init --recipe runtime-ui-validation
+$CLI workflow run-cli --file ".aibridge/workflows/recipes/runtime-target-sweep.aibridge-workflow.json" --inputs ".aibridge/workflows/inputs.json"
+$CLI workflow status --run <runId>
+$CLI workflow report --run <runId> --format markdown
+$CLI workflow clean --older-than 30d --dry-run true
+```
+
+`run-cli` executes only deterministic `cli`, `barrier`, and `report` steps. It records `agent` and `manual` steps as `skipped_requires_external_executor`; external tools such as Codex, Claude, or Cursor remain responsible for those steps.
+
+## Recipe Shape
+
+Required top-level fields:
+
+- `schemaVersion`: must be `1`.
+- `name`: lower kebab-case recipe id.
+- `description`: concise purpose.
+- `phases`: ordered phase definitions.
+- `gates`: validation gates.
+
+Optional fields:
+
+- `title`
+- `version`
+- `inputs`
+- `artifacts`
 
 ```json
 {
   "schemaVersion": 1,
-  "name": "unity-sharded-review",
-  "description": "Review Unity project shards and adversarially verify findings.",
-  "inputs": {},
+  "name": "runtime-target-sweep",
+  "title": "Runtime Target Sweep",
+  "description": "Collect Runtime target evidence.",
+  "version": "1.0.0",
+  "inputs": {
+    "target": { "default": "latest" }
+  },
   "phases": [],
   "gates": [],
   "artifacts": []
 }
 ```
 
-Required fields:
-
-- `schemaVersion`: integer schema version. Use `1` for P0 documents.
-- `name`: stable lower-case recipe id.
-- `description`: one sentence explaining the workflow.
-- `inputs`: named input values or selectors.
-- `phases`: ordered phase definitions.
-- `gates`: validation gates that must be checked.
-- `artifacts`: expected artifact outputs or artifact directories.
-
 ## Phase Shape
 
 ```json
 {
-  "id": "parallel-review",
-  "type": "agent",
-  "description": "Review one source shard.",
-  "dependsOn": ["shard"],
-  "parallel": true,
-  "role": "reviewer",
-  "inputs": {},
-  "outputs": ["Finding"]
+  "id": "collect",
+  "type": "serial",
+  "description": "Collect Runtime evidence.",
+  "dependsOn": ["discover"],
+  "itemSource": "inputs.targets",
+  "steps": []
 }
 ```
 
-Recommended fields:
+Allowed `type` values:
 
-- `id`: unique phase id.
-- `type`: `agent`, `cli`, `manual`, `barrier`, or `report`.
-- `description`: concise task statement.
-- `dependsOn`: upstream phase ids.
-- `parallel`: whether independent items may run in parallel.
-- `role`: agent or human role name.
-- `inputs`: phase-local inputs.
-- `outputs`: schema names produced by the phase.
+- `serial`
+- `parallel`
+- `pipeline`
+- `barrier`
+- `report`
 
-## Step Types
+`dependsOn` may only reference earlier phases. `itemSource` is syntax-only in the current CLI and is intended for later parallel/pipeline expansion by an external executor.
 
-- `agent`: AI subtask that reads evidence, reasons, drafts findings, proposes patches, or writes reports.
-- `cli`: AIBridge CLI command or deterministic command sequence.
-- `manual`: user or main-agent decision.
-- `barrier`: waits for all upstream outputs and merges, deduplicates, ranks, or votes.
-- `report`: produces final Markdown or JSON for humans or automation.
+## Step Shape
 
-## Standard Schema Names
+```json
+{
+  "id": "runtime-status",
+  "kind": "cli",
+  "description": "Check target status.",
+  "command": "runtime status --target {{target}}",
+  "outputs": ["RuntimeTargetRef", "ValidationResult"]
+}
+```
 
-- `Finding`: issue, risk, or observation backed by evidence.
-- `Verdict`: result of verifying a claim.
-- `PlanItem`: ordered implementation or validation step.
-- `PatchProposal`: proposed file changes before serial application.
-- `ValidationResult`: result of a compile, test, log, screenshot, Runtime, or semantic gate.
-- `ArtifactRef`: reference to a screenshot, log, JSON, patch, report, or other saved output.
-- `RuntimeTargetRef`: Runtime target identity and connection evidence.
+Allowed `kind` values:
+
+- `cli`: executed by `workflow run-cli`.
+- `agent`: external AI executor; recorded but not executed by AIBridge.
+- `manual`: main-agent or human decision; recorded but not executed by AIBridge.
+- `barrier`: lightweight merge/check step; recorded as passed by `run-cli`.
+- `report`: final reporting step; recorded as passed by `run-cli`.
+
+Template variables use `{{name}}` or `{{inputs.name}}` and are resolved from the merged recipe defaults plus `--inputs`.
 
 ## ArtifactRef
 
-```json
-{
-  "kind": "screenshot",
-  "path": ".aibridge/workflows/runs/run-id/artifacts/game.png",
-  "summary": "Inventory panel after click.",
-  "sourceCommand": "screenshot game"
-}
-```
+Run artifacts are normalized into manifest `artifactRefs` and individual `artifacts/<artifactId>/artifact.json` files.
 
-Rules:
+Standard kinds:
 
-- Use stable relative paths when artifacts live inside the project.
-- Include the source command or source phase.
-- Summarize why the artifact matters.
-- Do not paste large logs or binary data into recipe fields.
+- `command-result`
+- `console-log`
+- `screenshot`
+- `gif`
+- `code-index-result`
+- `runtime-status`
+- `runtime-log`
+- `runtime-screenshot`
+- `runtime-perf`
+- `runtime-handler-result`
+- `patch-proposal`
+- `validation-report`
+- `workflow-report`
 
-## RuntimeTargetRef
+Screenshots, GIFs, and readable output files are copied into the run artifact directory when they are under the copy limit. Large files may be referenced by `sourcePath`.
 
-```json
-{
-  "targetId": "AIBridgeDev_12345",
-  "url": "http://127.0.0.1:27182",
-  "platform": "WindowsPlayer",
-  "status": "reachable",
-  "evidence": "runtime status --target AIBridgeDev_12345"
-}
-```
+## Gates
 
-Use a target id or URL in every Runtime sweep result so later phases can replay or diagnose the same target.
+Allowed `kind` values:
 
-## P0 Compatibility Rules
+- `unityCompile`
+- `dotnetBuild`
+- `consoleErrors`
+- `testRun`
+- `screenshotExists`
+- `runtimeReachable`
+- `runtimeErrors`
+- `artifactRequired`
+- `externalVerdict`
 
-- Do not add a `workflow` command to examples.
-- Do not imply that AIBridge reads these JSON files in P0.
-- Do not require a cross-tool agent runtime.
-- Keep recipes portable across Codex, Claude, Cursor, and other assistants by using roles, phases, schemas, and artifact references instead of vendor-specific APIs.
+Required gates failing make the run `failed` or `blocked`. Optional gate failures make evidence visible without forcing the run to fail.
+
+## Boundaries
+
+- Do not use workflow recipes as a generic LLM scheduler.
+- Do not imply `agent` or `manual` steps are executed by AIBridge.
+- Keep parallel agents read-only unless isolated worktrees, ownership, merge, and validation gates are explicit.
+- Never parallel-write Prefab, Scene, `.asset`, or `.meta` files.
