@@ -6,6 +6,8 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
@@ -37,11 +39,88 @@ namespace AIBridge.Editor
 
         public static bool GenerateSnapshot(out string message)
         {
+            try
+            {
+                return GenerateSnapshot(CreateSnapshotRequest(), out message);
+            }
+            catch (Exception ex)
+            {
+                message = GetExceptionMessage(ex);
+                return false;
+            }
+        }
+
+        public static Task<SnapshotResult> GenerateSnapshotAsync()
+        {
+            var request = CreateSnapshotRequest();
+            return Task.Run(() =>
+            {
+                string message;
+                var success = GenerateSnapshot(request, out message);
+                return new SnapshotResult(success, message);
+            });
+        }
+
+        private static SnapshotRequest CreateSnapshotRequest()
+        {
+            var projectRoot = GetProjectRoot();
+            var unityVersion = Application.unityVersion;
+            var buildTarget = EditorUserBuildSettings.activeBuildTarget.ToString();
+            return new SnapshotRequest
+            {
+                ProjectRoot = projectRoot,
+                SnapshotDirectory = GetSnapshotDirectory(),
+                UnityVersion = unityVersion,
+                BuildTarget = buildTarget,
+                FilterConfig = CreateFilterConfig(AIBridgeProjectSettings.Instance.CodeIndex),
+                Assemblies = CaptureAssemblyInputs(unityVersion)
+            };
+        }
+
+        private static List<AssemblyInput> CaptureAssemblyInputs(string unityVersion)
+        {
+            var unityAssemblies = CompilationPipeline.GetAssemblies();
+            var result = new List<AssemblyInput>();
+            for (var i = 0; i < unityAssemblies.Length; i++)
+            {
+                var assembly = unityAssemblies[i];
+                var name = ReadString(assembly, "name");
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    continue;
+                }
+
+                var assemblyId = SanitizeAssemblyId(name);
+                var input = new AssemblyInput
+                {
+                    AssemblyName = name,
+                    AssemblyId = assemblyId,
+                    SnapshotFile = AssembliesDirectoryName + "/" + assemblyId + AssemblySnapshotExtension,
+                    NameIndexFile = IndexDirectoryName + "/" + NamesDirectoryName + "/" + assemblyId + IndexExtension,
+                    TokenIndexFile = IndexDirectoryName + "/" + TokensDirectoryName + "/" + assemblyId + IndexExtension,
+                    OutputPath = ReadString(assembly, "outputPath"),
+                    AsmdefPath = ReadFirstString(assembly, new[] { "definitionFilePath", "asmdefPath" }),
+                    LanguageVersion = DetermineLanguageVersion(assembly, unityVersion),
+                    AllowUnsafe = DetermineAllowUnsafe(assembly),
+                    SourceFiles = ReadStringArray(assembly, "sourceFiles"),
+                    ReferenceFiles = ReadStringArray(assembly, "compiledAssemblyReferences")
+                };
+
+                input.Defines.AddRange(Sort(ReadStringArray(assembly, "defines")));
+                input.ProjectReferenceAssemblyNames.AddRange(Sort(ReadAssemblyReferenceNames(assembly)));
+                input.CompilerOptions.AddRange(ReadCompilerOptions(assembly));
+                result.Add(input);
+            }
+
+            return result;
+        }
+
+        private static bool GenerateSnapshot(SnapshotRequest request, out string message)
+        {
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             try
             {
-                var projectRoot = GetProjectRoot();
-                var snapshotDirectory = GetSnapshotDirectory();
+                var snapshotDirectory = request.SnapshotDirectory;
                 var assembliesDirectory = Path.Combine(snapshotDirectory, AssembliesDirectoryName);
                 var nameIndexDirectory = Path.Combine(snapshotDirectory, IndexDirectoryName, NamesDirectoryName);
                 var tokenIndexDirectory = Path.Combine(snapshotDirectory, IndexDirectoryName, TokensDirectoryName);
@@ -49,11 +128,11 @@ namespace AIBridge.Editor
                 Directory.CreateDirectory(nameIndexDirectory);
                 Directory.CreateDirectory(tokenIndexDirectory);
 
-                var filterConfig = CreateFilterConfig(AIBridgeProjectSettings.Instance.CodeIndex);
                 var previousHashes = ReadPreviousAssemblyHashes(Path.Combine(snapshotDirectory, ManifestJsonFileName));
-                var collection = CollectAssemblyRecords(projectRoot, filterConfig);
+                var fileHashCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                var collection = CollectAssemblyRecords(request, fileHashCache);
                 var records = collection.IncludedRecords;
-                var rewritten = 0;
+                var changedRecords = new List<AssemblyRecord>();
                 for (var i = 0; i < records.Count; i++)
                 {
                     var record = records[i];
@@ -63,29 +142,35 @@ namespace AIBridge.Editor
                                     && File.Exists(Path.Combine(snapshotDirectory, record.SnapshotFile))
                                     && File.Exists(Path.Combine(snapshotDirectory, record.NameIndexFile))
                                     && File.Exists(Path.Combine(snapshotDirectory, record.TokenIndexFile));
-                    if (unchanged)
+                    if (!unchanged)
                     {
-                        continue;
+                        changedRecords.Add(record);
                     }
-
-                    WriteAssemblySnapshot(Path.Combine(snapshotDirectory, record.SnapshotFile), record);
-                    WriteTokenIndex(Path.Combine(snapshotDirectory, record.NameIndexFile), record, namesOnly: true);
-                    WriteTokenIndex(Path.Combine(snapshotDirectory, record.TokenIndexFile), record, namesOnly: false);
-                    rewritten++;
                 }
+
+                var rewritten = 0;
+                Parallel.ForEach(
+                    changedRecords,
+                    new ParallelOptions { MaxDegreeOfParallelism = GetSnapshotWorkerCount() },
+                    record =>
+                    {
+                        WriteAssemblySnapshot(Path.Combine(snapshotDirectory, record.SnapshotFile), record);
+                        WriteTokenIndexes(request.ProjectRoot, snapshotDirectory, record);
+                        Interlocked.Increment(ref rewritten);
+                    });
 
                 var manifest = new SnapshotManifest
                 {
                     SchemaVersion = SchemaVersion,
-                    ProjectRootHash = ComputeHashText(projectRoot.Replace('\\', '/').ToLowerInvariant()),
-                    UnityVersion = Application.unityVersion,
-                    BuildTarget = EditorUserBuildSettings.activeBuildTarget.ToString(),
+                    ProjectRootHash = ComputeHashText(request.ProjectRoot.Replace('\\', '/').ToLowerInvariant()),
+                    UnityVersion = request.UnityVersion,
+                    BuildTarget = request.BuildTarget,
                     CreatedAtTicks = DateTime.UtcNow.Ticks,
                     GenerationId = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture),
-                    IncludePackageCacheSourceAssemblies = filterConfig.IncludePackageCacheSourceAssemblies,
-                    IgnoredAssemblyPatterns = filterConfig.IgnoredAssemblyPatterns,
-                    IgnoredSourcePathPatterns = filterConfig.IgnoredSourcePathPatterns,
-                    FilterHash = filterConfig.FilterHash,
+                    IncludePackageCacheSourceAssemblies = request.FilterConfig.IncludePackageCacheSourceAssemblies,
+                    IgnoredAssemblyPatterns = request.FilterConfig.IgnoredAssemblyPatterns,
+                    IgnoredSourcePathPatterns = request.FilterConfig.IgnoredSourcePathPatterns,
+                    FilterHash = request.FilterConfig.FilterHash,
                     ExcludedAssemblyCount = collection.ExcludedRecords.Count,
                     ExcludedSourceFileCount = CountSources(collection.ExcludedRecords),
                     Assemblies = records,
@@ -110,40 +195,16 @@ namespace AIBridge.Editor
             }
         }
 
-        private static SnapshotCollection CollectAssemblyRecords(string projectRoot, SnapshotFilterConfig filterConfig)
+        private static SnapshotCollection CollectAssemblyRecords(SnapshotRequest request, Dictionary<string, string> fileHashCache)
         {
-            var unityAssemblies = CompilationPipeline.GetAssemblies();
+            var projectRoot = request.ProjectRoot;
+            var filterConfig = request.FilterConfig;
             var allRecords = new List<AssemblyRecord>();
             var byName = new Dictionary<string, AssemblyRecord>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < unityAssemblies.Length; i++)
+            for (var i = 0; i < request.Assemblies.Count; i++)
             {
-                var assembly = unityAssemblies[i];
-                var name = ReadString(assembly, "name");
-                if (string.IsNullOrWhiteSpace(name))
-                {
-                    continue;
-                }
-
-                var assemblyId = SanitizeAssemblyId(name);
-                var record = new AssemblyRecord
-                {
-                    AssemblyName = name,
-                    AssemblyId = assemblyId,
-                    SnapshotFile = AssembliesDirectoryName + "/" + assemblyId + AssemblySnapshotExtension,
-                    NameIndexFile = IndexDirectoryName + "/" + NamesDirectoryName + "/" + assemblyId + IndexExtension,
-                    TokenIndexFile = IndexDirectoryName + "/" + TokensDirectoryName + "/" + assemblyId + IndexExtension,
-                    OutputPath = NormalizePath(projectRoot, ReadString(assembly, "outputPath")),
-                    AsmdefPath = NormalizePath(projectRoot, ReadFirstString(assembly, new[] { "definitionFilePath", "asmdefPath" })),
-                    LanguageVersion = DetermineLanguageVersion(assembly),
-                    AllowUnsafe = DetermineAllowUnsafe(assembly)
-                };
-
-                record.Defines.AddRange(Sort(ReadStringArray(assembly, "defines")));
-                record.ProjectReferenceAssemblyNames.AddRange(Sort(ReadAssemblyReferenceNames(assembly)));
-                AddFileStates(projectRoot, ReadStringArray(assembly, "sourceFiles"), record.Sources);
-                AddFileStates(projectRoot, ReadStringArray(assembly, "compiledAssemblyReferences"), record.References);
-                record.CompilerOptions.AddRange(ReadCompilerOptions(assembly));
-
+                var input = request.Assemblies[i];
+                var record = CreateAssemblyRecord(projectRoot, input);
                 allRecords.Add(record);
                 byName[record.AssemblyName] = record;
             }
@@ -162,6 +223,11 @@ namespace AIBridge.Editor
                     continue;
                 }
 
+                var input = request.Assemblies[i];
+                record.Sources.Clear();
+                record.References.Clear();
+                AddFileStates(projectRoot, input.SourceFiles, record.Sources, fileHashCache, includeHash: true);
+                AddFileStates(projectRoot, input.ReferenceFiles, record.References, fileHashCache, includeHash: true);
                 collection.IncludedRecords.Add(record);
             }
 
@@ -179,7 +245,7 @@ namespace AIBridge.Editor
                     if (excludedAssemblyIds.Contains(dependency.AssemblyId))
                     {
                         // 被过滤的源码程序集仍以编译输出 DLL 的形式参与语义解析，避免工程源码缺少类型定义。
-                        AddFileStates(projectRoot, new[] { dependency.OutputPath }, record.References);
+                        AddFileStates(projectRoot, new[] { dependency.OutputPath }, record.References, fileHashCache, includeHash: true);
                         continue;
                     }
 
@@ -191,19 +257,46 @@ namespace AIBridge.Editor
             for (var i = 0; i < allRecords.Count; i++)
             {
                 var record = allRecords[i];
+                if (!string.IsNullOrEmpty(record.ExcludeReason))
+                {
+                    continue;
+                }
+
                 record.DependencyAssemblyIds = Sort(record.DependencyAssemblyIds);
                 record.ReverseDependencyAssemblyIds = Sort(record.ReverseDependencyAssemblyIds);
                 record.DefinesHash = ComputeHash(record.Defines);
                 record.SourcesHash = ComputeHash(record.Sources);
                 record.ReferencesHash = ComputeHash(record.References);
                 record.CompilerOptionsHash = ComputeHash(record.CompilerOptions);
-                record.AssemblyHash = ComputeAssemblyHash(record);
+                record.AssemblyHash = ComputeAssemblyHash(record, projectRoot, request.UnityVersion, request.BuildTarget, fileHashCache);
                 record.LastWriteTimeTicks = ComputeLastWriteTime(record);
             }
 
             collection.IncludedRecords.Sort((left, right) => string.Compare(left.AssemblyName, right.AssemblyName, StringComparison.OrdinalIgnoreCase));
             collection.ExcludedRecords.Sort((left, right) => string.Compare(left.AssemblyName, right.AssemblyName, StringComparison.OrdinalIgnoreCase));
             return collection;
+        }
+
+        private static AssemblyRecord CreateAssemblyRecord(string projectRoot, AssemblyInput input)
+        {
+            var record = new AssemblyRecord
+            {
+                AssemblyName = input.AssemblyName,
+                AssemblyId = input.AssemblyId,
+                SnapshotFile = input.SnapshotFile,
+                NameIndexFile = input.NameIndexFile,
+                TokenIndexFile = input.TokenIndexFile,
+                OutputPath = NormalizePath(projectRoot, input.OutputPath),
+                AsmdefPath = NormalizePath(projectRoot, input.AsmdefPath),
+                LanguageVersion = input.LanguageVersion,
+                AllowUnsafe = input.AllowUnsafe
+            };
+
+            record.Defines.AddRange(input.Defines);
+            record.ProjectReferenceAssemblyNames.AddRange(input.ProjectReferenceAssemblyNames);
+            record.CompilerOptions.AddRange(input.CompilerOptions);
+            AddFileStates(projectRoot, input.SourceFiles, record.Sources, null, includeHash: false);
+            return record;
         }
 
         private static SnapshotFilterConfig CreateFilterConfig(AIBridgeProjectSettings.CodeIndexSettingsData settings)
@@ -361,7 +454,12 @@ namespace AIBridge.Editor
             return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().Replace('\\', '/');
         }
 
-        private static void AddFileStates(string projectRoot, string[] paths, List<FileState> target)
+        private static void AddFileStates(
+            string projectRoot,
+            string[] paths,
+            List<FileState> target,
+            Dictionary<string, string> fileHashCache,
+            bool includeHash)
         {
             var unique = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             for (var i = 0; target != null && i < target.Count; i++)
@@ -398,7 +496,7 @@ namespace AIBridge.Editor
                     Path = normalized,
                     Length = info.Length,
                     LastWriteTimeTicks = info.LastWriteTimeUtc.Ticks,
-                    Hash = ComputeFileHash(fullPath)
+                    Hash = includeHash ? ComputeFileHash(fullPath, fileHashCache) : string.Empty
                 });
             }
 
@@ -474,9 +572,22 @@ namespace AIBridge.Editor
             WriteStringList(writer, record.ReverseDependencyAssemblyIds);
         }
 
-        private static void WriteTokenIndex(string path, AssemblyRecord record, bool namesOnly)
+        private static int GetSnapshotWorkerCount()
         {
-            var entries = BuildTokenEntries(record, namesOnly);
+            return Math.Max(1, Math.Min(Environment.ProcessorCount - 1, 4));
+        }
+
+        private static void WriteTokenIndexes(string projectRoot, string snapshotDirectory, AssemblyRecord record)
+        {
+            List<string> nameEntries;
+            List<string> tokenEntries;
+            BuildTokenEntries(projectRoot, record, out nameEntries, out tokenEntries);
+            WriteTextIndex(Path.Combine(snapshotDirectory, record.NameIndexFile), record, namesOnly: true, entries: nameEntries);
+            WriteTextIndex(Path.Combine(snapshotDirectory, record.TokenIndexFile), record, namesOnly: false, entries: tokenEntries);
+        }
+
+        private static void WriteTextIndex(string path, AssemblyRecord record, bool namesOnly, List<string> entries)
+        {
             var tempPath = path + ".tmp";
             using (var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
             using (var writer = new BinaryWriter(stream, Encoding.UTF8))
@@ -495,12 +606,17 @@ namespace AIBridge.Editor
             AtomicReplace(tempPath, path);
         }
 
-        private static List<string> BuildTokenEntries(AssemblyRecord record, bool namesOnly)
+        private static void BuildTokenEntries(
+            string projectRoot,
+            AssemblyRecord record,
+            out List<string> nameEntries,
+            out List<string> tokenEntries)
         {
+            var names = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
             var tokens = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
             for (var i = 0; i < record.Sources.Count; i++)
             {
-                var fullPath = ResolveSnapshotPath(GetProjectRoot(), record.Sources[i].Path);
+                var fullPath = ResolveSnapshotPath(projectRoot, record.Sources[i].Path);
                 if (string.IsNullOrWhiteSpace(fullPath) || !File.Exists(fullPath))
                 {
                     continue;
@@ -514,17 +630,18 @@ namespace AIBridge.Editor
                     for (var j = 0; j < matches.Count; j++)
                     {
                         var value = matches[j].Value;
-                        if (namesOnly && !LooksLikeDeclarationName(line, value))
+                        var entry = value + "|" + record.Sources[i].Path + "|" + lineNumber.ToString(CultureInfo.InvariantCulture);
+                        tokens.Add(entry);
+                        if (LooksLikeDeclarationName(line, value))
                         {
-                            continue;
+                            names.Add(entry);
                         }
-
-                        tokens.Add(value + "|" + record.Sources[i].Path + "|" + lineNumber.ToString(CultureInfo.InvariantCulture));
                     }
                 }
             }
 
-            return new List<string>(tokens);
+            nameEntries = new List<string>(names);
+            tokenEntries = new List<string>(tokens);
         }
 
         private static bool LooksLikeDeclarationName(string line, string value)
@@ -791,7 +908,7 @@ namespace AIBridge.Editor
             result.Add(name + "=" + Convert.ToString(value));
         }
 
-        private static string DetermineLanguageVersion(object assembly)
+        private static string DetermineLanguageVersion(object assembly, string unityVersion)
         {
             var compilerOptions = ReadMemberValue(assembly, "compilerOptions");
             var value = ReadFirstString(compilerOptions, new[] { "languageVersion", "LanguageVersion" });
@@ -800,7 +917,6 @@ namespace AIBridge.Editor
                 return value;
             }
 
-            var unityVersion = Application.unityVersion;
             var dot = unityVersion.IndexOf('.');
             var majorText = dot < 0 ? unityVersion : unityVersion.Substring(0, dot);
             int major;
@@ -949,7 +1065,12 @@ namespace AIBridge.Editor
             return result;
         }
 
-        private static string ComputeAssemblyHash(AssemblyRecord record)
+        private static string ComputeAssemblyHash(
+            AssemblyRecord record,
+            string projectRoot,
+            string unityVersion,
+            string buildTarget,
+            Dictionary<string, string> fileHashCache)
         {
             var parts = new List<string>();
             parts.Add(record.AssemblyName);
@@ -957,18 +1078,18 @@ namespace AIBridge.Editor
             parts.Add(record.AsmdefPath);
             parts.Add(record.LanguageVersion);
             parts.Add(record.AllowUnsafe ? "unsafe" : "safe");
-            parts.Add(Application.unityVersion);
-            parts.Add(EditorUserBuildSettings.activeBuildTarget.ToString());
+            parts.Add(unityVersion);
+            parts.Add(buildTarget);
             parts.Add(record.DefinesHash);
             parts.Add(record.SourcesHash);
             parts.Add(record.ReferencesHash);
             parts.Add(record.CompilerOptionsHash);
             parts.Add(ComputeHash(record.ProjectReferenceAssemblyNames));
             parts.Add(ComputeHash(record.DependencyAssemblyIds));
-            var asmdefFullPath = ResolveSnapshotPath(GetProjectRoot(), record.AsmdefPath);
+            var asmdefFullPath = ResolveSnapshotPath(projectRoot, record.AsmdefPath);
             if (!string.IsNullOrWhiteSpace(asmdefFullPath) && File.Exists(asmdefFullPath))
             {
-                parts.Add(ComputeFileHash(asmdefFullPath));
+                parts.Add(ComputeFileHash(asmdefFullPath, fileHashCache));
             }
 
             return ComputeHash(parts);
@@ -1013,12 +1134,33 @@ namespace AIBridge.Editor
 
         private static string ComputeFileHash(string path)
         {
+            return ComputeFileHash(path, null);
+        }
+
+        private static string ComputeFileHash(string path, Dictionary<string, string> fileHashCache)
+        {
             try
             {
-                using (var sha = SHA256.Create())
-                using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                var fullPath = Path.GetFullPath(path);
+                if (fileHashCache != null)
                 {
-                    return ToHex(sha.ComputeHash(stream));
+                    string cached;
+                    if (fileHashCache.TryGetValue(fullPath, out cached))
+                    {
+                        return cached;
+                    }
+                }
+
+                using (var sha = SHA256.Create())
+                using (var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    var hash = ToHex(sha.ComputeHash(stream));
+                    if (fileHashCache != null)
+                    {
+                        fileHashCache[fullPath] = hash;
+                    }
+
+                    return hash;
                 }
             }
             catch
@@ -1211,6 +1353,46 @@ namespace AIBridge.Editor
 
             var inner = ex.InnerException;
             return inner == null ? ex.Message : inner.Message + " (" + ex.GetType().Name + ")";
+        }
+
+        public sealed class SnapshotResult
+        {
+            public readonly bool Success;
+            public readonly string Message;
+
+            public SnapshotResult(bool success, string message)
+            {
+                Success = success;
+                Message = message;
+            }
+        }
+
+        private sealed class SnapshotRequest
+        {
+            public string ProjectRoot;
+            public string SnapshotDirectory;
+            public string UnityVersion;
+            public string BuildTarget;
+            public SnapshotFilterConfig FilterConfig;
+            public List<AssemblyInput> Assemblies = new List<AssemblyInput>();
+        }
+
+        private sealed class AssemblyInput
+        {
+            public string AssemblyName;
+            public string AssemblyId;
+            public string SnapshotFile;
+            public string NameIndexFile;
+            public string TokenIndexFile;
+            public string OutputPath;
+            public string AsmdefPath;
+            public string LanguageVersion;
+            public bool AllowUnsafe;
+            public string[] SourceFiles = new string[0];
+            public string[] ReferenceFiles = new string[0];
+            public List<string> Defines = new List<string>();
+            public List<string> ProjectReferenceAssemblyNames = new List<string>();
+            public List<string> CompilerOptions = new List<string>();
         }
 
         private sealed class SnapshotManifest

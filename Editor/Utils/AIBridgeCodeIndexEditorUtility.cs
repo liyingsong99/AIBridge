@@ -4,6 +4,7 @@ using System.IO;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
@@ -33,6 +34,11 @@ namespace AIBridge.Editor
         private static bool _snapshotRefreshStartWarmup;
         private static double _snapshotRefreshTime;
         private static string _snapshotRefreshReason;
+        private static bool _snapshotRefreshRunning;
+        private static bool _snapshotRefreshRunningManual;
+        private static bool _snapshotRefreshRunningStartWarmup;
+        private static string _snapshotRefreshRunningReason;
+        private static Task<AIBridgeCodeIndexSnapshotUtility.SnapshotResult> _snapshotRefreshTask;
 
         static AIBridgeCodeIndexEditorUtility()
         {
@@ -107,25 +113,127 @@ namespace AIBridge.Editor
             return ScheduleSnapshotRefresh(manual, startWarmup: false, reason: manual ? "manualSnapshot" : "autoRefresh");
         }
 
-        private static bool RunWarmupNoWait(bool manual)
+        private static bool BeginSnapshotRefresh(bool manual, bool startWarmup, string reason)
         {
             var settings = AIBridgeProjectSettings.Instance.CodeIndex;
-            if (!settings.EnableCodeIndex || (!manual && !settings.PrewarmOnUnityStartup))
+            if (!settings.EnableCodeIndex || (!manual && startWarmup && !settings.PrewarmOnUnityStartup))
             {
                 return false;
             }
 
             WriteCodeIndexConfig();
-            if (!AIBridgeCodeIndexSnapshotUtility.GenerateSnapshot(out var snapshotMessage))
+            try
+            {
+                _snapshotRefreshTask = AIBridgeCodeIndexSnapshotUtility.GenerateSnapshotAsync();
+            }
+            catch (Exception ex)
             {
                 if (manual)
                 {
-                    AIBridgeLogger.LogWarning("[CodeIndex] Failed to generate Unity compilation snapshot: " + snapshotMessage);
+                    AIBridgeLogger.LogWarning("[CodeIndex] Failed to start Unity compilation snapshot refresh: " + ex.Message);
                 }
 
                 return false;
             }
 
+            _snapshotRefreshRunning = true;
+            _snapshotRefreshRunningManual = manual;
+            _snapshotRefreshRunningStartWarmup = startWarmup;
+            _snapshotRefreshRunningReason = reason;
+            EditorApplication.update -= PollSnapshotRefreshTask;
+            EditorApplication.update += PollSnapshotRefreshTask;
+            return true;
+        }
+
+        private static void PollSnapshotRefreshTask()
+        {
+            if (!_snapshotRefreshRunning || _snapshotRefreshTask == null)
+            {
+                EditorApplication.update -= PollSnapshotRefreshTask;
+                return;
+            }
+
+            if (!_snapshotRefreshTask.IsCompleted)
+            {
+                return;
+            }
+
+            EditorApplication.update -= PollSnapshotRefreshTask;
+
+            var manual = _snapshotRefreshRunningManual;
+            var startWarmup = _snapshotRefreshRunningStartWarmup;
+            var reason = _snapshotRefreshRunningReason;
+            AIBridgeCodeIndexSnapshotUtility.SnapshotResult result;
+            try
+            {
+                result = _snapshotRefreshTask.Result;
+            }
+            catch (Exception ex)
+            {
+                result = new AIBridgeCodeIndexSnapshotUtility.SnapshotResult(false, GetTaskExceptionMessage(ex));
+            }
+
+            _snapshotRefreshRunning = false;
+            _snapshotRefreshRunningManual = false;
+            _snapshotRefreshRunningStartWarmup = false;
+            _snapshotRefreshRunningReason = null;
+            _snapshotRefreshTask = null;
+
+            CompleteSnapshotRefresh(result, manual, startWarmup, reason);
+
+            if (!_snapshotRefreshPending)
+            {
+                SessionState.SetBool(PendingPostCompileRefreshSessionKey, false);
+            }
+
+            if (_snapshotRefreshPending)
+            {
+                EditorApplication.update -= TryRunScheduledSnapshotRefresh;
+                EditorApplication.update += TryRunScheduledSnapshotRefresh;
+            }
+        }
+
+        private static void CompleteSnapshotRefresh(
+            AIBridgeCodeIndexSnapshotUtility.SnapshotResult result,
+            bool manual,
+            bool startWarmup,
+            string reason)
+        {
+            if (result == null || !result.Success)
+            {
+                var message = result == null ? "unknown failure" : result.Message;
+                if (manual)
+                {
+                    UnityEngine.Debug.LogWarning(AIBridgeEditorText.T(
+                        "[AIBridge] Code Index snapshot failed: " + message,
+                        "[AIBridge] Code Index 快照生成失败：" + message));
+                }
+                else
+                {
+                    AIBridgeLogger.LogWarning("[CodeIndex] Failed to generate Unity compilation snapshot: " + message);
+                }
+
+                return;
+            }
+
+            if (manual && !startWarmup)
+            {
+                UnityEngine.Debug.Log(AIBridgeEditorText.T(
+                    "[AIBridge] Code Index snapshot generated: " + result.Message,
+                    "[AIBridge] Code Index 快照已生成：" + result.Message));
+            }
+
+            if (startWarmup)
+            {
+                StartWarmupDaemonNoWait(manual);
+            }
+
+            AIBridgeLogger.LogDebug("[CodeIndex] Snapshot refresh completed. reason=" + (reason ?? "unknown") + ", " + result.Message);
+        }
+
+        private static bool StartWarmupDaemonNoWait(bool manual)
+        {
+            var settings = AIBridgeProjectSettings.Instance.CodeIndex;
             var cliPath = ResolveCliPath();
             if (string.IsNullOrEmpty(cliPath))
             {
@@ -141,30 +249,6 @@ namespace AIBridge.Editor
                        + " --unity-pid " + Process.GetCurrentProcess().Id
                        + " --auto-refresh " + ToCliBool(settings.AutoRefreshOnFileChange);
             return StartCli(cliPath, args, waitForExit: false, timeoutMs: 1000);
-        }
-
-        private static bool RunSnapshotRefresh(bool manual)
-        {
-            var settings = AIBridgeProjectSettings.Instance.CodeIndex;
-            if (!settings.EnableCodeIndex)
-            {
-                return false;
-            }
-
-            WriteCodeIndexConfig();
-            var success = AIBridgeCodeIndexSnapshotUtility.GenerateSnapshot(out var message);
-            if (manual)
-            {
-                UnityEngine.Debug.Log(AIBridgeEditorText.T(
-                    success ? "[AIBridge] Code Index snapshot generated: " + message : "[AIBridge] Code Index snapshot failed: " + message,
-                    success ? "[AIBridge] Code Index 快照已生成：" + message : "[AIBridge] Code Index 快照生成失败：" + message));
-            }
-            else if (!success)
-            {
-                AIBridgeLogger.LogWarning("[CodeIndex] Failed to generate Unity compilation snapshot: " + message);
-            }
-
-            return success;
         }
 
         public static void ShutdownDaemon(string cleanupMode, int timeoutMs)
@@ -360,6 +444,12 @@ namespace AIBridge.Editor
                 return;
             }
 
+            if (_snapshotRefreshRunning)
+            {
+                _snapshotRefreshTime = EditorApplication.timeSinceStartup + StartupRetryDelaySeconds;
+                return;
+            }
+
             if (!IsEditorIdleForCodeIndex())
             {
                 _snapshotRefreshTime = EditorApplication.timeSinceStartup + StartupRetryDelaySeconds;
@@ -375,19 +465,13 @@ namespace AIBridge.Editor
             _snapshotRefreshTime = 0;
             _snapshotRefreshReason = null;
             EditorApplication.update -= TryRunScheduledSnapshotRefresh;
-            SessionState.SetBool(PendingPostCompileRefreshSessionKey, false);
 
-            // snapshot 生成会做文件 hash 和 token 扫描，必须等编译/导入结束后再落到主线程。
-            if (startWarmup)
+            // Unity API 采集已完成后，文件 hash、token 扫描和写入都交给后台任务，避免刷新卡住 Editor。
+            if (!BeginSnapshotRefresh(manual, startWarmup, reason))
             {
-                RunWarmupNoWait(manual);
+                SessionState.SetBool(PendingPostCompileRefreshSessionKey, false);
+                AIBridgeLogger.LogWarning("[CodeIndex] Snapshot refresh was not started. reason=" + (reason ?? "unknown"));
             }
-            else
-            {
-                RunSnapshotRefresh(manual);
-            }
-
-            AIBridgeLogger.LogDebug("[CodeIndex] Snapshot refresh completed. reason=" + (reason ?? "unknown"));
         }
 
         private static bool IsEditorIdleForCodeIndex()
@@ -611,6 +695,22 @@ namespace AIBridge.Editor
         {
             var match = Regex.Match(json ?? string.Empty, "\"" + Regex.Escape(key) + "\"\\s*:\\s*\"(?<value>(?:\\\\.|[^\"])*)\"");
             return match.Success ? Regex.Unescape(match.Groups["value"].Value) : null;
+        }
+
+        private static string GetTaskExceptionMessage(Exception ex)
+        {
+            if (ex == null)
+            {
+                return string.Empty;
+            }
+
+            var aggregate = ex as AggregateException;
+            if (aggregate != null && aggregate.InnerExceptions.Count > 0)
+            {
+                return aggregate.InnerExceptions[0].Message;
+            }
+
+            return ex.InnerException == null ? ex.Message : ex.InnerException.Message;
         }
 
         private static int ReadInt(string json, string key)

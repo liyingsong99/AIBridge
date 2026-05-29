@@ -21,17 +21,28 @@ namespace AIBridgeCodeIndex
         private readonly CodeIndexOptions _options;
         private readonly object _statusLock = new object();
         private readonly object _statusFileLock = new object();
-        private readonly CodeIndexWorkspace _workspace;
+        private readonly object _refreshLock = new object();
+        private readonly object _workspaceLock = new object();
+        private CodeIndexWorkspace _workspace;
         private TcpListener _listener;
         private CodeIndexStatus _status;
         private Task _warmupTask;
+        private Task _refreshTask;
         private Task _unityMonitorTask;
-        private bool _shutdownRequested;
+        private volatile bool _shutdownRequested;
 
         public CodeIndexServer(CodeIndexOptions options)
         {
             _options = options;
             _workspace = new CodeIndexWorkspace(options.ProjectRoot);
+        }
+
+        private CodeIndexWorkspace GetWorkspace()
+        {
+            lock (_workspaceLock)
+            {
+                return _workspace;
+            }
         }
 
         public async Task RunAsync()
@@ -83,35 +94,53 @@ namespace AIBridgeCodeIndex
                 await Task.WhenAny(_unityMonitorTask, Task.Delay(100));
             }
 
+            if (_refreshTask != null)
+            {
+                await Task.WhenAny(_refreshTask, Task.Delay(500));
+            }
+
             CleanupTransientState();
         }
 
         private async Task WarmupAsync()
         {
+            var workspace = GetWorkspace();
             try
             {
                 UpdateStatus("loading", null);
-                await _workspace.WarmupAsync();
+                await workspace.WarmupAsync();
+                if (_shutdownRequested)
+                {
+                    return;
+                }
+
+                var stale = workspace.IsStale();
+                var staleReason = workspace.StaleReason;
 
                 lock (_statusLock)
                 {
+                    if (_status == null || !string.Equals(_status.state, "loading", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+
                     _status.state = "ready";
-                    _status.solution = _workspace.SolutionPath;
-                    _status.workspaceMode = _workspace.WorkspaceMode;
-                    _status.snapshotExists = _workspace.SnapshotExists;
-                    _status.snapshotVersion = _workspace.SnapshotVersion;
-                    _status.generationId = _workspace.GenerationId;
-                    _status.assemblyCount = _workspace.AssemblyCount;
-                    _status.sourceFileCount = _workspace.SourceFileCount;
-                    _status.excludedAssemblyCount = _workspace.ExcludedAssemblyCount;
-                    _status.excludedSourceFileCount = _workspace.ExcludedSourceFileCount;
-                    _status.includePackageCacheSourceAssemblies = _workspace.IncludePackageCacheSourceAssemblies;
-                    _status.buildTarget = _workspace.BuildTarget;
-                    _status.unityVersion = _workspace.UnityVersion;
-                    _status.staleReason = _workspace.StaleReason;
-                    _status.loadedProjects = _workspace.LoadedProjects;
-                    _status.loadedDocuments = _workspace.LoadedDocuments;
-                    _status.stale = _workspace.IsStale();
+                    _status.solution = workspace.SolutionPath;
+                    _status.workspaceMode = workspace.WorkspaceMode;
+                    _status.snapshotExists = workspace.SnapshotExists;
+                    _status.snapshotVersion = workspace.SnapshotVersion;
+                    _status.generationId = workspace.GenerationId;
+                    _status.assemblyCount = workspace.AssemblyCount;
+                    _status.sourceFileCount = workspace.SourceFileCount;
+                    _status.excludedAssemblyCount = workspace.ExcludedAssemblyCount;
+                    _status.excludedSourceFileCount = workspace.ExcludedSourceFileCount;
+                    _status.includePackageCacheSourceAssemblies = workspace.IncludePackageCacheSourceAssemblies;
+                    _status.buildTarget = workspace.BuildTarget;
+                    _status.unityVersion = workspace.UnityVersion;
+                    _status.staleReason = staleReason;
+                    _status.loadedProjects = workspace.LoadedProjects;
+                    _status.loadedDocuments = workspace.LoadedDocuments;
+                    _status.stale = stale;
                     _status.message = null;
                     _status.updatedAt = DateTimeOffset.Now.ToString("o");
                 }
@@ -120,24 +149,34 @@ namespace AIBridgeCodeIndex
             }
             catch (Exception ex)
             {
+                if (_shutdownRequested)
+                {
+                    return;
+                }
+
                 lock (_statusLock)
                 {
+                    if (_status == null || string.Equals(_status.state, "stopping", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+
                     _status.state = "failed";
-                    _status.solution = _workspace.SolutionPath;
-                    _status.workspaceMode = _workspace.WorkspaceMode;
-                    _status.snapshotExists = _workspace.SnapshotExists;
-                    _status.snapshotVersion = _workspace.SnapshotVersion;
-                    _status.generationId = _workspace.GenerationId;
-                    _status.assemblyCount = _workspace.AssemblyCount;
-                    _status.sourceFileCount = _workspace.SourceFileCount;
-                    _status.excludedAssemblyCount = _workspace.ExcludedAssemblyCount;
-                    _status.excludedSourceFileCount = _workspace.ExcludedSourceFileCount;
-                    _status.includePackageCacheSourceAssemblies = _workspace.IncludePackageCacheSourceAssemblies;
-                    _status.buildTarget = _workspace.BuildTarget;
-                    _status.unityVersion = _workspace.UnityVersion;
-                    _status.staleReason = _workspace.StaleReason;
-                    _status.loadedProjects = _workspace.LoadedProjects;
-                    _status.loadedDocuments = _workspace.LoadedDocuments;
+                    _status.solution = workspace.SolutionPath;
+                    _status.workspaceMode = workspace.WorkspaceMode;
+                    _status.snapshotExists = workspace.SnapshotExists;
+                    _status.snapshotVersion = workspace.SnapshotVersion;
+                    _status.generationId = workspace.GenerationId;
+                    _status.assemblyCount = workspace.AssemblyCount;
+                    _status.sourceFileCount = workspace.SourceFileCount;
+                    _status.excludedAssemblyCount = workspace.ExcludedAssemblyCount;
+                    _status.excludedSourceFileCount = workspace.ExcludedSourceFileCount;
+                    _status.includePackageCacheSourceAssemblies = workspace.IncludePackageCacheSourceAssemblies;
+                    _status.buildTarget = workspace.BuildTarget;
+                    _status.unityVersion = workspace.UnityVersion;
+                    _status.staleReason = workspace.StaleReason;
+                    _status.loadedProjects = workspace.LoadedProjects;
+                    _status.loadedDocuments = workspace.LoadedDocuments;
                     _status.stale = true;
                     _status.message = ex.Message;
                     _status.updatedAt = DateTimeOffset.Now.ToString("o");
@@ -169,8 +208,13 @@ namespace AIBridgeCodeIndex
 
                     if (request.Method == "GET" && request.Path == "/status")
                     {
-                        RefreshStaleState();
+                        var refreshNeeded = MarkRefreshIfNeeded(GetWorkspace());
                         await WriteResponseAsync(stream, 200, CodeIndexResponse.FromStatus(GetStatusSnapshot()));
+                        if (refreshNeeded)
+                        {
+                            ScheduleBackgroundRefresh();
+                        }
+
                         return;
                     }
 
@@ -220,54 +264,60 @@ namespace AIBridgeCodeIndex
                 return BuildFailure(status, "Unity snapshot workspace is not ready. Current state: " + status.state);
             }
 
-            await RefreshWorkspaceIfNeededAsync();
+            var workspace = GetWorkspace();
+            var refreshNeeded = MarkRefreshIfNeeded(workspace);
             status = GetStatusSnapshot();
             if (!string.Equals(status.state, "ready", StringComparison.OrdinalIgnoreCase))
             {
                 return BuildFailure(status, "Unity snapshot workspace is not ready. Current state: " + status.state);
             }
 
-            var response = await _workspace.QueryAsync(query.action, query.parameters);
+            var response = await workspace.QueryAsync(query.action, query.parameters);
             response.success = true;
             response.semantic = true;
             response.source = "unity-snapshot";
             response.state = status.state;
             response.stale = status.stale;
             response.projectRoot = status.projectRoot;
-            response.solution = _workspace.SolutionPath;
-            response.workspaceMode = _workspace.WorkspaceMode;
-            response.snapshotExists = _workspace.SnapshotExists;
-            response.snapshotVersion = _workspace.SnapshotVersion;
-            response.generationId = _workspace.GenerationId;
-            response.assemblyCount = _workspace.AssemblyCount;
-            response.sourceFileCount = _workspace.SourceFileCount;
-            response.excludedAssemblyCount = _workspace.ExcludedAssemblyCount;
-            response.excludedSourceFileCount = _workspace.ExcludedSourceFileCount;
-            response.includePackageCacheSourceAssemblies = _workspace.IncludePackageCacheSourceAssemblies;
-            response.buildTarget = _workspace.BuildTarget;
-            response.unityVersion = _workspace.UnityVersion;
-            response.staleReason = _workspace.StaleReason;
-            response.loadedProjects = _workspace.LoadedProjects;
-            response.loadedDocuments = _workspace.LoadedDocuments;
+            response.solution = workspace.SolutionPath;
+            response.workspaceMode = workspace.WorkspaceMode;
+            response.snapshotExists = workspace.SnapshotExists;
+            response.snapshotVersion = workspace.SnapshotVersion;
+            response.generationId = workspace.GenerationId;
+            response.assemblyCount = workspace.AssemblyCount;
+            response.sourceFileCount = workspace.SourceFileCount;
+            response.excludedAssemblyCount = workspace.ExcludedAssemblyCount;
+            response.excludedSourceFileCount = workspace.ExcludedSourceFileCount;
+            response.includePackageCacheSourceAssemblies = workspace.IncludePackageCacheSourceAssemblies;
+            response.buildTarget = workspace.BuildTarget;
+            response.unityVersion = workspace.UnityVersion;
+            response.staleReason = workspace.StaleReason;
+            response.loadedProjects = workspace.LoadedProjects;
+            response.loadedDocuments = workspace.LoadedDocuments;
             lock (_statusLock)
             {
-                _status.snapshotExists = _workspace.SnapshotExists;
-                _status.snapshotVersion = _workspace.SnapshotVersion;
-                _status.generationId = _workspace.GenerationId;
-                _status.assemblyCount = _workspace.AssemblyCount;
-                _status.sourceFileCount = _workspace.SourceFileCount;
-                _status.excludedAssemblyCount = _workspace.ExcludedAssemblyCount;
-                _status.excludedSourceFileCount = _workspace.ExcludedSourceFileCount;
-                _status.includePackageCacheSourceAssemblies = _workspace.IncludePackageCacheSourceAssemblies;
-                _status.buildTarget = _workspace.BuildTarget;
-                _status.unityVersion = _workspace.UnityVersion;
-                _status.staleReason = _workspace.StaleReason;
-                _status.loadedProjects = _workspace.LoadedProjects;
-                _status.loadedDocuments = _workspace.LoadedDocuments;
+                _status.snapshotExists = workspace.SnapshotExists;
+                _status.snapshotVersion = workspace.SnapshotVersion;
+                _status.generationId = workspace.GenerationId;
+                _status.assemblyCount = workspace.AssemblyCount;
+                _status.sourceFileCount = workspace.SourceFileCount;
+                _status.excludedAssemblyCount = workspace.ExcludedAssemblyCount;
+                _status.excludedSourceFileCount = workspace.ExcludedSourceFileCount;
+                _status.includePackageCacheSourceAssemblies = workspace.IncludePackageCacheSourceAssemblies;
+                _status.buildTarget = workspace.BuildTarget;
+                _status.unityVersion = workspace.UnityVersion;
+                _status.staleReason = workspace.StaleReason;
+                _status.loadedProjects = workspace.LoadedProjects;
+                _status.loadedDocuments = workspace.LoadedDocuments;
                 _status.updatedAt = DateTimeOffset.Now.ToString("o");
             }
 
             WriteStatus();
+            if (refreshNeeded)
+            {
+                ScheduleBackgroundRefresh();
+            }
+
             return response;
         }
 
@@ -300,32 +350,165 @@ namespace AIBridgeCodeIndex
             };
         }
 
-        private async Task RefreshWorkspaceIfNeededAsync()
+        private bool MarkRefreshIfNeeded(CodeIndexWorkspace workspace)
         {
-            if (!_options.AutoRefresh || !_workspace.IsStale())
+            if (!_options.AutoRefresh || !IsStatusReady() || workspace == null || !workspace.IsStale())
             {
-                RefreshStaleState();
-                return;
+                if (IsStatusReady())
+                {
+                    RefreshStaleState(workspace);
+                }
+
+                return false;
             }
 
-            // 快照 manifest 变化后在下一次查询前重载，避免返回过期语义位置。
-            UpdateStatus("loading", "Unity compilation snapshot changed; refreshing Code Index workspace.");
-            await WarmupAsync();
+            lock (_statusLock)
+            {
+                var scheduled = false;
+                if (_status != null && string.Equals(_status.state, "ready", StringComparison.OrdinalIgnoreCase))
+                {
+                    _status.stale = true;
+                    _status.staleReason = workspace.StaleReason;
+                    _status.message = "Unity compilation snapshot changed; refreshing Code Index workspace in background.";
+                    _status.updatedAt = DateTimeOffset.Now.ToString("o");
+                    scheduled = true;
+                }
+
+                if (!scheduled)
+                {
+                    return false;
+                }
+            }
+
+            WriteStatus();
+            return true;
+        }
+
+        private void ScheduleBackgroundRefresh()
+        {
+            lock (_refreshLock)
+            {
+                if (_shutdownRequested)
+                {
+                    return;
+                }
+
+                if (_refreshTask != null && !_refreshTask.IsCompleted)
+                {
+                    return;
+                }
+
+                // 查询先使用上一个可用 generation；后台完成后再原子替换 workspace 状态。
+                _refreshTask = Task.Run(RefreshWorkspaceInBackgroundAsync);
+            }
+        }
+
+        private async Task RefreshWorkspaceInBackgroundAsync()
+        {
+            var nextWorkspace = new CodeIndexWorkspace(_options.ProjectRoot);
+            try
+            {
+                await nextWorkspace.WarmupAsync();
+                if (_shutdownRequested)
+                {
+                    return;
+                }
+
+                if (!IsStatusReady())
+                {
+                    return;
+                }
+
+                var stale = nextWorkspace.IsStale();
+                var staleReason = nextWorkspace.StaleReason;
+                lock (_workspaceLock)
+                {
+                    _workspace = nextWorkspace;
+                }
+
+                lock (_statusLock)
+                {
+                    if (_status == null || !string.Equals(_status.state, "ready", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+
+                    _status.state = "ready";
+                    _status.solution = nextWorkspace.SolutionPath;
+                    _status.workspaceMode = nextWorkspace.WorkspaceMode;
+                    _status.snapshotExists = nextWorkspace.SnapshotExists;
+                    _status.snapshotVersion = nextWorkspace.SnapshotVersion;
+                    _status.generationId = nextWorkspace.GenerationId;
+                    _status.assemblyCount = nextWorkspace.AssemblyCount;
+                    _status.sourceFileCount = nextWorkspace.SourceFileCount;
+                    _status.excludedAssemblyCount = nextWorkspace.ExcludedAssemblyCount;
+                    _status.excludedSourceFileCount = nextWorkspace.ExcludedSourceFileCount;
+                    _status.includePackageCacheSourceAssemblies = nextWorkspace.IncludePackageCacheSourceAssemblies;
+                    _status.buildTarget = nextWorkspace.BuildTarget;
+                    _status.unityVersion = nextWorkspace.UnityVersion;
+                    _status.staleReason = staleReason;
+                    _status.loadedProjects = nextWorkspace.LoadedProjects;
+                    _status.loadedDocuments = nextWorkspace.LoadedDocuments;
+                    _status.stale = stale;
+                    _status.message = null;
+                    _status.updatedAt = DateTimeOffset.Now.ToString("o");
+                }
+
+                WriteStatus();
+            }
+            catch (Exception ex)
+            {
+                if (_shutdownRequested)
+                {
+                    return;
+                }
+
+                var currentWorkspace = GetWorkspace();
+                lock (_statusLock)
+                {
+                    if (_status != null && string.Equals(_status.state, "ready", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _status.state = "ready";
+                        _status.stale = true;
+                        _status.staleReason = currentWorkspace == null ? "backgroundRefreshFailed" : currentWorkspace.StaleReason;
+                        _status.message = "Background refresh failed: " + ex.Message;
+                        _status.updatedAt = DateTimeOffset.Now.ToString("o");
+                    }
+                }
+
+                WriteStatus();
+                Log("Background refresh failed: " + ex);
+            }
         }
 
         private void RefreshStaleState()
         {
+            RefreshStaleState(GetWorkspace());
+        }
+
+        private void RefreshStaleState(CodeIndexWorkspace workspace)
+        {
+            var stale = workspace == null || workspace.IsStale();
+            var staleReason = workspace == null ? "missingWorkspace" : workspace.StaleReason;
             lock (_statusLock)
             {
                 if (_status != null && string.Equals(_status.state, "ready", StringComparison.OrdinalIgnoreCase))
                 {
-                    _status.stale = _workspace.IsStale();
-                    _status.staleReason = _workspace.StaleReason;
+                    _status.stale = stale;
+                    _status.staleReason = staleReason;
                     _status.updatedAt = DateTimeOffset.Now.ToString("o");
                 }
             }
 
             WriteStatus();
+        }
+
+        private bool IsStatusReady()
+        {
+            lock (_statusLock)
+            {
+                return _status != null && string.Equals(_status.state, "ready", StringComparison.OrdinalIgnoreCase);
+            }
         }
 
         private async Task MonitorUnityProcessAsync()

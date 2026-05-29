@@ -590,7 +590,7 @@ namespace AIBridge.Editor
                 return embedded;
             }
 
-            var packageInfo = PackageInfo.FindForAssetPath("Packages/" + packageName);
+            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/" + packageName);
             return packageInfo == null
                 ? embedded
                 : Path.Combine(packageInfo.resolvedPath, "Templates~", "Workflows");
