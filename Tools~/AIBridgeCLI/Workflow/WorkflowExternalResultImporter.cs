@@ -124,7 +124,8 @@ namespace AIBridgeCLI.Workflow
                 return "PatchProposal";
             }
 
-            if (string.Equals(kind, "validation-result", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(kind, "validation-result", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(kind, "validation-report", StringComparison.OrdinalIgnoreCase))
             {
                 return "ValidationResult";
             }
@@ -137,9 +138,18 @@ namespace AIBridgeCLI.Workflow
             if (!string.IsNullOrWhiteSpace(kind))
             {
                 var normalizedKind = kind.Trim();
-                return string.Equals(normalizedKind, "patchProposal", StringComparison.OrdinalIgnoreCase)
-                    ? "patch-proposal"
-                    : normalizedKind;
+                if (string.Equals(normalizedKind, "patchProposal", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "patch-proposal";
+                }
+
+                if (string.Equals(normalizedKind, "validationResult", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(normalizedKind, "validation-result", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "validation-report";
+                }
+
+                return normalizedKind;
             }
 
             if (string.Equals(schema, "Finding", StringComparison.OrdinalIgnoreCase))
@@ -154,7 +164,7 @@ namespace AIBridgeCLI.Workflow
 
             if (string.Equals(schema, "ValidationResult", StringComparison.OrdinalIgnoreCase))
             {
-                return "validation-result";
+                return "validation-report";
             }
 
             return "verdict";

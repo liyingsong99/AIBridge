@@ -91,6 +91,7 @@ namespace AIBridgeCLI.Workflow
             var max = ReadThresholdInt(gate, "max", 0);
             var evidence = new List<string>();
             var totalErrors = 0;
+            var evidenceErrors = new List<string>();
             foreach (var commandResult in manifest.CommandResults)
             {
                 if (!StartsWithCommand(commandResult.Command, commandPrefix))
@@ -99,7 +100,20 @@ namespace AIBridgeCLI.Workflow
                 }
 
                 evidence.Add(commandResult.CommandId);
-                totalErrors += CountErrorsInResult(commandResult.ResultPath);
+                if (!commandResult.Success)
+                {
+                    evidenceErrors.Add("Command failed: " + commandResult.CommandId + ".");
+                    continue;
+                }
+
+                var countResult = CountErrorsInResult(commandResult.ResultPath);
+                if (!countResult.Success)
+                {
+                    evidenceErrors.Add(countResult.Error);
+                    continue;
+                }
+
+                totalErrors += countResult.ErrorCount;
             }
 
             if (evidence.Count == 0)
@@ -109,6 +123,14 @@ namespace AIBridgeCLI.Workflow
                     if (string.Equals(artifact.Kind, artifactKind, StringComparison.OrdinalIgnoreCase))
                     {
                         evidence.Add(artifact.ArtifactId);
+                        var countResult = CountErrorsInResult(artifact.Path);
+                        if (!countResult.Success)
+                        {
+                            evidenceErrors.Add(countResult.Error);
+                            continue;
+                        }
+
+                        totalErrors += countResult.ErrorCount;
                     }
                 }
             }
@@ -116,6 +138,11 @@ namespace AIBridgeCLI.Workflow
             if (evidence.Count == 0)
             {
                 return CreateResult(gate, "skipped", evidence, "No log evidence found.");
+            }
+
+            if (evidenceErrors.Count > 0)
+            {
+                return CreateResult(gate, "blocked", evidence, "Log evidence could not be evaluated: " + string.Join(" ", evidenceErrors));
             }
 
             return totalErrors <= max
@@ -300,39 +327,44 @@ namespace AIBridgeCLI.Workflow
             return defaultValue;
         }
 
-        private static int CountErrorsInResult(string resultPath)
+        private static LogErrorCountResult CountErrorsInResult(string resultPath)
         {
             var path = ResolveArtifactPath(resultPath);
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             {
-                return 0;
+                return LogErrorCountResult.Failed("Log evidence file was not found: " + resultPath + ".");
             }
 
             try
             {
                 var root = JObject.Parse(File.ReadAllText(path));
+                if (TryReadBool(root, "success", out var success) && !success)
+                {
+                    return LogErrorCountResult.Failed("Log command result indicates failure: " + resultPath + ".");
+                }
+
                 if (TryReadInt(root, "errorCount", out var errorCount))
                 {
-                    return errorCount;
+                    return LogErrorCountResult.Passed(errorCount);
                 }
 
                 var payload = root["data"] as JObject;
                 if (payload != null && TryReadInt(payload, "errorCount", out errorCount))
                 {
-                    return errorCount;
+                    return LogErrorCountResult.Passed(errorCount);
                 }
 
                 var nestedData = payload == null ? null : payload["data"] as JObject;
                 if (nestedData != null && TryReadInt(nestedData, "errorCount", out errorCount))
                 {
-                    return errorCount;
+                    return LogErrorCountResult.Passed(errorCount);
                 }
 
-                return CountLogEntries(root);
+                return LogErrorCountResult.Passed(CountLogEntries(root));
             }
-            catch
+            catch (Exception ex)
             {
-                return 0;
+                return LogErrorCountResult.Failed("Log evidence is not valid JSON: " + resultPath + " (" + ex.Message + ").");
             }
         }
 
@@ -380,6 +412,20 @@ namespace AIBridgeCLI.Workflow
                 && token.Type == JTokenType.Integer)
             {
                 value = token.Value<int>();
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryReadBool(JObject obj, string key, out bool value)
+        {
+            value = false;
+            if (obj != null
+                && obj.TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var token)
+                && token.Type == JTokenType.Boolean)
+            {
+                value = token.Value<bool>();
                 return true;
             }
 
@@ -493,6 +539,31 @@ namespace AIBridgeCLI.Workflow
             }
 
             return Path.GetFullPath(Path.Combine(WorkflowPathHelper.GetProjectRoot(), path));
+        }
+
+        private sealed class LogErrorCountResult
+        {
+            public bool Success { get; private set; }
+            public int ErrorCount { get; private set; }
+            public string Error { get; private set; }
+
+            public static LogErrorCountResult Passed(int errorCount)
+            {
+                return new LogErrorCountResult
+                {
+                    Success = true,
+                    ErrorCount = errorCount
+                };
+            }
+
+            public static LogErrorCountResult Failed(string error)
+            {
+                return new LogErrorCountResult
+                {
+                    Success = false,
+                    Error = error
+                };
+            }
         }
     }
 }

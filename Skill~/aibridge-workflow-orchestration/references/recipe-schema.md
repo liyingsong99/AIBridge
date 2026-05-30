@@ -21,6 +21,7 @@ $CLI workflow plan --recipe runtime-ui-validation --format markdown
 $CLI workflow init --recipe runtime-ui-validation
 $CLI workflow begin --recipe unity-change-implementation
 $CLI workflow run-cli --file ".aibridge/workflows/recipes/runtime-target-sweep.aibridge-workflow.json" --inputs ".aibridge/workflows/inputs.json"
+$CLI workflow run-cli --recipe unity-sharded-review --allow-partial true
 $CLI get_logs --logType Error --workflow-run <runId>
 $CLI runtime screenshot --target latest --workflow-run <runId>
 $CLI workflow import --run <runId> --step adversarial-verify --schema Verdict --file verdicts.json
@@ -33,11 +34,11 @@ $CLI workflow clean --older-than 3d --dry-run false --keep-failed true --keep-la
 $CLI workflow clean --older-than 3d --save-settings true --auto-clean true
 ```
 
-`run-cli` executes only deterministic `cli`, `barrier`, and `report` steps. It records `agent` and `manual` steps as `skipped_requires_external_executor`; external tools such as Codex, Claude, or Cursor remain responsible for those steps.
+`run-cli` executes only deterministic `cli`, `barrier`, and `report` steps. It records `agent` and `manual` steps as `skipped_requires_external_executor`; external tools such as Codex, Claude, or Cursor remain responsible for those steps. `partial` is not a CLI success unless `--allow-partial true` is passed explicitly.
 
-`begin` creates a run and writes `.aibridge/workflows/active-run.json`. Ordinary commands attach evidence when they receive `--workflow-run <runId>`, when `AIBRIDGE_WORKFLOW_RUN_ID` is set, or when an active run exists. `finish` refreshes gates/report and clears the active run pointer.
+`begin` creates a run and writes `.aibridge/workflows/active-run.json`. Ordinary commands attach evidence when they receive `--workflow-run <runId>`, when `AIBRIDGE_WORKFLOW_RUN_ID` is set, or when an active run exists. `finish` refreshes gates/report and clears the active run pointer. `finish --status passed` is downgraded when required gates are failed, blocked, or missing evidence.
 
-`import` copies structured external results into run artifacts. `Verdict.status` must be `confirmed`, `refuted`, or `uncertain`; `externalVerdict` gates pass only from imported Verdict artifacts, not from prose summaries.
+`import` copies structured external results into run artifacts. `Verdict.status` must be `confirmed`, `refuted`, or `uncertain`; `externalVerdict` gates pass only from imported Verdict artifacts, not from prose summaries. `ValidationResult` imports use the `validation-report` artifact kind by default.
 
 `export` compiles a recipe into an external task package or script (`codex-task-pack`, `generic-cli`, `claude-workflow`). Exporters do not run external agents and do not provide an LLM runtime.
 

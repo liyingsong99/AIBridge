@@ -93,7 +93,6 @@ namespace AIBridge.Editor
                     return;
                 }
 
-                CleanupUnselectedTargets(projectRoot, targets);
                 CopyCliToCacheIfNeeded(projectRoot);
                 var results = InstallAssistantIntegrations(projectRoot, targets);
                 SkillPluginAdapter.GenerateForTargets(projectRoot, targets);

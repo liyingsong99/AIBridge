@@ -106,7 +106,10 @@ namespace AIBridgeCLI.Workflow
             {
                 sb.AppendLine("- `" + step.Id + "` (`" + step.Kind + "` / `" + step.Role + "`): " + step.Description);
                 sb.AppendLine("  - Expected outputs: " + string.Join(", ", step.Outputs.ToArray()));
-                sb.AppendLine("  - Import example: `AIBridgeCLI workflow import --run <runId> --step " + step.Id + " --schema Verdict --file <verdicts.json>`");
+                foreach (var importExample in BuildImportExamples(step))
+                {
+                    sb.AppendLine("  - Import example: `AIBridgeCLI workflow import --run <runId> --step " + step.Id + " --schema " + importExample.Schema + " --kind " + importExample.Kind + " --file <" + importExample.FileName + ">`");
+                }
             }
 
             sb.AppendLine();
@@ -135,12 +138,64 @@ namespace AIBridgeCLI.Workflow
                     ["PatchProposal"] = new JObject
                     {
                         ["required"] = new JArray("id", "files", "summary", "validation")
+                    },
+                    ["ValidationResult"] = new JObject
+                    {
+                        ["required"] = new JArray("gate", "status", "evidence")
                     }
                 }
             };
             File.WriteAllText(schemaPath, schema.ToString(Formatting.Indented), new UTF8Encoding(false));
             files.Add(WorkflowPathHelper.ToDisplayPath(markdownPath));
             files.Add(WorkflowPathHelper.ToDisplayPath(schemaPath));
+        }
+
+        private static List<ImportExample> BuildImportExamples(WorkflowStep step)
+        {
+            var result = new List<ImportExample>();
+            var seenSchemas = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (step == null || step.Outputs == null)
+            {
+                return result;
+            }
+
+            foreach (var output in step.Outputs)
+            {
+                var example = CreateImportExample(output);
+                if (example == null || !seenSchemas.Add(example.Schema))
+                {
+                    continue;
+                }
+
+                result.Add(example);
+            }
+
+            return result;
+        }
+
+        private static ImportExample CreateImportExample(string output)
+        {
+            if (string.Equals(output, "Verdict", StringComparison.OrdinalIgnoreCase))
+            {
+                return new ImportExample("Verdict", "verdict", "verdicts.json");
+            }
+
+            if (string.Equals(output, "Finding", StringComparison.OrdinalIgnoreCase))
+            {
+                return new ImportExample("Finding", "finding", "findings.json");
+            }
+
+            if (string.Equals(output, "PatchProposal", StringComparison.OrdinalIgnoreCase))
+            {
+                return new ImportExample("PatchProposal", "patch-proposal", "patch-proposals.json");
+            }
+
+            if (string.Equals(output, "ValidationResult", StringComparison.OrdinalIgnoreCase))
+            {
+                return new ImportExample("ValidationResult", "validation-report", "validation-results.json");
+            }
+
+            return null;
         }
 
         private static void WriteGenericCliPlan(WorkflowRecipeDocument doc, string outputDirectory, List<string> files)
@@ -192,6 +247,20 @@ namespace AIBridgeCLI.Workflow
             sb.AppendLine("};");
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
             files.Add(WorkflowPathHelper.ToDisplayPath(path));
+        }
+
+        private sealed class ImportExample
+        {
+            public ImportExample(string schema, string kind, string fileName)
+            {
+                Schema = schema;
+                Kind = kind;
+                FileName = fileName;
+            }
+
+            public string Schema { get; private set; }
+            public string Kind { get; private set; }
+            public string FileName { get; private set; }
         }
     }
 }

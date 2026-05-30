@@ -151,6 +151,7 @@ $CLI runtime screenshot --target latest --workflow-run wf_20260529_213000_ab12cd
 $CLI workflow import --run wf_20260529_213000_ab12cd34 --step adversarial-verify --schema Verdict --file verdicts.json
 $CLI workflow export --recipe runtime-ui-validation --target codex-task-pack --output .aibridge/workflows/exports
 $CLI workflow run-cli --file ".aibridge/workflows/recipes/runtime-target-sweep.aibridge-workflow.json"
+$CLI workflow run-cli --recipe unity-sharded-review --allow-partial true
 $CLI workflow status --run wf_20260529_213000_ab12cd34
 $CLI workflow report --run wf_20260529_213000_ab12cd34 --format markdown
 $CLI workflow finish --run wf_20260529_213000_ab12cd34 --status passed
@@ -160,7 +161,7 @@ $CLI workflow clean --older-than 3d --save-settings true --auto-clean true
 
 Built-in recipes include `unity-change-implementation`, `unity-sharded-review`, `runtime-target-sweep`, `runtime-ui-validation`, `prefab-asset-sweep`, and `bug-hunter-loop`.
 
-`workflow begin` creates an active run; ordinary commands can attach evidence with `--workflow-run`, `AIBRIDGE_WORKFLOW_RUN_ID`, or the active run pointer. `workflow import` stores structured external results such as `Verdict`, and `externalVerdict` gates only pass from imported artifacts. `workflow export` writes handoff packages for external tools; it is an exporter, not an embedded LLM runtime.
+`workflow begin` creates an active run; ordinary commands can attach evidence with `--workflow-run`, `AIBRIDGE_WORKFLOW_RUN_ID`, or the active run pointer. `workflow import` stores structured external results such as `Verdict`, and `externalVerdict` gates only pass from imported artifacts. `workflow export` writes handoff packages for external tools; it is an exporter, not an embedded LLM runtime. `partial` workflow status is not treated as CLI success unless `--allow-partial true` is passed explicitly.
 
 Workflow cleanup is conservative by default: `clean` starts in dry-run mode. Auto cleanup is enabled only when saved in `.aibridge/workflows/settings.json`; `run-cli` then removes old runs before starting while preserving failed/blocked runs, the active run, and the newest retained runs according to settings.
 

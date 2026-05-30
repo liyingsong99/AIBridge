@@ -135,12 +135,14 @@ namespace AIBridgeCLI.Commands
             var inputs = GetOption(options, "inputs", null);
             var resume = GetOption(options, "resume", null);
             var rerun = GetOption(options, "rerun", null);
+            var allowPartial = GetBool(options, "allow-partial", false);
             var runner = new WorkflowCliRunner(timeoutMs);
             var manifest = runner.Run(recipePath, inputs, resume, rerun);
+            var success = IsSuccessfulWorkflowStatus(manifest.Status, allowPartial);
             return PrintResult(new CommandResult
             {
-                success = manifest.Status == "passed" || manifest.Status == "partial",
-                error = manifest.Status == "failed" || manifest.Status == "blocked" ? "Workflow run ended with status: " + manifest.Status : null,
+                success = success,
+                error = success ? null : BuildWorkflowStatusError(manifest.Status),
                 data = new
                 {
                     runId = manifest.RunId,
@@ -213,6 +215,7 @@ namespace AIBridgeCLI.Commands
         {
             var runId = GetRunId(options, true);
             var status = NormalizeStatus(GetOption(options, "status", "passed"));
+            var allowPartial = GetBool(options, "allow-partial", false);
             var store = WorkflowRunStore.Open(runId);
             var manifest = store.LoadManifest();
 
@@ -224,10 +227,11 @@ namespace AIBridgeCLI.Commands
             WorkflowArtifactSink.RefreshReportArtifact(store, manifest, "workflow finish");
             WorkflowActiveRunStore.Clear(runId);
 
+            var success = IsSuccessfulWorkflowStatus(manifest.Status, allowPartial);
             return PrintResult(new CommandResult
             {
-                success = manifest.Status == "passed" || manifest.Status == "partial",
-                error = manifest.Status == "failed" || manifest.Status == "blocked" ? "Workflow run ended with status: " + manifest.Status : null,
+                success = success,
+                error = success ? null : BuildWorkflowStatusError(manifest.Status),
                 data = new
                 {
                     runId = manifest.RunId,
@@ -526,9 +530,28 @@ namespace AIBridgeCLI.Commands
                 {
                     return "blocked";
                 }
+
+                if (string.Equals(gate.Status, "skipped", StringComparison.OrdinalIgnoreCase))
+                {
+                    // required gate 缺少证据时不能被 finish --status passed 覆盖为通过。
+                    return string.Equals(requestedStatus, "passed", StringComparison.OrdinalIgnoreCase)
+                        ? "blocked"
+                        : "partial";
+                }
             }
 
             return requestedStatus;
+        }
+
+        private static bool IsSuccessfulWorkflowStatus(string status, bool allowPartial)
+        {
+            return string.Equals(status, "passed", StringComparison.OrdinalIgnoreCase)
+                || (allowPartial && string.Equals(status, "partial", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string BuildWorkflowStatusError(string status)
+        {
+            return "Workflow run ended with status: " + (string.IsNullOrWhiteSpace(status) ? "unknown" : status) + ".";
         }
 
         private static string GetRequiredOption(Dictionary<string, string> options, string key)

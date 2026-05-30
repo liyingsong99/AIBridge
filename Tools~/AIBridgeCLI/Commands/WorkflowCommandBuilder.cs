@@ -57,7 +57,8 @@ namespace AIBridgeCLI.Commands
             ["finish"] = new List<ParameterInfo>
             {
                 new ParameterInfo("run", "Workflow run id. Defaults to active run or AIBRIDGE_WORKFLOW_RUN_ID", false),
-                new ParameterInfo("status", "Final status: passed, partial, failed, blocked, canceled", false, "passed")
+                new ParameterInfo("status", "Final status: passed, partial, failed, blocked, canceled", false, "passed"),
+                new ParameterInfo("allow-partial", "Treat partial workflow status as CLI success", false, "false")
             },
             ["run-cli"] = new List<ParameterInfo>
             {
@@ -66,7 +67,8 @@ namespace AIBridgeCLI.Commands
                 new ParameterInfo("inputs", "JSON object or path to inputs JSON", false),
                 new ParameterInfo("resume", "Existing run id to resume", false),
                 new ParameterInfo("rerun", "Rerun mode, e.g. failed", false),
-                new ParameterInfo("timeout", "Per-step CLI command timeout in milliseconds", false, "5000")
+                new ParameterInfo("timeout", "Per-step CLI command timeout in milliseconds", false, "5000"),
+                new ParameterInfo("allow-partial", "Treat partial workflow status as CLI success", false, "false")
             },
             ["import"] = new List<ParameterInfo>
             {
@@ -125,6 +127,7 @@ namespace AIBridgeCLI.Commands
             sb.AppendLine("  AIBridgeCLI workflow export --recipe runtime-ui-validation --target codex-task-pack --output .aibridge/workflows/exports");
             sb.AppendLine("  AIBridgeCLI workflow finish --run wf_20260529_213000_ab12cd34 --status passed");
             sb.AppendLine("  AIBridgeCLI workflow run-cli --file .aibridge/workflows/recipes/runtime-target-sweep.aibridge-workflow.json");
+            sb.AppendLine("  AIBridgeCLI workflow run-cli --recipe unity-sharded-review --allow-partial true");
             sb.AppendLine("  AIBridgeCLI workflow report --run wf_20260529_213000_ab12cd34 --format markdown");
             sb.AppendLine("  AIBridgeCLI workflow clean --older-than 3d --dry-run false --keep-failed true --keep-latest 20");
             sb.AppendLine("  AIBridgeCLI workflow clean --older-than 3d --save-settings true --auto-clean true");

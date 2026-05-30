@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
+using System.Threading;
 using UnityEditor;
 using UnityEditor.PackageManager;
 using UnityEngine;
@@ -479,18 +481,64 @@ namespace AIBridge.Editor
                     RedirectStandardError = true
                 };
 
-                using (var process = Process.Start(startInfo))
+                using (var process = new Process())
+                using (var stdoutDone = new ManualResetEvent(false))
+                using (var stderrDone = new ManualResetEvent(false))
                 {
-                    if (process == null)
+                    var stdout = new StringBuilder();
+                    var stderr = new StringBuilder();
+                    process.StartInfo = startInfo;
+                    process.OutputDataReceived += (sender, args) =>
+                    {
+                        if (args.Data == null)
+                        {
+                            stdoutDone.Set();
+                            return;
+                        }
+
+                        stdout.AppendLine(args.Data);
+                    };
+                    process.ErrorDataReceived += (sender, args) =>
+                    {
+                        if (args.Data == null)
+                        {
+                            stderrDone.Set();
+                            return;
+                        }
+
+                        stderr.AppendLine(args.Data);
+                    };
+
+                    if (!process.Start())
                     {
                         _lastCliOutput = AIBridgeEditorText.T("Failed to start AIBridgeCLI.", "启动 AIBridgeCLI 失败。");
                         return;
                     }
 
-                    var stdout = process.StandardOutput.ReadToEnd();
-                    var stderr = process.StandardError.ReadToEnd();
-                    process.WaitForExit(30000);
-                    _lastCliOutput = stdout + (string.IsNullOrWhiteSpace(stderr) ? string.Empty : "\n" + stderr);
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
+                    if (!process.WaitForExit(30000))
+                    {
+                        try
+                        {
+                            process.Kill();
+                        }
+                        catch
+                        {
+                            // 忽略清理失败，保留超时信息给面板显示。
+                        }
+
+                        _lastCliOutput = AIBridgeEditorText.T(
+                            "AIBridgeCLI timed out after 30000ms.",
+                            "AIBridgeCLI 执行超过 30000ms，已超时。");
+                        return;
+                    }
+
+                    stdoutDone.WaitOne(1000);
+                    stderrDone.WaitOne(1000);
+                    var stdoutText = stdout.ToString();
+                    var stderrText = stderr.ToString();
+                    _lastCliOutput = stdoutText + (string.IsNullOrWhiteSpace(stderrText) ? string.Empty : "\n" + stderrText);
                 }
             }
             catch (Exception ex)

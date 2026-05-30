@@ -151,6 +151,7 @@ $CLI runtime screenshot --target latest --workflow-run wf_20260529_213000_ab12cd
 $CLI workflow import --run wf_20260529_213000_ab12cd34 --step adversarial-verify --schema Verdict --file verdicts.json
 $CLI workflow export --recipe runtime-ui-validation --target codex-task-pack --output .aibridge/workflows/exports
 $CLI workflow run-cli --file ".aibridge/workflows/recipes/runtime-target-sweep.aibridge-workflow.json"
+$CLI workflow run-cli --recipe unity-sharded-review --allow-partial true
 $CLI workflow status --run wf_20260529_213000_ab12cd34
 $CLI workflow report --run wf_20260529_213000_ab12cd34 --format markdown
 $CLI workflow finish --run wf_20260529_213000_ab12cd34 --status passed
@@ -160,7 +161,7 @@ $CLI workflow clean --older-than 3d --save-settings true --auto-clean true
 
 内置 recipes 包括 `unity-change-implementation`、`unity-sharded-review`、`runtime-target-sweep`、`runtime-ui-validation`、`prefab-asset-sweep` 和 `bug-hunter-loop`。
 
-`workflow begin` 会创建 active run；普通命令可通过 `--workflow-run`、`AIBRIDGE_WORKFLOW_RUN_ID` 或 active run 指针归档证据。`workflow import` 保存 `Verdict` 等结构化外部结果，`externalVerdict` gate 只基于导入 artifact 通过。`workflow export` 生成外部工具交接包，它只是导出器，不是内置 LLM runtime。
+`workflow begin` 会创建 active run；普通命令可通过 `--workflow-run`、`AIBRIDGE_WORKFLOW_RUN_ID` 或 active run 指针归档证据。`workflow import` 保存 `Verdict` 等结构化外部结果，`externalVerdict` gate 只基于导入 artifact 通过。`workflow export` 生成外部工具交接包，它只是导出器，不是内置 LLM runtime。`partial` workflow 状态默认不算 CLI 成功，只有显式传入 `--allow-partial true` 才按成功返回。
 
 Workflow 清理默认保守：`clean` 默认只 dry-run。只有保存到 `.aibridge/workflows/settings.json` 后才会启用自动清理；之后 `run-cli` 开始前会按设置清理旧 run，并保留失败/阻塞 run、active run 和最新保留数量。
 
