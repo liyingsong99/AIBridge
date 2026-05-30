@@ -22,6 +22,38 @@ namespace AIBridge.Runtime
         public bool enableLanDiscovery = true;
         public int discoveryUdpPort = 27183;
 
+        public AIBridgeRuntimeSettings Clone()
+        {
+            var copy = new AIBridgeRuntimeSettings();
+            copy.CopyFrom(this);
+            return copy;
+        }
+
+        public void CopyFrom(AIBridgeRuntimeSettings source)
+        {
+            if (source == null)
+            {
+                return;
+            }
+
+            enableRuntimeBridge = source.enableRuntimeBridge;
+            allowInReleaseBuild = source.allowInReleaseBuild;
+            exchangeDirectory = source.exchangeDirectory;
+            targetId = source.targetId;
+            authToken = source.authToken;
+            allowedActions = source.allowedActions == null ? null : (string[])source.allowedActions.Clone();
+            enableRuntimeCodeExecution = source.enableRuntimeCodeExecution;
+            heartbeatIntervalSeconds = source.heartbeatIntervalSeconds;
+            logBufferSize = source.logBufferSize;
+            maxResultBytes = source.maxResultBytes;
+            keepRunningInBackground = source.keepRunningInBackground;
+            enableHttpTransport = source.enableHttpTransport;
+            httpBindAddress = source.httpBindAddress;
+            httpPort = source.httpPort;
+            enableLanDiscovery = source.enableLanDiscovery;
+            discoveryUdpPort = source.discoveryUdpPort;
+        }
+
         public bool IsActionExplicitlyAllowed(string action)
         {
             if (string.IsNullOrEmpty(action) || allowedActions == null)

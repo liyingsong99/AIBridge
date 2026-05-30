@@ -9,7 +9,6 @@ namespace AIBridge.Runtime
     public static class AIBridgeRuntimeBootstrap
     {
         private const string BootstrapObjectName = "AIBridgeRuntime (Bootstrap)";
-        private const string TransportName = "http";
         private const string DefaultHttpBindAddress = "0.0.0.0";
         private const int DefaultHttpPort = 27182;
         private const int DefaultDiscoveryUdpPort = 27183;
@@ -73,6 +72,7 @@ namespace AIBridge.Runtime
 
         private static void CreateRuntimeIfNeeded(string sceneName)
         {
+            var injectedSettings = TakeInjectedRuntimeSettings();
             var existingRuntime = FindExistingRuntime();
             if (existingRuntime != null)
             {
@@ -85,22 +85,72 @@ namespace AIBridge.Runtime
             gameObject.hideFlags = HideFlags.HideInHierarchy;
 
             var runtime = gameObject.AddComponent<AIBridgeRuntime>();
-            if (runtime.runtimeSettings == null)
-            {
-                runtime.runtimeSettings = new AIBridgeRuntimeSettings();
-            }
-
-            runtime.runtimeSettings.enableRuntimeBridge = true;
-            runtime.runtimeSettings.allowInReleaseBuild = _releaseBuildAllowed;
-            runtime.runtimeSettings.enableRuntimeCodeExecution = IsRuntimeCodeExecutionAvailableByBuild();
-            runtime.runtimeSettings.enableHttpTransport = true;
-            runtime.runtimeSettings.httpBindAddress = DefaultHttpBindAddress;
-            runtime.runtimeSettings.httpPort = DefaultHttpPort;
-            runtime.runtimeSettings.enableLanDiscovery = true;
-            runtime.runtimeSettings.discoveryUdpPort = DefaultDiscoveryUdpPort;
+            runtime.runtimeSettings = BuildBootstrapRuntimeSettings(injectedSettings);
             gameObject.SetActive(true);
 
-            Debug.Log("[AIBridgeRuntimeBootstrap] AIBridgeRuntime created by bootstrap. transport=" + TransportName + ". Default HTTP port=" + DefaultHttpPort + " (auto-increments if occupied). LAN: AIBridgeCLI runtime discover --udpPort " + DefaultDiscoveryUdpPort + " / 已通过 bootstrap 创建 AIBridgeRuntime。");
+            Debug.Log("[AIBridgeRuntimeBootstrap] AIBridgeRuntime created by bootstrap. http="
+                + runtime.runtimeSettings.enableHttpTransport
+                + ", port=" + runtime.runtimeSettings.httpPort
+                + ", lanDiscovery=" + runtime.runtimeSettings.enableLanDiscovery
+                + ". / 已通过 bootstrap 创建 AIBridgeRuntime。");
+        }
+
+        private static AIBridgeRuntimeSettings BuildBootstrapRuntimeSettings(AIBridgeRuntimeSettings injectedSettings)
+        {
+            var settings = injectedSettings == null ? new AIBridgeRuntimeSettings() : injectedSettings.Clone();
+            if (injectedSettings == null)
+            {
+                settings.enableHttpTransport = true;
+                settings.httpBindAddress = DefaultHttpBindAddress;
+                settings.httpPort = DefaultHttpPort;
+                settings.enableLanDiscovery = true;
+                settings.discoveryUdpPort = DefaultDiscoveryUdpPort;
+                settings.enableRuntimeCodeExecution = IsRuntimeCodeExecutionAvailableByBuild();
+            }
+            else
+            {
+                settings.enableRuntimeCodeExecution = settings.enableRuntimeCodeExecution && IsRuntimeCodeExecutionAvailableByBuild();
+            }
+
+            settings.enableRuntimeBridge = true;
+            settings.allowInReleaseBuild = _releaseBuildAllowed;
+            return settings;
+        }
+
+        private static AIBridgeRuntimeSettings TakeInjectedRuntimeSettings()
+        {
+            // 构建期 carrier 只存在于 Player 场景副本中，读取后立即销毁，避免运行时层级留下额外对象。
+            var carriers = Resources.FindObjectsOfTypeAll<AIBridgeRuntimeSettingsCarrier>();
+            AIBridgeRuntimeSettings settings = null;
+            for (var i = 0; i < carriers.Length; i++)
+            {
+                var carrier = carriers[i];
+                if (carrier == null
+                    || carrier.gameObject == null
+                    || !carrier.gameObject.scene.IsValid())
+                {
+                    continue;
+                }
+
+                if (settings == null && carrier.RuntimeSettings != null)
+                {
+                    settings = carrier.RuntimeSettings.Clone();
+                }
+
+                DestroyRuntimeSettingsCarrier(carrier);
+            }
+
+            return settings;
+        }
+
+        private static void DestroyRuntimeSettingsCarrier(AIBridgeRuntimeSettingsCarrier carrier)
+        {
+            if (carrier == null || carrier.gameObject == null)
+            {
+                return;
+            }
+
+            UnityEngine.Object.Destroy(carrier.gameObject);
         }
 
         private static bool IsRuntimeCodeExecutionAvailableByBuild()

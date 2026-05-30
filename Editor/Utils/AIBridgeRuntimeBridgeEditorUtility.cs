@@ -407,31 +407,38 @@ namespace AIBridge.Editor
                 return;
             }
 
-            var source = AIBridgeProjectSettings.Instance.RuntimeBridge;
             if (runtime.runtimeSettings == null)
             {
                 runtime.runtimeSettings = new AIBridgeRuntimeSettings();
             }
 
-            runtime.runtimeSettings.enableRuntimeBridge = source.EnableRuntimeBridge;
-            runtime.runtimeSettings.allowInReleaseBuild = source.AllowInReleaseBuild;
-            runtime.runtimeSettings.exchangeDirectory = source.ExchangeDirectory ?? string.Empty;
-            runtime.runtimeSettings.targetId = source.TargetId ?? string.Empty;
-            runtime.runtimeSettings.authToken = source.AuthToken ?? string.Empty;
-            runtime.runtimeSettings.allowedActions = ParseAllowedActions(source.AllowedActions);
-            runtime.runtimeSettings.enableRuntimeCodeExecution =
-                source.EnableRuntimeCodeExecution && AIBridgeHybridClrUtility.IsHybridClrInstalled();
-            runtime.runtimeSettings.heartbeatIntervalSeconds = source.HeartbeatIntervalSeconds;
-            runtime.runtimeSettings.logBufferSize = Math.Max(1, source.LogBufferSize);
-            runtime.runtimeSettings.maxResultBytes = Math.Max(1024, source.MaxResultBytes);
-            runtime.runtimeSettings.keepRunningInBackground = source.KeepRunningInBackground;
-            runtime.runtimeSettings.enableHttpTransport = source.EnableHttpTransport;
-            runtime.runtimeSettings.httpBindAddress = string.IsNullOrWhiteSpace(source.HttpBindAddress)
-                ? AIBridgeProjectSettings.DefaultRuntimeBridgeHttpBindAddress
-                : source.HttpBindAddress.Trim();
-            runtime.runtimeSettings.httpPort = Math.Max(1, source.HttpPort);
-            runtime.runtimeSettings.enableLanDiscovery = source.EnableLanDiscovery;
-            runtime.runtimeSettings.discoveryUdpPort = Math.Max(1, source.DiscoveryUdpPort);
+            runtime.runtimeSettings.CopyFrom(CreateRuntimeSettingsFromProjectSettings());
+        }
+
+        public static AIBridgeRuntimeSettings CreateRuntimeSettingsFromProjectSettings()
+        {
+            var source = AIBridgeProjectSettings.Instance.RuntimeBridge;
+            return new AIBridgeRuntimeSettings
+            {
+                enableRuntimeBridge = source.EnableRuntimeBridge,
+                allowInReleaseBuild = source.AllowInReleaseBuild,
+                exchangeDirectory = source.ExchangeDirectory ?? string.Empty,
+                targetId = source.TargetId ?? string.Empty,
+                authToken = source.AuthToken ?? string.Empty,
+                allowedActions = ParseAllowedActions(source.AllowedActions),
+                enableRuntimeCodeExecution = source.EnableRuntimeCodeExecution && AIBridgeHybridClrUtility.IsHybridClrInstalled(),
+                heartbeatIntervalSeconds = source.HeartbeatIntervalSeconds,
+                logBufferSize = Math.Max(1, source.LogBufferSize),
+                maxResultBytes = Math.Max(1024, source.MaxResultBytes),
+                keepRunningInBackground = source.KeepRunningInBackground,
+                enableHttpTransport = source.EnableHttpTransport,
+                httpBindAddress = string.IsNullOrWhiteSpace(source.HttpBindAddress)
+                    ? AIBridgeProjectSettings.DefaultRuntimeBridgeHttpBindAddress
+                    : source.HttpBindAddress.Trim(),
+                httpPort = Math.Max(1, source.HttpPort),
+                enableLanDiscovery = source.EnableLanDiscovery,
+                discoveryUdpPort = Math.Max(1, source.DiscoveryUdpPort)
+            };
         }
 
         private static Dictionary<string, object> ReadHeartbeat(string heartbeatPath)

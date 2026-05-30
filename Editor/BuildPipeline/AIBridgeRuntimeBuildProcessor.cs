@@ -1,17 +1,21 @@
 using System;
 using System.Collections.Generic;
+using AIBridge.Runtime;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace AIBridge.Editor
 {
     [InitializeOnLoad]
-    internal sealed class AIBridgeRuntimeBuildProcessor : IPreprocessBuildWithReport
+    internal sealed class AIBridgeRuntimeBuildProcessor : IPreprocessBuildWithReport, IProcessSceneWithReport
     {
         private const string AutoInjectDisabledDefine = "AIBRIDGE_RUNTIME_AUTO_INJECT_DISABLED";
         private const string ReleaseBuildAllowedDefine = "AIBRIDGE_RUNTIME_ALLOW_RELEASE_BUILD";
+
+        private static bool _runtimeSettingsCarrierInjected;
 
         static AIBridgeRuntimeBuildProcessor()
         {
@@ -25,6 +29,7 @@ namespace AIBridge.Editor
 
         public void OnPreprocessBuild(BuildReport report)
         {
+            _runtimeSettingsCarrierInjected = false;
             var settings = AIBridgeProjectSettings.Instance.RuntimeBridge;
             var buildTargetGroup = report != null
                 ? BuildPipeline.GetBuildTargetGroup(report.summary.platform)
@@ -41,6 +46,39 @@ namespace AIBridge.Editor
             var isDevelopmentBuild = report != null
                 && (report.summary.options & BuildOptions.Development) == BuildOptions.Development;
             LogBuildInjectionState(settings, isDevelopmentBuild);
+        }
+
+        public void OnProcessScene(Scene scene, BuildReport report)
+        {
+            if (_runtimeSettingsCarrierInjected)
+            {
+                return;
+            }
+
+            var settings = AIBridgeProjectSettings.Instance.RuntimeBridge;
+            if (!ShouldInjectRuntimeSettingsCarrier(settings, report))
+            {
+                return;
+            }
+
+            if (!scene.IsValid() || !scene.isLoaded)
+            {
+                return;
+            }
+
+            var carrier = FindCarrierInScene(scene);
+            if (carrier == null)
+            {
+                var gameObject = new GameObject(AIBridgeRuntimeSettingsCarrier.CarrierObjectName);
+                gameObject.hideFlags = HideFlags.HideInHierarchy;
+                SceneManager.MoveGameObjectToScene(gameObject, scene);
+                carrier = gameObject.AddComponent<AIBridgeRuntimeSettingsCarrier>();
+            }
+
+            // 构建管线处理的是场景副本，这里注入的 carrier 不会写回用户场景或项目文件。
+            carrier.RuntimeSettings = AIBridgeRuntimeBridgeEditorUtility.CreateRuntimeSettingsFromProjectSettings();
+            carrier.GeneratedForBuild = true;
+            _runtimeSettingsCarrierInjected = true;
         }
 
         internal static void SyncRuntimeBootstrapDefinesForActiveTarget()
@@ -92,6 +130,55 @@ namespace AIBridge.Editor
             }
 
             return true;
+        }
+
+        private static bool ShouldInjectRuntimeSettingsCarrier(
+            AIBridgeProjectSettings.RuntimeBridgeSettingsData settings,
+            BuildReport report)
+        {
+            if (settings == null || !settings.EnableRuntimeBridge)
+            {
+                return false;
+            }
+
+            if (!settings.AutoInjectRuntimeBridgeInDevelopmentBuild)
+            {
+                return false;
+            }
+
+            var isDevelopmentBuild = report != null
+                ? (report.summary.options & BuildOptions.Development) == BuildOptions.Development
+                : EditorUserBuildSettings.development;
+            if (isDevelopmentBuild)
+            {
+                return settings.AutoInjectRuntimeBridgeInDevelopmentBuild;
+            }
+
+            return settings.AllowRuntimeBridgeInReleaseBuild;
+        }
+
+        private static AIBridgeRuntimeSettingsCarrier FindCarrierInScene(Scene scene)
+        {
+            var roots = scene.GetRootGameObjects();
+            for (var i = 0; i < roots.Length; i++)
+            {
+                var root = roots[i];
+                if (root == null)
+                {
+                    continue;
+                }
+
+                var carriers = root.GetComponentsInChildren<AIBridgeRuntimeSettingsCarrier>(true);
+                for (var j = 0; j < carriers.Length; j++)
+                {
+                    if (carriers[j] != null)
+                    {
+                        return carriers[j];
+                    }
+                }
+            }
+
+            return null;
         }
 
         private static List<string> ParseDefines(string symbols)
