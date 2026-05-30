@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 
@@ -14,6 +15,10 @@ namespace AIBridge.Editor
         private string _runtimeDirectory;
         private string _localHttpUrl;
         private string _discoveryCachePath;
+        private bool _scanLanOnRefresh = true;
+        private bool _lanScanRunning;
+        private string _lanScanStatus;
+        private int _lanScanGeneration;
         private double _lastRefreshTime;
 
         [MenuItem("AIBridge/Players")]
@@ -21,7 +26,7 @@ namespace AIBridge.Editor
         {
             var window = GetWindow<AIBridgePlayersWindow>();
             window.titleContent = new GUIContent(AIBridgeEditorText.T("AIBridge Players", "AIBridge Players"));
-            window.minSize = new Vector2(720, 420);
+            window.minSize = new Vector2(820, 420);
             window.Show();
         }
 
@@ -47,6 +52,13 @@ namespace AIBridge.Editor
                 AIBridgeEditorText.T("Discovery Cache", "发现缓存"),
                 _discoveryCachePath ?? string.Empty,
                 EditorStyles.wordWrappedMiniLabel);
+            if (_lanScanRunning || !string.IsNullOrEmpty(_lanScanStatus))
+            {
+                EditorGUILayout.LabelField(
+                    AIBridgeEditorText.T("LAN Scan", "局域网扫描"),
+                    _lanScanStatus ?? string.Empty,
+                    EditorStyles.wordWrappedMiniLabel);
+            }
 
             EditorGUILayout.Space(6);
             _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition);
@@ -80,6 +92,22 @@ namespace AIBridge.Editor
             if (GUILayout.Button(AIBridgeEditorText.T("Refresh", "刷新"), EditorStyles.toolbarButton, GUILayout.Width(72)))
             {
                 RefreshPlayers();
+            }
+
+            var previousScanLanOnRefresh = _scanLanOnRefresh;
+            _scanLanOnRefresh = EditorGUILayout.ToggleLeft(
+                AIBridgeEditorText.T("Scan LAN", "扫描局域网"),
+                _scanLanOnRefresh,
+                GUILayout.Width(96));
+            if (_scanLanOnRefresh && !previousScanLanOnRefresh)
+            {
+                EditorApplication.delayCall += () =>
+                {
+                    if (this != null)
+                    {
+                        RefreshPlayers();
+                    }
+                };
             }
 
             if (GUILayout.Button(AIBridgeEditorText.T("Open Directory", "打开目录"), EditorStyles.toolbarButton, GUILayout.Width(110)))
@@ -184,8 +212,8 @@ namespace AIBridge.Editor
             {
                 EditorGUILayout.HelpBox(
                     AIBridgeEditorText.T(
-                        "No LAN-discovered HTTP targets in cache. Run the discover CLI from the toolbar command after the Player is running on the phone.",
-                        "发现缓存中没有局域网 HTTP 目标。手机 Player 运行后，使用工具栏复制的 discover CLI 执行发现。"),
+                        "No LAN-discovered HTTP targets found. Keep Scan LAN checked and refresh after the Player is running on the same network.",
+                        "未发现局域网 HTTP 目标。请保持“扫描局域网”勾选，并在同一网络中的 Player 运行后刷新。"),
                     MessageType.None);
                 return;
             }
@@ -261,6 +289,15 @@ namespace AIBridge.Editor
 
         private void RefreshPlayers()
         {
+            LoadPlayersFromCache();
+            if (_scanLanOnRefresh)
+            {
+                BeginLanScan();
+            }
+        }
+
+        private void LoadPlayersFromCache()
+        {
             _runtimeDirectory = AIBridgeRuntimeBridgeEditorUtility.GetRuntimeDirectory();
             _localHttpUrl = AIBridgeRuntimeBridgeEditorUtility.BuildLocalHttpUrl();
             _discoveryCachePath = AIBridgeRuntimeBridgeEditorUtility.GetDiscoveryCachePath();
@@ -270,6 +307,82 @@ namespace AIBridge.Editor
             _discoveredTargets.AddRange(AIBridgeRuntimeBridgeEditorUtility.ListDiscoveredTargets());
             _lastRefreshTime = EditorApplication.timeSinceStartup;
             Repaint();
+        }
+
+        private void BeginLanScan()
+        {
+            if (_lanScanRunning)
+            {
+                return;
+            }
+
+            var settings = AIBridgeProjectSettings.Instance.RuntimeBridge;
+            var udpPort = Math.Max(1, settings.DiscoveryUdpPort);
+            var authToken = settings.AuthToken;
+            var generation = ++_lanScanGeneration;
+            var synchronizationContext = SynchronizationContext.Current;
+            _lanScanRunning = true;
+            _lanScanStatus = AIBridgeEditorText.T(
+                "Scanning UDP " + udpPort + "...",
+                "正在扫描 UDP " + udpPort + "...");
+            Repaint();
+
+            Task.Run(() =>
+            {
+                try
+                {
+                    return AIBridgeRuntimeBridgeEditorUtility.DiscoverLanTargets(
+                        AIBridgeRuntimeBridgeEditorUtility.DefaultLanDiscoveryTimeoutMs,
+                        udpPort,
+                        authToken);
+                }
+                catch (Exception exception)
+                {
+                    return new AIBridgeRuntimeLanDiscoveryResult
+                    {
+                        Success = false,
+                        Error = exception.Message
+                    };
+                }
+            }).ContinueWith(task =>
+            {
+                var result = task.Status == TaskStatus.RanToCompletion
+                    ? task.Result
+                    : new AIBridgeRuntimeLanDiscoveryResult
+                    {
+                        Success = false,
+                        Error = task.Exception == null ? "task canceled" : task.Exception.GetBaseException().Message
+                    };
+                if (synchronizationContext != null)
+                {
+                    synchronizationContext.Post(_ => CompleteLanScan(generation, result), null);
+                }
+            }, TaskScheduler.Default);
+        }
+
+        private void CompleteLanScan(int generation, AIBridgeRuntimeLanDiscoveryResult result)
+        {
+            if (this == null || generation != _lanScanGeneration)
+            {
+                return;
+            }
+
+            _lanScanRunning = false;
+            if (result == null || !result.Success)
+            {
+                var error = result == null ? "unknown error" : result.Error;
+                _lanScanStatus = AIBridgeEditorText.T(
+                    "Scan failed: " + error,
+                    "扫描失败：" + error);
+            }
+            else
+            {
+                _lanScanStatus = AIBridgeEditorText.T(
+                    "Found " + result.ReachableCount + " reachable / " + result.Count + " discovered",
+                    "发现 " + result.ReachableCount + " 个可达 / " + result.Count + " 个响应");
+            }
+
+            LoadPlayersFromCache();
         }
 
         private static void OpenRuntimeDirectory()
