@@ -39,6 +39,21 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
+        public void EnabledCodeIndexRendersCodeLookupRouting()
+        {
+            var target = AssistantIntegrationRegistry.GetTargets().First(item => item.Id == "codex");
+
+            AIBridgeProjectSettings.Instance.CodeIndex.EnableCodeIndex = true;
+            SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
+
+            var rootRule = File.ReadAllText(Path.Combine(ProjectRoot, "AGENTS.md"));
+            StringAssert.Contains("Code Index: enabled", rootRule);
+            StringAssert.Contains("C# code lookup or source navigation", rootRule);
+            StringAssert.Contains("load `aibridge-code-index` first", rootRule);
+            StringAssert.Contains("this root rule or the workflow", rootRule);
+        }
+
+        [Test]
         public void DisabledCodeIndexRemovesStaleSkillAndRendersCapabilityRule()
         {
             var target = AssistantIntegrationRegistry.GetTargets().First(item => item.Id == "codex");
@@ -53,6 +68,20 @@ namespace AIBridge.Editor.Tests
             var rootRule = File.ReadAllText(Path.Combine(ProjectRoot, "AGENTS.md"));
             StringAssert.Contains("Code Index: disabled", rootRule);
             StringAssert.Contains("Do not call `code_index`", rootRule);
+        }
+
+        [Test]
+        public void DevelopmentWorkflowRoutesCSharpLookupToCodeIndex()
+        {
+            var target = AssistantIntegrationRegistry.GetTargets().First(item => item.Id == "codex");
+
+            SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
+
+            var workflowSkillPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "SKILL.md");
+            var workflowSkill = File.ReadAllText(workflowSkillPath);
+            StringAssert.Contains("C# 代码查找", workflowSkill);
+            StringAssert.Contains("优先加入 `aibridge-code-index`", workflowSkill);
+            StringAssert.Contains("字面量字符串", workflowSkill);
         }
 
         [Test]

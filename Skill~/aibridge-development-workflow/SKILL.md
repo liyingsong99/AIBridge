@@ -35,8 +35,9 @@ description: "AIBridge/Unity 项目的标准开发工作流。Use when creating,
 匹配规则：
 
 - 所有开发任务至少包含 `aibridge-development-workflow`。
-- 涉及 AIBridge CLI、Unity 编译、日志、代码文件查找、资源搜索、预制、场景或 Inspector 操作时，加入 `aibridge`。
-- 涉及语义符号、定义、引用、实现、调用者或诊断查询时，只有 `aibridge-code-index` 已安装且项目规则未声明 Code Index 关闭，才加入 `aibridge-code-index`；否则使用 `rg` 和常规文件读取。
+- 涉及 AIBridge CLI、Unity 编译、日志、资源搜索、预制、场景或 Inspector 操作时，加入 `aibridge`。
+- 涉及 C# 代码查找、源码导航、符号、定义、引用、实现、派生类型、调用者或诊断查询时，只有 `aibridge-code-index` 已安装且项目规则未声明 Code Index 关闭，才优先加入 `aibridge-code-index`；否则使用 `rg` 和常规文件读取。
+- 涉及字面量字符串、注释、配置、文件名、非 C# 代码、Unity 资源、Prefab 或 Scene 搜索时，使用 `rg`、文件读取或常规 AIBridge 命令，不使用 Code Index。
 - 涉及复杂 Prefab 资源修改、批量 SerializedProperty、子物体/组件创建或引用写入时，加入 `aibridge-prefab-patch`。
 - 涉及直接修改 Unity YAML 文本序列化文件（`.unity`、`.prefab`、`.asset`、`.mat`、`.controller` 等），或 AIBridge 不支持的 Prefab/Scene/ScriptableObjectTable 结构修改时，加入 `unity-yaml-editing`。
 - 涉及 batch、multi、批处理脚本、长脚本、stdin 或脚本自动化时，加入 `aibridge-batch-script`。

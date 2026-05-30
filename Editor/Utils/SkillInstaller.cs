@@ -705,7 +705,7 @@ namespace AIBridge.Editor
                 { "WORKFLOW_SKILL_RULE", AIBridgeEditorText.For(language, "After entering the standard development workflow, `aibridge-development-workflow` decides whether to load additional Skills in Skills matching mode.", "进入标准开发工作流后，由 `aibridge-development-workflow` 在 `【Skills 匹配模式】` 决定是否继续加载其它 Skill。") },
                 { "SKILL_LOADING_TITLE", AIBridgeEditorText.For(language, "Skill Loading", "Skill 加载") },
                 { "WORKFLOW_SKILL_ENTRY", AIBridgeEditorText.For(language, "Load `aibridge-development-workflow` from `" + workflowSkillDocPath + "` before development tasks.", "开发任务先加载 `" + workflowSkillDocPath + "` 中的 `aibridge-development-workflow`。") },
-                { "SKILL_ROOT_RULE", AIBridgeEditorText.For(language, "AIBridge Skills are installed under `" + skillRootPath + "/<skill-name>/SKILL.md`; load sibling Skills from that directory only when the workflow requires them.", "AIBridge Skills 安装在 `" + skillRootPath + "/<skill-name>/SKILL.md`；仅在工作流要求时从该目录加载同级 Skill。") }
+                { "SKILL_ROOT_RULE", AIBridgeEditorText.For(language, "AIBridge Skills are installed under `" + skillRootPath + "/<skill-name>/SKILL.md`; load sibling Skills from that directory when this root rule or the workflow requires them.", "AIBridge Skills 安装在 `" + skillRootPath + "/<skill-name>/SKILL.md`；当本根规则或工作流要求时，从该目录加载同级 Skill。") }
             };
         }
 
@@ -715,8 +715,8 @@ namespace AIBridge.Editor
             {
                 return AIBridgeEditorText.For(
                     language,
-                    "Code Index: enabled. Load `aibridge-code-index` only when semantic symbol, definition, reference, caller, or diagnostic lookup is useful.",
-                    "Code Index：已启用。只有需要语义符号、定义、引用、调用者或诊断查询时才加载 `aibridge-code-index`。");
+                    "Code Index: enabled. For C# code lookup or source navigation, load `aibridge-code-index` first when the query can be expressed as symbol, definition, reference, implementation, derived type, caller, or diagnostic lookup. Use `rg` for literal, fuzzy, non-C# searches, or when Code Index is unavailable.",
+                    "Code Index：已启用。C# 代码查找或源码导航中，只要查询可表达为符号、定义、引用、实现、派生类型、调用者或诊断查询，应优先加载 `aibridge-code-index`。字面量、模糊文本、非 C# 搜索或 Code Index 不可用时使用 `rg`。");
             }
 
             return AIBridgeEditorText.For(

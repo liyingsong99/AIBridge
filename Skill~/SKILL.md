@@ -46,13 +46,13 @@ Most Unity-side commands require an `action` such as `asset search` or `inspecto
 - `focus` is Windows CLI-only. `dialog` is CLI-only, uses Windows window APIs or macOS Accessibility permission, and omits dialog fields when no modal dialog is detected. `screenshot game` and `screenshot gif` require Play Mode; `screenshot scene_view` works in Edit mode when a Scene view is open.
 - `input` requires Play Mode and an active EventSystem; use it with `gameview`, `screenshot`, and `get_logs` for UI interaction checks. Pixel and normalized coordinate input uses Unity screen coordinates with a fixed bottom-left origin.
 - `runtime` is CLI-only and talks to `AIBridgeRuntime` inside a Player or Play Mode target. Use `runtime list_targets` first, then target `latest` or a specific target id.
-- Code Index is a separate optional Skill. Use `aibridge-code-index` only when that Skill is installed and project rules say Code Index is enabled; otherwise use `rg`, file reads, and regular AIBridge commands.
+- Code Index is a separate optional Skill. For C# code lookup or source navigation, use `aibridge-code-index` when that Skill is installed and project rules say Code Index is enabled; use `rg`, file reads, and regular AIBridge commands for literal, fuzzy, non-C# code, asset, scene, prefab, or unavailable Code Index searches.
 
 ## Related Resources
 
 - `aibridge-prefab-patch`: specialized Skill for complex prefab asset edits.
 - `aibridge-batch-script`: specialized Skill for `batch` / `multi` script automation.
-- `aibridge-code-index`: optional Skill for read-only semantic code lookup when Code Index is enabled.
+- `aibridge-code-index`: optional Skill for read-only semantic C# code lookup and source navigation when Code Index is enabled.
 - `unity-yaml-editing`: fallback Skill for direct UnityYAML edits when AIBridge/Unity APIs cannot express the operation.
 - `references/command-reference.md`: generated CLI command syntax for common commands.
 - `references/inspector-property-reference.md`: generated Inspector and SerializedProperty syntax.
