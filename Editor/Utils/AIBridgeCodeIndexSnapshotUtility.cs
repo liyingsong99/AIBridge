@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -8,9 +9,13 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+#if UNITY_EDITOR
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
+#else
+#pragma warning disable 0649
+#endif
 
 namespace AIBridge.Editor
 {
@@ -30,8 +35,14 @@ namespace AIBridge.Editor
         private const string ManifestJsonFileName = "manifest.json";
         private const string AssemblySnapshotExtension = ".bin";
         private const string IndexExtension = ".idx";
+        private const string TempDirectoryName = "temp";
+        private const string CompilerInputFileName = "compiler-input.json";
+        private const int StartupMaxWorkerCount = 2;
+        private const int ManualMaxWorkerCount = 4;
+        private const int SnapshotWorkerTimeoutMs = 600000;
         private static readonly Regex TokenRegex = new Regex("[A-Za-z_][A-Za-z0-9_]*", RegexOptions.Compiled);
 
+#if UNITY_EDITOR
         public static string GetSnapshotDirectory()
         {
             return Path.Combine(AIBridgeCodeIndexEditorUtility.GetIndexDirectory(), SnapshotDirectoryName);
@@ -41,7 +52,7 @@ namespace AIBridge.Editor
         {
             try
             {
-                return GenerateSnapshot(CreateSnapshotRequest(), out message);
+                return GenerateSnapshot(CreateSnapshotRequest(manual: true, reason: "manualSnapshot"), out message);
             }
             catch (Exception ex)
             {
@@ -50,18 +61,300 @@ namespace AIBridge.Editor
             }
         }
 
-        public static Task<SnapshotResult> GenerateSnapshotAsync()
+        public static Task<SnapshotResult> GenerateSnapshotAsync(bool manual, string reason)
         {
-            var request = CreateSnapshotRequest();
+            var request = CreateSnapshotRequest(manual, reason);
+            var inputPath = WriteSnapshotCompilerInput(request);
+            var cliPath = AIBridgeCodeIndexEditorUtility.ResolveCliPath();
             return Task.Run(() =>
             {
-                string message;
-                var success = GenerateSnapshot(request, out message);
-                return new SnapshotResult(success, message);
+                if (!string.IsNullOrEmpty(cliPath))
+                {
+                    return RunExternalSnapshotWorker(cliPath, inputPath, request);
+                }
+
+                string message = null;
+                SnapshotResult result = null;
+                RunWithSnapshotThreadPriority(request.Manual, () =>
+                {
+                    // 仅源码开发环境缺少已发布 CLI 时回退；正常路径应由外部 worker 执行重 IO/CPU 工作。
+                    var success = GenerateSnapshot(request, out message);
+                    result = new SnapshotResult(success, message + ", fallback=in-process");
+                });
+                return result;
             });
         }
 
-        private static SnapshotRequest CreateSnapshotRequest()
+        private static SnapshotResult RunExternalSnapshotWorker(string cliPath, string inputPath, SnapshotRequest request)
+        {
+            try
+            {
+                var arguments = "code_index build_snapshot"
+                                + " --input " + QuoteCliArgument(inputPath)
+                                + " --timeout " + SnapshotWorkerTimeoutMs.ToString(CultureInfo.InvariantCulture)
+                                + " --priority " + (request.Manual ? "normal" : "low")
+                                + " --workers " + Math.Max(1, request.WorkerCount).ToString(CultureInfo.InvariantCulture)
+                                + " --project-root " + QuoteCliArgument(request.ProjectRoot);
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = cliPath,
+                    Arguments = arguments,
+                    WorkingDirectory = request.ProjectRoot,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WindowStyle = ProcessWindowStyle.Hidden,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+
+                using (var process = Process.Start(startInfo))
+                {
+                    if (process == null)
+                    {
+                        return new SnapshotResult(false, "snapshot worker did not start");
+                    }
+
+                    if (!process.WaitForExit(SnapshotWorkerTimeoutMs))
+                    {
+                        try
+                        {
+                            process.Kill();
+                        }
+                        catch
+                        {
+                        }
+
+                        return new SnapshotResult(false, "snapshot worker timed out after " + SnapshotWorkerTimeoutMs.ToString(CultureInfo.InvariantCulture) + "ms");
+                    }
+
+                    var stdout = process.StandardOutput.ReadToEnd();
+                    var stderr = process.StandardError.ReadToEnd();
+                    return BuildWorkerResult(process.ExitCode, stdout, stderr);
+                }
+            }
+            catch (Exception ex)
+            {
+                return new SnapshotResult(false, GetExceptionMessage(ex));
+            }
+        }
+
+        private static SnapshotResult BuildWorkerResult(int exitCode, string stdout, string stderr)
+        {
+            var success = exitCode == 0 && ReadJsonBool(stdout, "success", true);
+            var message = ReadJsonString(stdout, "message");
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                message = string.IsNullOrWhiteSpace(stderr) ? (stdout ?? string.Empty).Trim() : stderr.Trim();
+            }
+
+            return new SnapshotResult(success, message);
+        }
+
+        private static string WriteSnapshotCompilerInput(SnapshotRequest request)
+        {
+            var directory = Path.Combine(AIBridgeCodeIndexEditorUtility.GetIndexDirectory(), TempDirectoryName);
+            Directory.CreateDirectory(directory);
+            var path = Path.Combine(directory, CompilerInputFileName);
+            var builder = new StringBuilder();
+            builder.Append("{\n");
+            AppendJsonProperty(builder, "schemaVersion", SchemaVersion, true);
+            AppendJsonProperty(builder, "projectRoot", request.ProjectRoot, true);
+            AppendJsonProperty(builder, "snapshotDirectory", request.SnapshotDirectory, true);
+            AppendJsonProperty(builder, "unityVersion", request.UnityVersion, true);
+            AppendJsonProperty(builder, "buildTarget", request.BuildTarget, true);
+            AppendJsonProperty(builder, "manual", request.Manual, true);
+            AppendJsonProperty(builder, "reason", request.Reason, true);
+            AppendJsonProperty(builder, "workerCount", request.WorkerCount, true);
+            AppendSnapshotFilterJson(builder, request.FilterConfig);
+            builder.Append(",\n");
+            builder.Append("  \"assemblies\": [\n");
+            for (var i = 0; i < request.Assemblies.Count; i++)
+            {
+                AppendAssemblyInputJson(builder, request.Assemblies[i]);
+                if (i + 1 < request.Assemblies.Count)
+                {
+                    builder.Append(",");
+                }
+
+                builder.Append("\n");
+            }
+
+            builder.Append("  ]\n");
+            builder.Append("}\n");
+            File.WriteAllText(path, builder.ToString(), Encoding.UTF8);
+            return path;
+        }
+
+        private static void AppendSnapshotFilterJson(StringBuilder builder, SnapshotFilterConfig config)
+        {
+            builder.Append("  \"filterConfig\": {\n");
+            AppendJsonProperty(builder, "includePackageCacheSourceAssemblies", config != null && config.IncludePackageCacheSourceAssemblies, true, 4);
+            AppendJsonArray(builder, "ignoredAssemblyPatterns", config == null ? null : config.IgnoredAssemblyPatterns, true, 4);
+            AppendJsonArray(builder, "ignoredSourcePathPatterns", config == null ? null : config.IgnoredSourcePathPatterns, true, 4);
+            AppendJsonProperty(builder, "filterHash", config == null ? null : config.FilterHash, false, 4);
+            builder.Append("  }");
+        }
+
+        private static void AppendAssemblyInputJson(StringBuilder builder, AssemblyInput input)
+        {
+            builder.Append("    {\n");
+            AppendJsonProperty(builder, "assemblyName", input.AssemblyName, true, 6);
+            AppendJsonProperty(builder, "assemblyId", input.AssemblyId, true, 6);
+            AppendJsonProperty(builder, "snapshotFile", input.SnapshotFile, true, 6);
+            AppendJsonProperty(builder, "nameIndexFile", input.NameIndexFile, true, 6);
+            AppendJsonProperty(builder, "tokenIndexFile", input.TokenIndexFile, true, 6);
+            AppendJsonProperty(builder, "outputPath", input.OutputPath, true, 6);
+            AppendJsonProperty(builder, "asmdefPath", input.AsmdefPath, true, 6);
+            AppendJsonProperty(builder, "languageVersion", input.LanguageVersion, true, 6);
+            AppendJsonProperty(builder, "allowUnsafe", input.AllowUnsafe, true, 6);
+            AppendJsonArray(builder, "sourceFiles", input.SourceFiles, true, 6);
+            AppendJsonArray(builder, "referenceFiles", input.ReferenceFiles, true, 6);
+            AppendJsonArray(builder, "defines", input.Defines, true, 6);
+            AppendJsonArray(builder, "projectReferenceAssemblyNames", input.ProjectReferenceAssemblyNames, true, 6);
+            AppendJsonArray(builder, "compilerOptions", input.CompilerOptions, false, 6);
+            builder.Append("    }");
+        }
+
+        private static void AppendJsonArray(StringBuilder builder, string name, string[] values, bool comma, int indent)
+        {
+            builder.Append(new string(' ', indent));
+            builder.Append("\"").Append(EscapeJson(name)).Append("\": [");
+            for (var i = 0; values != null && i < values.Length; i++)
+            {
+                if (i > 0)
+                {
+                    builder.Append(", ");
+                }
+
+                builder.Append("\"").Append(EscapeJson(values[i])).Append("\"");
+            }
+
+            builder.Append("]");
+            builder.Append(comma ? ",\n" : "\n");
+        }
+
+        private static bool ReadJsonBool(string json, string name, bool defaultValue)
+        {
+            if (string.IsNullOrWhiteSpace(json) || string.IsNullOrWhiteSpace(name))
+            {
+                return defaultValue;
+            }
+
+            var match = Regex.Match(json, "\"" + Regex.Escape(name) + "\"\\s*:\\s*(?<value>true|false)", RegexOptions.IgnoreCase);
+            if (!match.Success)
+            {
+                return defaultValue;
+            }
+
+            return string.Equals(match.Groups["value"].Value, "true", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string ReadJsonString(string json, string name)
+        {
+            if (string.IsNullOrWhiteSpace(json) || string.IsNullOrWhiteSpace(name))
+            {
+                return null;
+            }
+
+            var match = Regex.Match(json, "\"" + Regex.Escape(name) + "\"\\s*:\\s*\"(?<value>(?:\\\\.|[^\"])*)\"");
+            return match.Success ? UnescapeJsonString(match.Groups["value"].Value) : null;
+        }
+
+        private static string UnescapeJsonString(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return value;
+            }
+
+            var builder = new StringBuilder(value.Length);
+            for (var i = 0; i < value.Length; i++)
+            {
+                var c = value[i];
+                if (c != '\\' || i + 1 >= value.Length)
+                {
+                    builder.Append(c);
+                    continue;
+                }
+
+                i++;
+                switch (value[i])
+                {
+                    case '"':
+                    case '\\':
+                    case '/':
+                        builder.Append(value[i]);
+                        break;
+                    case 'n':
+                        builder.Append('\n');
+                        break;
+                    case 'r':
+                        builder.Append('\r');
+                        break;
+                    case 't':
+                        builder.Append('\t');
+                        break;
+                    case 'b':
+                        builder.Append('\b');
+                        break;
+                    case 'f':
+                        builder.Append('\f');
+                        break;
+                    default:
+                        builder.Append(value[i]);
+                        break;
+                }
+            }
+
+            return builder.ToString();
+        }
+
+        private static string QuoteCliArgument(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return "\"\"";
+            }
+
+            var builder = new StringBuilder();
+            builder.Append('"');
+            var backslashes = 0;
+            for (var i = 0; i < value.Length; i++)
+            {
+                var c = value[i];
+                if (c == '\\')
+                {
+                    backslashes++;
+                    continue;
+                }
+
+                if (c == '"')
+                {
+                    builder.Append('\\', backslashes * 2 + 1);
+                    builder.Append('"');
+                    backslashes = 0;
+                    continue;
+                }
+
+                if (backslashes > 0)
+                {
+                    builder.Append('\\', backslashes);
+                    backslashes = 0;
+                }
+
+                builder.Append(c);
+            }
+
+            if (backslashes > 0)
+            {
+                builder.Append('\\', backslashes * 2);
+            }
+
+            builder.Append('"');
+            return builder.ToString();
+        }
+
+        private static SnapshotRequest CreateSnapshotRequest(bool manual, string reason)
         {
             var projectRoot = GetProjectRoot();
             var unityVersion = Application.unityVersion;
@@ -73,6 +366,9 @@ namespace AIBridge.Editor
                 UnityVersion = unityVersion,
                 BuildTarget = buildTarget,
                 FilterConfig = CreateFilterConfig(AIBridgeProjectSettings.Instance.CodeIndex),
+                Manual = manual,
+                Reason = reason,
+                WorkerCount = GetSnapshotWorkerCount(manual),
                 Assemblies = CaptureAssemblyInputs(unityVersion)
             };
         }
@@ -114,8 +410,9 @@ namespace AIBridge.Editor
 
             return result;
         }
+#endif
 
-        private static bool GenerateSnapshot(SnapshotRequest request, out string message)
+        public static bool GenerateSnapshot(SnapshotRequest request, out string message)
         {
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             try
@@ -151,21 +448,25 @@ namespace AIBridge.Editor
                 var rewritten = 0;
                 Parallel.ForEach(
                     changedRecords,
-                    new ParallelOptions { MaxDegreeOfParallelism = GetSnapshotWorkerCount() },
+                    new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, request.WorkerCount) },
                     record =>
                     {
-                        WriteAssemblySnapshot(Path.Combine(snapshotDirectory, record.SnapshotFile), record);
-                        WriteTokenIndexes(request.ProjectRoot, snapshotDirectory, record);
-                        Interlocked.Increment(ref rewritten);
+                        RunWithSnapshotThreadPriority(request.Manual, () =>
+                        {
+                            WriteAssemblySnapshot(Path.Combine(snapshotDirectory, record.SnapshotFile), record);
+                            WriteTokenIndexes(request.ProjectRoot, snapshotDirectory, record);
+                            Interlocked.Increment(ref rewritten);
+                        });
                     });
 
+                var nowTicks = DateTime.UtcNow.Ticks;
                 var manifest = new SnapshotManifest
                 {
                     SchemaVersion = SchemaVersion,
                     ProjectRootHash = ComputeHashText(request.ProjectRoot.Replace('\\', '/').ToLowerInvariant()),
                     UnityVersion = request.UnityVersion,
                     BuildTarget = request.BuildTarget,
-                    CreatedAtTicks = DateTime.UtcNow.Ticks,
+                    CreatedAtTicks = nowTicks,
                     GenerationId = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture),
                     IncludePackageCacheSourceAssemblies = request.FilterConfig.IncludePackageCacheSourceAssemblies,
                     IgnoredAssemblyPatterns = request.FilterConfig.IgnoredAssemblyPatterns,
@@ -176,15 +477,52 @@ namespace AIBridge.Editor
                     Assemblies = records,
                     ExcludedAssemblies = collection.ExcludedRecords
                 };
+                manifest.SnapshotContentHash = ComputeSnapshotContentHash(manifest);
 
-                WriteManifestBinary(Path.Combine(snapshotDirectory, ManifestBinFileName), manifest);
-                WriteManifestJson(Path.Combine(snapshotDirectory, ManifestJsonFileName), manifest);
+                var contentUnchanged = !string.IsNullOrWhiteSpace(previousState.SnapshotContentHash)
+                                       && string.Equals(previousState.SnapshotContentHash, manifest.SnapshotContentHash, StringComparison.OrdinalIgnoreCase);
+                if (contentUnchanged)
+                {
+                    // 内容未变化时保留旧元数据，避免 generationId/createdAt 造成无意义 stale。
+                    if (previousState.CreatedAtTicks > 0)
+                    {
+                        manifest.CreatedAtTicks = previousState.CreatedAtTicks;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(previousState.GenerationId))
+                    {
+                        manifest.GenerationId = previousState.GenerationId;
+                    }
+                }
+
+                var manifestBinPath = Path.Combine(snapshotDirectory, ManifestBinFileName);
+                var manifestJsonPath = Path.Combine(snapshotDirectory, ManifestJsonFileName);
+                var manifestWritten = false;
+                var manifestJsonWritten = false;
+                if (!contentUnchanged)
+                {
+                    WriteManifestBinary(manifestBinPath, manifest);
+                    WriteManifestJson(manifestJsonPath, manifest);
+                    manifestWritten = true;
+                    manifestJsonWritten = true;
+                }
+                else if (!ManifestJsonHasSnapshotContentHash(manifestJsonPath, manifest.SnapshotContentHash))
+                {
+                    WriteManifestJson(manifestJsonPath, manifest);
+                    manifestJsonWritten = true;
+                }
+
                 stopwatch.Stop();
                 message = "snapshot generated: assemblies=" + records.Count
                           + ", excludedAssemblies=" + collection.ExcludedRecords.Count
                           + ", sources=" + CountSources(records)
                           + ", excludedSources=" + CountSources(collection.ExcludedRecords)
                           + ", rewritten=" + rewritten
+                          + ", workers=" + Math.Max(1, request.WorkerCount)
+                          + ", mode=" + (request.Manual ? "manual" : "background")
+                          + ", reason=" + (request.Reason ?? "unknown")
+                          + ", manifestWritten=" + manifestWritten
+                          + ", manifestJsonWritten=" + manifestJsonWritten
                           + ", elapsedMs=" + stopwatch.ElapsedMilliseconds;
                 return true;
             }
@@ -302,6 +640,7 @@ namespace AIBridge.Editor
             return record;
         }
 
+#if UNITY_EDITOR
         private static SnapshotFilterConfig CreateFilterConfig(AIBridgeProjectSettings.CodeIndexSettingsData settings)
         {
             var config = new SnapshotFilterConfig
@@ -320,6 +659,7 @@ namespace AIBridge.Editor
             config.FilterHash = ComputeHash(parts);
             return config;
         }
+#endif
 
         private static List<string> SplitFilterPatterns(string value)
         {
@@ -604,9 +944,54 @@ namespace AIBridge.Editor
             WriteStringList(writer, record.ReverseDependencyAssemblyIds);
         }
 
-        private static int GetSnapshotWorkerCount()
+        private static int GetSnapshotWorkerCount(bool manual)
         {
-            return Math.Max(1, Math.Min(Environment.ProcessorCount - 1, 4));
+            var availableWorkers = Math.Max(1, Environment.ProcessorCount - 1);
+            var maxWorkers = manual ? ManualMaxWorkerCount : StartupMaxWorkerCount;
+            return Math.Max(1, Math.Min(availableWorkers, maxWorkers));
+        }
+
+        private static void RunWithSnapshotThreadPriority(bool manual, Action action)
+        {
+            if (action == null)
+            {
+                return;
+            }
+
+            if (manual)
+            {
+                action();
+                return;
+            }
+
+            var thread = Thread.CurrentThread;
+            var originalPriority = thread.Priority;
+            try
+            {
+                // 启动/自动刷新降低后台线程优先级，减少与 Editor 主流程争抢 CPU。
+                if (originalPriority > ThreadPriority.BelowNormal)
+                {
+                    thread.Priority = ThreadPriority.BelowNormal;
+                }
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                action();
+            }
+            finally
+            {
+                try
+                {
+                    thread.Priority = originalPriority;
+                }
+                catch
+                {
+                }
+            }
         }
 
         private static void WriteTokenIndexes(string projectRoot, string snapshotDirectory, AssemblyRecord record)
@@ -722,6 +1107,7 @@ namespace AIBridge.Editor
             AppendJsonProperty(builder, "buildTarget", manifest.BuildTarget, true);
             AppendJsonProperty(builder, "createdAt", new DateTime(manifest.CreatedAtTicks, DateTimeKind.Utc).ToString("o"), true);
             AppendJsonProperty(builder, "generationId", manifest.GenerationId, true);
+            AppendJsonProperty(builder, "snapshotContentHash", manifest.SnapshotContentHash, true);
             AppendJsonProperty(builder, "assemblyCount", manifest.Assemblies.Count, true);
             AppendJsonProperty(builder, "sourceFileCount", CountSources(manifest.Assemblies), true);
             AppendJsonProperty(builder, "excludedAssemblyCount", manifest.ExcludedAssemblyCount, true);
@@ -786,6 +1172,25 @@ namespace AIBridge.Editor
             AtomicReplace(tempPath, path);
         }
 
+        private static bool ManifestJsonHasSnapshotContentHash(string path, string snapshotContentHash)
+        {
+            if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(snapshotContentHash) || !File.Exists(path))
+            {
+                return false;
+            }
+
+            try
+            {
+                var text = File.ReadAllText(path, Encoding.UTF8);
+                var match = Regex.Match(text, "\"snapshotContentHash\"\\s*:\\s*\"(?<value>[0-9a-fA-F]+)\"");
+                return match.Success && string.Equals(match.Groups["value"].Value, snapshotContentHash, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private static PreviousSnapshotState ReadPreviousSnapshotState(string snapshotDirectory)
         {
             var result = new PreviousSnapshotState();
@@ -800,27 +1205,33 @@ namespace AIBridge.Editor
                 using (var stream = new FileStream(manifestPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 using (var reader = new BinaryReader(stream, Encoding.UTF8))
                 {
-                    ReadSnapshotHeader(reader, ManifestFormatKind);
-                    var schemaVersion = reader.ReadInt32();
-                    ReadBinaryString(reader);
-                    ReadBinaryString(reader);
-                    ReadBinaryString(reader);
-                    ReadBinaryString(reader);
-                    reader.ReadBoolean();
-                    ReadBinaryStringList(reader);
-                    ReadBinaryStringList(reader);
-                    ReadBinaryString(reader);
-                    reader.ReadInt32();
-                    reader.ReadInt32();
-                    if (schemaVersion != SchemaVersion)
+                    var createdAtTicks = ReadSnapshotHeader(reader, ManifestFormatKind);
+                    var manifest = new SnapshotManifest
+                    {
+                        SchemaVersion = reader.ReadInt32(),
+                        ProjectRootHash = ReadBinaryString(reader),
+                        UnityVersion = ReadBinaryString(reader),
+                        BuildTarget = ReadBinaryString(reader),
+                        GenerationId = ReadBinaryString(reader),
+                        IncludePackageCacheSourceAssemblies = reader.ReadBoolean(),
+                        IgnoredAssemblyPatterns = ReadBinaryStringList(reader),
+                        IgnoredSourcePathPatterns = ReadBinaryStringList(reader),
+                        FilterHash = ReadBinaryString(reader),
+                        ExcludedAssemblyCount = reader.ReadInt32(),
+                        ExcludedSourceFileCount = reader.ReadInt32()
+                    };
+                    if (manifest.SchemaVersion != SchemaVersion)
                     {
                         return result;
                     }
 
+                    result.CreatedAtTicks = createdAtTicks;
+                    result.GenerationId = manifest.GenerationId;
                     var count = reader.ReadInt32();
                     for (var i = 0; i < count; i++)
                     {
                         var record = ReadBinaryAssemblyRecord(reader);
+                        manifest.Assemblies.Add(record);
                         if (!string.IsNullOrWhiteSpace(record.AssemblyId) && !string.IsNullOrWhiteSpace(record.AssemblyHash))
                         {
                             result.AssemblyHashes[record.AssemblyId] = record.AssemblyHash;
@@ -828,6 +1239,8 @@ namespace AIBridge.Editor
 
                         ReadPreviousAssemblyFile(snapshotDirectory, record, result);
                     }
+
+                    result.SnapshotContentHash = ComputeSnapshotContentHash(manifest);
                 }
             }
             catch
@@ -884,16 +1297,18 @@ namespace AIBridge.Editor
             }
         }
 
-        private static void ReadSnapshotHeader(BinaryReader reader, int expectedFormatKind)
+        private static long ReadSnapshotHeader(BinaryReader reader, int expectedFormatKind)
         {
             var magic = Encoding.ASCII.GetString(reader.ReadBytes(Magic.Length));
             var schema = reader.ReadInt32();
             var formatKind = reader.ReadInt32();
-            reader.ReadInt64();
+            var createdAtTicks = reader.ReadInt64();
             if (!string.Equals(magic, Magic, StringComparison.Ordinal) || schema != SchemaVersion || formatKind != expectedFormatKind)
             {
                 throw new InvalidDataException("Unsupported Code Index snapshot format.");
             }
+
+            return createdAtTicks;
         }
 
         private static AssemblyRecord ReadBinaryAssemblyRecord(BinaryReader reader)
@@ -910,8 +1325,8 @@ namespace AIBridge.Editor
                 LanguageVersion = ReadBinaryString(reader),
                 AllowUnsafe = reader.ReadBoolean()
             };
-            reader.ReadInt32();
-            reader.ReadInt32();
+            record.SourceFileCount = reader.ReadInt32();
+            record.ReferenceCount = reader.ReadInt32();
             record.DefinesHash = ReadBinaryString(reader);
             record.SourcesHash = ReadBinaryString(reader);
             record.ReferencesHash = ReadBinaryString(reader);
@@ -964,6 +1379,7 @@ namespace AIBridge.Editor
             return Encoding.UTF8.GetString(reader.ReadBytes(length));
         }
 
+#if UNITY_EDITOR
         private static string[] ReadStringArray(object instance, string name)
         {
             var value = ReadMemberValue(instance, name);
@@ -1187,6 +1603,7 @@ namespace AIBridge.Editor
 
             return null;
         }
+#endif
 
         private static string NormalizePath(string projectRoot, string path)
         {
@@ -1217,10 +1634,12 @@ namespace AIBridge.Editor
                 : Path.GetFullPath(Path.Combine(projectRoot, path));
         }
 
+#if UNITY_EDITOR
         private static string GetProjectRoot()
         {
             return Path.GetDirectoryName(Application.dataPath);
         }
+#endif
 
         private static string SanitizeAssemblyId(string name)
         {
@@ -1280,6 +1699,81 @@ namespace AIBridge.Editor
             }
 
             return ComputeHash(parts);
+        }
+
+        private static string ComputeSnapshotContentHash(SnapshotManifest manifest)
+        {
+            var parts = new List<string>();
+            if (manifest == null)
+            {
+                return ComputeHash(parts);
+            }
+
+            AddContentPart(parts, "schemaVersion", manifest.SchemaVersion.ToString(CultureInfo.InvariantCulture));
+            AddContentPart(parts, "projectRootHash", manifest.ProjectRootHash);
+            AddContentPart(parts, "unityVersion", manifest.UnityVersion);
+            AddContentPart(parts, "buildTarget", manifest.BuildTarget);
+            AddContentPart(parts, "includePackageCacheSourceAssemblies", manifest.IncludePackageCacheSourceAssemblies ? "true" : "false");
+            AddStringListContentParts(parts, "ignoredAssemblyPatterns", manifest.IgnoredAssemblyPatterns);
+            AddStringListContentParts(parts, "ignoredSourcePathPatterns", manifest.IgnoredSourcePathPatterns);
+            AddContentPart(parts, "filterHash", manifest.FilterHash);
+            AddContentPart(parts, "excludedAssemblyCount", manifest.ExcludedAssemblyCount.ToString(CultureInfo.InvariantCulture));
+            AddContentPart(parts, "excludedSourceFileCount", manifest.ExcludedSourceFileCount.ToString(CultureInfo.InvariantCulture));
+            AddContentPart(parts, "assemblyCount", manifest.Assemblies.Count.ToString(CultureInfo.InvariantCulture));
+            for (var i = 0; i < manifest.Assemblies.Count; i++)
+            {
+                AddAssemblyContentParts(parts, manifest.Assemblies[i], i);
+            }
+
+            return ComputeHash(parts);
+        }
+
+        private static void AddAssemblyContentParts(List<string> parts, AssemblyRecord record, int index)
+        {
+            AddContentPart(parts, "assembly[" + index + "].assemblyName", record.AssemblyName);
+            AddContentPart(parts, "assembly[" + index + "].assemblyId", record.AssemblyId);
+            AddContentPart(parts, "assembly[" + index + "].snapshotFile", record.SnapshotFile);
+            AddContentPart(parts, "assembly[" + index + "].nameIndexFile", record.NameIndexFile);
+            AddContentPart(parts, "assembly[" + index + "].tokenIndexFile", record.TokenIndexFile);
+            AddContentPart(parts, "assembly[" + index + "].outputPath", record.OutputPath);
+            AddContentPart(parts, "assembly[" + index + "].asmdefPath", record.AsmdefPath);
+            AddContentPart(parts, "assembly[" + index + "].languageVersion", record.LanguageVersion);
+            AddContentPart(parts, "assembly[" + index + "].allowUnsafe", record.AllowUnsafe ? "true" : "false");
+            AddContentPart(parts, "assembly[" + index + "].sourceFileCount", GetSourceFileCount(record).ToString(CultureInfo.InvariantCulture));
+            AddContentPart(parts, "assembly[" + index + "].referenceCount", GetReferenceCount(record).ToString(CultureInfo.InvariantCulture));
+            AddContentPart(parts, "assembly[" + index + "].definesHash", record.DefinesHash);
+            AddContentPart(parts, "assembly[" + index + "].sourcesHash", record.SourcesHash);
+            AddContentPart(parts, "assembly[" + index + "].referencesHash", record.ReferencesHash);
+            AddContentPart(parts, "assembly[" + index + "].compilerOptionsHash", record.CompilerOptionsHash);
+            AddContentPart(parts, "assembly[" + index + "].assemblyHash", record.AssemblyHash);
+            AddContentPart(parts, "assembly[" + index + "].lastWriteTimeTicks", record.LastWriteTimeTicks.ToString(CultureInfo.InvariantCulture));
+            AddStringListContentParts(parts, "assembly[" + index + "].dependencyAssemblyIds", record.DependencyAssemblyIds);
+            AddStringListContentParts(parts, "assembly[" + index + "].reverseDependencyAssemblyIds", record.ReverseDependencyAssemblyIds);
+        }
+
+        private static void AddStringListContentParts(List<string> parts, string name, List<string> values)
+        {
+            var count = values == null ? 0 : values.Count;
+            AddContentPart(parts, name + ".count", count.ToString(CultureInfo.InvariantCulture));
+            for (var i = 0; values != null && i < values.Count; i++)
+            {
+                AddContentPart(parts, name + "[" + i + "]", values[i]);
+            }
+        }
+
+        private static void AddContentPart(List<string> parts, string name, string value)
+        {
+            parts.Add(name + "=" + (value ?? string.Empty));
+        }
+
+        private static int GetSourceFileCount(AssemblyRecord record)
+        {
+            return record.Sources != null && record.Sources.Count > 0 ? record.Sources.Count : record.SourceFileCount;
+        }
+
+        private static int GetReferenceCount(AssemblyRecord record)
+        {
+            return record.References != null && record.References.Count > 0 ? record.References.Count : record.ReferenceCount;
         }
 
         private static string ComputeHash(IEnumerable<FileState> files)
@@ -1528,7 +2022,38 @@ namespace AIBridge.Editor
 
         private static string EscapeJson(string value)
         {
-            return (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"");
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder(value.Length + 8);
+            for (var i = 0; i < value.Length; i++)
+            {
+                switch (value[i])
+                {
+                    case '\\':
+                        builder.Append("\\\\");
+                        break;
+                    case '"':
+                        builder.Append("\\\"");
+                        break;
+                    case '\r':
+                        builder.Append("\\r");
+                        break;
+                    case '\n':
+                        builder.Append("\\n");
+                        break;
+                    case '\t':
+                        builder.Append("\\t");
+                        break;
+                    default:
+                        builder.Append(value[i]);
+                        break;
+                }
+            }
+
+            return builder.ToString();
         }
 
         private static string GetExceptionMessage(Exception ex)
@@ -1554,17 +2079,20 @@ namespace AIBridge.Editor
             }
         }
 
-        private sealed class SnapshotRequest
+        public sealed class SnapshotRequest
         {
             public string ProjectRoot;
             public string SnapshotDirectory;
             public string UnityVersion;
             public string BuildTarget;
             public SnapshotFilterConfig FilterConfig;
+            public bool Manual;
+            public string Reason;
+            public int WorkerCount;
             public List<AssemblyInput> Assemblies = new List<AssemblyInput>();
         }
 
-        private sealed class AssemblyInput
+        public sealed class AssemblyInput
         {
             public string AssemblyName;
             public string AssemblyId;
@@ -1582,7 +2110,7 @@ namespace AIBridge.Editor
             public List<string> CompilerOptions = new List<string>();
         }
 
-        private sealed class SnapshotManifest
+        public sealed class SnapshotManifest
         {
             public int SchemaVersion;
             public string ProjectRootHash;
@@ -1590,6 +2118,7 @@ namespace AIBridge.Editor
             public string BuildTarget;
             public long CreatedAtTicks;
             public string GenerationId;
+            public string SnapshotContentHash;
             public bool IncludePackageCacheSourceAssemblies;
             public List<string> IgnoredAssemblyPatterns = new List<string>();
             public List<string> IgnoredSourcePathPatterns = new List<string>();
@@ -1600,13 +2129,13 @@ namespace AIBridge.Editor
             public List<AssemblyRecord> ExcludedAssemblies = new List<AssemblyRecord>();
         }
 
-        private sealed class SnapshotCollection
+        public sealed class SnapshotCollection
         {
             public List<AssemblyRecord> IncludedRecords = new List<AssemblyRecord>();
             public List<AssemblyRecord> ExcludedRecords = new List<AssemblyRecord>();
         }
 
-        private sealed class SnapshotFilterConfig
+        public sealed class SnapshotFilterConfig
         {
             public bool IncludePackageCacheSourceAssemblies;
             public List<string> IgnoredAssemblyPatterns = new List<string>();
@@ -1614,13 +2143,16 @@ namespace AIBridge.Editor
             public string FilterHash;
         }
 
-        private sealed class PreviousSnapshotState
+        public sealed class PreviousSnapshotState
         {
+            public long CreatedAtTicks;
+            public string GenerationId;
+            public string SnapshotContentHash;
             public Dictionary<string, string> AssemblyHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             public Dictionary<string, FileState> FileStates = new Dictionary<string, FileState>(StringComparer.OrdinalIgnoreCase);
         }
 
-        private sealed class AssemblyRecord
+        public sealed class AssemblyRecord
         {
             public string AssemblyName;
             public string AssemblyId;
@@ -1631,6 +2163,8 @@ namespace AIBridge.Editor
             public string AsmdefPath;
             public string LanguageVersion;
             public bool AllowUnsafe;
+            public int SourceFileCount;
+            public int ReferenceCount;
             public List<string> Defines = new List<string>();
             public List<FileState> Sources = new List<FileState>();
             public List<FileState> References = new List<FileState>();
@@ -1647,7 +2181,7 @@ namespace AIBridge.Editor
             public string ExcludeReason;
         }
 
-        private sealed class FileState
+        public sealed class FileState
         {
             public string Path;
             public long Length;

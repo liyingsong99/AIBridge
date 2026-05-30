@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Immutable;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -43,7 +44,7 @@ namespace AIBridgeCodeIndex
         private Dictionary<string, AssemblySnapshot> _assemblyById = new Dictionary<string, AssemblySnapshot>(StringComparer.OrdinalIgnoreCase);
         private HashSet<string> _loadedAssemblyIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, HashSet<string>> _tokenDocumentIndex;
-        private string _loadedManifestHash;
+        private string _loadedSnapshotContentHash;
         private bool _loadedAllAssemblies;
         private bool _disposed;
 
@@ -74,6 +75,7 @@ namespace AIBridgeCodeIndex
         public bool SnapshotExists { get; private set; }
         public int SnapshotVersion { get; private set; }
         public string GenerationId { get; private set; }
+        public string SnapshotContentHash { get; private set; }
         public int AssemblyCount { get; private set; }
         public int SourceFileCount { get; private set; }
         public int ExcludedAssemblyCount { get; private set; }
@@ -97,10 +99,26 @@ namespace AIBridgeCodeIndex
                     return true;
                 }
 
-                var hash = ComputeFileHash(manifestPath);
-                if (string.IsNullOrEmpty(_loadedManifestHash) || !string.Equals(hash, _loadedManifestHash, StringComparison.OrdinalIgnoreCase))
+                SnapshotManifest manifest;
+                try
                 {
-                    StaleReason = "manifestChanged";
+                    manifest = ReadManifest(manifestPath);
+                    ValidateSnapshotFiles(manifest);
+                }
+                catch
+                {
+                    if (string.IsNullOrWhiteSpace(StaleReason))
+                    {
+                        StaleReason = "snapshotContentChanged";
+                    }
+
+                    return true;
+                }
+
+                if (string.IsNullOrEmpty(_loadedSnapshotContentHash)
+                    || !string.Equals(manifest.SnapshotContentHash, _loadedSnapshotContentHash, StringComparison.OrdinalIgnoreCase))
+                {
+                    StaleReason = "snapshotContentChanged";
                     return true;
                 }
 
@@ -168,7 +186,7 @@ namespace AIBridgeCodeIndex
             RebuildSnapshotMaps(manifest, symbols);
             ApplyManifestStatus(manifest, loadedProjects: 0, loadedDocuments: 0);
             _manifest = manifest;
-            _loadedManifestHash = ComputeFileHash(manifestPath);
+            _loadedSnapshotContentHash = manifest.SnapshotContentHash;
             StaleReason = null;
             SnapshotExists = true;
         }
@@ -250,7 +268,7 @@ namespace AIBridgeCodeIndex
                 loadedProjects: _solution.Projects.Count(),
                 loadedDocuments: _solution.Projects.SelectMany(project => project.Documents).Count(IsCSharpDocument));
             _manifest = manifest;
-            _loadedManifestHash = ComputeFileHash(manifestPath);
+            _loadedSnapshotContentHash = manifest.SnapshotContentHash;
             StaleReason = null;
             SnapshotExists = true;
             ScheduleWorkspaceDispose(previousWorkspace);
@@ -286,6 +304,7 @@ namespace AIBridgeCodeIndex
         {
             SnapshotVersion = manifest.SchemaVersion;
             GenerationId = manifest.GenerationId;
+            SnapshotContentHash = manifest.SnapshotContentHash;
             AssemblyCount = manifest.Assemblies.Count;
             SourceFileCount = manifest.Assemblies.Sum(item => item.Sources.Count);
             ExcludedAssemblyCount = manifest.ExcludedAssemblyCount;
@@ -304,8 +323,20 @@ namespace AIBridgeCodeIndex
                 var record = manifest.Assemblies[i];
                 if (!File.Exists(Path.Combine(GetSnapshotDirectory(), record.SnapshotFile)))
                 {
-                    StaleReason = "missingAssemblySnapshot";
+                    StaleReason = "snapshotFilesMissing";
                     throw new FileNotFoundException("Unity compilation snapshot assembly file is missing.", record.SnapshotFile);
+                }
+
+                if (!File.Exists(Path.Combine(GetSnapshotDirectory(), record.NameIndexFile)))
+                {
+                    StaleReason = "snapshotFilesMissing";
+                    throw new FileNotFoundException("Unity compilation snapshot name index file is missing.", record.NameIndexFile);
+                }
+
+                if (!File.Exists(Path.Combine(GetSnapshotDirectory(), record.TokenIndexFile)))
+                {
+                    StaleReason = "snapshotFilesMissing";
+                    throw new FileNotFoundException("Unity compilation snapshot token index file is missing.", record.TokenIndexFile);
                 }
             }
         }
@@ -2098,38 +2129,47 @@ namespace AIBridgeCodeIndex
 
         private SnapshotManifest ReadManifest(string path)
         {
-            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-            using (var reader = new BinaryReader(stream, Encoding.UTF8))
+            try
             {
-                ReadHeader(reader, ManifestFormatKind);
-                var manifest = new SnapshotManifest
+                using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var reader = new BinaryReader(stream, Encoding.UTF8))
                 {
-                    SchemaVersion = reader.ReadInt32(),
-                    ProjectRootHash = ReadString(reader),
-                    UnityVersion = ReadString(reader),
-                    BuildTarget = ReadString(reader),
-                    GenerationId = ReadString(reader),
-                    IncludePackageCacheSourceAssemblies = reader.ReadBoolean(),
-                    IgnoredAssemblyPatterns = ReadStringList(reader),
-                    IgnoredSourcePathPatterns = ReadStringList(reader),
-                    FilterHash = ReadString(reader),
-                    ExcludedAssemblyCount = reader.ReadInt32(),
-                    ExcludedSourceFileCount = reader.ReadInt32()
-                };
+                    ReadHeader(reader, ManifestFormatKind);
+                    var manifest = new SnapshotManifest
+                    {
+                        SchemaVersion = reader.ReadInt32(),
+                        ProjectRootHash = ReadString(reader),
+                        UnityVersion = ReadString(reader),
+                        BuildTarget = ReadString(reader),
+                        GenerationId = ReadString(reader),
+                        IncludePackageCacheSourceAssemblies = reader.ReadBoolean(),
+                        IgnoredAssemblyPatterns = ReadStringList(reader),
+                        IgnoredSourcePathPatterns = ReadStringList(reader),
+                        FilterHash = ReadString(reader),
+                        ExcludedAssemblyCount = reader.ReadInt32(),
+                        ExcludedSourceFileCount = reader.ReadInt32()
+                    };
 
-                if (manifest.SchemaVersion != SchemaVersion)
-                {
-                    StaleReason = "schemaMismatch";
-                    throw new InvalidDataException("Unsupported Code Index snapshot schema version: " + manifest.SchemaVersion);
+                    if (manifest.SchemaVersion != SchemaVersion)
+                    {
+                        StaleReason = "schemaMismatch";
+                        throw new InvalidDataException("Unsupported Code Index snapshot schema version: " + manifest.SchemaVersion);
+                    }
+
+                    var count = reader.ReadInt32();
+                    for (var i = 0; i < count; i++)
+                    {
+                        manifest.Assemblies.Add(ReadAssemblyRecord(reader));
+                    }
+
+                    manifest.SnapshotContentHash = ComputeSnapshotContentHash(manifest);
+                    return manifest;
                 }
-
-                var count = reader.ReadInt32();
-                for (var i = 0; i < count; i++)
-                {
-                    manifest.Assemblies.Add(ReadAssemblyRecord(reader));
-                }
-
-                return manifest;
+            }
+            catch (InvalidDataException)
+            {
+                StaleReason = "schemaMismatch";
+                throw;
             }
         }
 
@@ -2253,6 +2293,95 @@ namespace AIBridgeCodeIndex
             return Path.IsPathRooted(path)
                 ? Path.GetFullPath(path)
                 : Path.GetFullPath(Path.Combine(_projectRoot, path));
+        }
+
+        private static string ComputeSnapshotContentHash(SnapshotManifest manifest)
+        {
+            var parts = new List<string>();
+            if (manifest == null)
+            {
+                return ComputeHash(parts);
+            }
+
+            AddContentPart(parts, "schemaVersion", manifest.SchemaVersion.ToString(CultureInfo.InvariantCulture));
+            AddContentPart(parts, "projectRootHash", manifest.ProjectRootHash);
+            AddContentPart(parts, "unityVersion", manifest.UnityVersion);
+            AddContentPart(parts, "buildTarget", manifest.BuildTarget);
+            AddContentPart(parts, "includePackageCacheSourceAssemblies", manifest.IncludePackageCacheSourceAssemblies ? "true" : "false");
+            AddStringListContentParts(parts, "ignoredAssemblyPatterns", manifest.IgnoredAssemblyPatterns);
+            AddStringListContentParts(parts, "ignoredSourcePathPatterns", manifest.IgnoredSourcePathPatterns);
+            AddContentPart(parts, "filterHash", manifest.FilterHash);
+            AddContentPart(parts, "excludedAssemblyCount", manifest.ExcludedAssemblyCount.ToString(CultureInfo.InvariantCulture));
+            AddContentPart(parts, "excludedSourceFileCount", manifest.ExcludedSourceFileCount.ToString(CultureInfo.InvariantCulture));
+            AddContentPart(parts, "assemblyCount", manifest.Assemblies.Count.ToString(CultureInfo.InvariantCulture));
+            for (var i = 0; i < manifest.Assemblies.Count; i++)
+            {
+                AddAssemblyContentParts(parts, manifest.Assemblies[i], i);
+            }
+
+            return ComputeHash(parts);
+        }
+
+        private static void AddAssemblyContentParts(List<string> parts, AssemblySnapshot record, int index)
+        {
+            AddContentPart(parts, "assembly[" + index + "].assemblyName", record.AssemblyName);
+            AddContentPart(parts, "assembly[" + index + "].assemblyId", record.AssemblyId);
+            AddContentPart(parts, "assembly[" + index + "].snapshotFile", record.SnapshotFile);
+            AddContentPart(parts, "assembly[" + index + "].nameIndexFile", record.NameIndexFile);
+            AddContentPart(parts, "assembly[" + index + "].tokenIndexFile", record.TokenIndexFile);
+            AddContentPart(parts, "assembly[" + index + "].outputPath", record.OutputPath);
+            AddContentPart(parts, "assembly[" + index + "].asmdefPath", record.AsmdefPath);
+            AddContentPart(parts, "assembly[" + index + "].languageVersion", record.LanguageVersion);
+            AddContentPart(parts, "assembly[" + index + "].allowUnsafe", record.AllowUnsafe ? "true" : "false");
+            AddContentPart(parts, "assembly[" + index + "].sourceFileCount", record.SourceFileCount.ToString(CultureInfo.InvariantCulture));
+            AddContentPart(parts, "assembly[" + index + "].referenceCount", record.ReferenceCount.ToString(CultureInfo.InvariantCulture));
+            AddContentPart(parts, "assembly[" + index + "].definesHash", record.DefinesHash);
+            AddContentPart(parts, "assembly[" + index + "].sourcesHash", record.SourcesHash);
+            AddContentPart(parts, "assembly[" + index + "].referencesHash", record.ReferencesHash);
+            AddContentPart(parts, "assembly[" + index + "].compilerOptionsHash", record.CompilerOptionsHash);
+            AddContentPart(parts, "assembly[" + index + "].assemblyHash", record.AssemblyHash);
+            AddContentPart(parts, "assembly[" + index + "].lastWriteTimeTicks", record.LastWriteTimeTicks.ToString(CultureInfo.InvariantCulture));
+            AddStringListContentParts(parts, "assembly[" + index + "].dependencyAssemblyIds", record.DependencyAssemblyIds);
+            AddStringListContentParts(parts, "assembly[" + index + "].reverseDependencyAssemblyIds", record.ReverseDependencyAssemblyIds);
+        }
+
+        private static void AddStringListContentParts(List<string> parts, string name, List<string> values)
+        {
+            var count = values == null ? 0 : values.Count;
+            AddContentPart(parts, name + ".count", count.ToString(CultureInfo.InvariantCulture));
+            for (var i = 0; values != null && i < values.Count; i++)
+            {
+                AddContentPart(parts, name + "[" + i + "]", values[i]);
+            }
+        }
+
+        private static void AddContentPart(List<string> parts, string name, string value)
+        {
+            parts.Add(name + "=" + (value ?? string.Empty));
+        }
+
+        private static string ComputeHash(IEnumerable<string> values)
+        {
+            var builder = new StringBuilder();
+            if (values != null)
+            {
+                foreach (var value in values)
+                {
+                    builder.Append(value ?? string.Empty).Append('\n');
+                }
+            }
+
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            {
+                var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(builder.ToString()));
+                var hash = new StringBuilder(bytes.Length * 2);
+                for (var i = 0; i < bytes.Length; i++)
+                {
+                    hash.Append(bytes[i].ToString("x2", CultureInfo.InvariantCulture));
+                }
+
+                return hash.ToString();
+            }
         }
 
         private static string ComputeFileHash(string path)
@@ -2455,6 +2584,7 @@ namespace AIBridgeCodeIndex
             public string UnityVersion;
             public string BuildTarget;
             public string GenerationId;
+            public string SnapshotContentHash;
             public bool IncludePackageCacheSourceAssemblies;
             public List<string> IgnoredAssemblyPatterns = new List<string>();
             public List<string> IgnoredSourcePathPatterns = new List<string>();

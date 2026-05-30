@@ -124,7 +124,7 @@ namespace AIBridge.Editor
             WriteCodeIndexConfig();
             try
             {
-                _snapshotRefreshTask = AIBridgeCodeIndexSnapshotUtility.GenerateSnapshotAsync();
+                _snapshotRefreshTask = AIBridgeCodeIndexSnapshotUtility.GenerateSnapshotAsync(manual, reason);
             }
             catch (Exception ex)
             {
@@ -247,6 +247,7 @@ namespace AIBridge.Editor
 
             var args = "code_index warmup --no-wait --timeout 1000"
                        + " --unity-pid " + Process.GetCurrentProcess().Id
+                       + " --priority " + (manual ? "normal" : "low")
                        + " --auto-refresh " + ToCliBool(settings.AutoRefreshOnFileChange);
             return StartCli(cliPath, args, waitForExit: false, timeoutMs: 1000);
         }

@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using AIBridgeCLI.Core;
@@ -19,6 +21,9 @@ namespace AIBridgeCLI.Commands
         private const string SnapshotDirectoryName = "snapshot";
         private const string DaemonDirectoryName = "CodeIndex";
         private const string DaemonAssemblyName = "AIBridgeCodeIndex";
+        private const int SnapshotSchemaVersion = 2;
+        private const int ManifestFormatKind = 1;
+        private const string SnapshotMagic = "AIBCI";
         private const string DisabledMessage = "Code Index is disabled in AIBridge settings. Enable AIBridge > Settings > Code Index > Enable Code Index, or use rg and normal file reads.";
         private static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings
         {
@@ -58,6 +63,8 @@ namespace AIBridgeCLI.Commands
                     return await BuildStatusAsync(context, timeout);
                 case "doctor":
                     return await BuildDoctorAsync(context, timeout);
+                case "build_snapshot":
+                    return await BuildSnapshotAsync(context, options, timeout, noWait);
                 case "warmup":
                     return await WarmupAsync(context, timeout, noWait);
                 case "reset":
@@ -261,6 +268,136 @@ namespace AIBridgeCLI.Commands
             }
         }
 
+        private static async Task<JObject> BuildSnapshotAsync(CodeIndexContext context, Dictionary<string, string> options, int timeout, bool noWait)
+        {
+            if (options == null || !options.TryGetValue("input", out var inputPath) || string.IsNullOrWhiteSpace(inputPath))
+            {
+                return BuildFailure(context, "Missing required parameter: --input");
+            }
+
+            inputPath = Path.GetFullPath(inputPath);
+            if (!File.Exists(inputPath))
+            {
+                return BuildFailure(context, "Snapshot compiler input does not exist: " + inputPath);
+            }
+
+            var daemon = CodeIndexDaemonExecutable.Resolve();
+            if (!daemon.CanStart)
+            {
+                return BuildFailure(context, "AIBridgeCodeIndex worker executable or project was not found.");
+            }
+
+            var workers = ResolveOptionInt(options, "workers", 0);
+            var startInfo = daemon.CreateStartInfo();
+            startInfo.WorkingDirectory = context.ProjectRoot;
+            startInfo.UseShellExecute = false;
+            startInfo.CreateNoWindow = true;
+            startInfo.WindowStyle = ProcessWindowStyle.Hidden;
+            startInfo.RedirectStandardOutput = !noWait;
+            startInfo.RedirectStandardError = !noWait;
+            daemon.AddSnapshotWorkerArguments(startInfo, context, inputPath, workers);
+
+            var process = Process.Start(startInfo);
+            if (process == null)
+            {
+                return BuildFailure(context, "Failed to start AIBridgeCodeIndex snapshot worker.");
+            }
+
+            ApplyDaemonPriority(process, context.ProcessPriority);
+            if (noWait)
+            {
+                var pid = process.Id;
+                process.Dispose();
+                return new JObject
+                {
+                    ["success"] = true,
+                    ["enabled"] = context.Enabled,
+                    ["semantic"] = false,
+                    ["source"] = "snapshot-worker",
+                    ["state"] = "running",
+                    ["stale"] = true,
+                    ["projectRoot"] = context.ProjectRoot,
+                    ["workspaceMode"] = "unity-snapshot",
+                    ["snapshotExists"] = File.Exists(context.SnapshotManifestPath),
+                    ["inputPath"] = inputPath,
+                    ["workerPid"] = pid
+                };
+            }
+
+            string stdout;
+            string stderr;
+            using (process)
+            {
+                var stdoutTask = process.StandardOutput.ReadToEndAsync();
+                var stderrTask = process.StandardError.ReadToEndAsync();
+                if (!process.WaitForExit(timeout))
+                {
+                    try
+                    {
+                        process.Kill(true);
+                    }
+                    catch
+                    {
+                    }
+
+                    return BuildFailure(context, "Snapshot worker timed out after " + timeout.ToString(CultureInfo.InvariantCulture) + "ms.");
+                }
+
+                stdout = await stdoutTask;
+                stderr = await stderrTask;
+                if (process.ExitCode != 0)
+                {
+                    return BuildSnapshotWorkerFailure(context, inputPath, stdout, stderr);
+                }
+            }
+
+            JObject result;
+            try
+            {
+                result = string.IsNullOrWhiteSpace(stdout) ? new JObject() : JObject.Parse(stdout);
+            }
+            catch
+            {
+                return BuildFailure(context, "Snapshot worker returned invalid output: " + TrimPreview(stdout));
+            }
+
+            result["success"] = result.Value<bool?>("success") ?? true;
+            result["enabled"] = context.Enabled;
+            result["semantic"] = false;
+            result["source"] = "snapshot-worker";
+            result["state"] = result.Value<bool>("success") ? "snapshotGenerated" : "failed";
+            result["stale"] = !result.Value<bool>("success");
+            result["projectRoot"] = context.ProjectRoot;
+            result["workspaceMode"] = "unity-snapshot";
+            result["snapshotExists"] = File.Exists(context.SnapshotManifestPath);
+            result["snapshotPath"] = context.SnapshotManifestPath;
+            result["inputPath"] = inputPath;
+            return result;
+        }
+
+        private static JObject BuildSnapshotWorkerFailure(CodeIndexContext context, string inputPath, string stdout, string stderr)
+        {
+            JObject workerResult = null;
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(stdout))
+                {
+                    workerResult = JObject.Parse(stdout);
+                }
+            }
+            catch
+            {
+            }
+
+            var message = workerResult == null
+                ? (TrimPreview(stderr) ?? TrimPreview(stdout))
+                : workerResult.Value<string>("message");
+            var result = BuildFailure(context, string.IsNullOrWhiteSpace(message) ? "Snapshot worker failed." : message);
+            result["source"] = "snapshot-worker";
+            result["inputPath"] = inputPath;
+            return result;
+        }
+
         private static async Task<JObject> BuildStatusAsync(CodeIndexContext context, int timeout)
         {
             var status = ReadStatusFile(context);
@@ -315,30 +452,33 @@ namespace AIBridgeCLI.Commands
                 suggestions.Add("Run code_index reset, then code_index warmup.");
             }
 
+            var currentStatus = remote ?? status;
+            var manifestStale = IsSnapshotStale(context, currentStatus);
             return new JObject
             {
                 ["success"] = true,
                 ["healthy"] = issues.Count == 0,
                 ["enabled"] = true,
-                ["semantic"] = reachable && IsReady(remote ?? status),
+                ["semantic"] = reachable && IsReady(currentStatus),
                 ["source"] = "doctor",
                 ["state"] = remote == null ? (status == null ? "missing" : status.Value<string>("state")) : remote.Value<string>("state"),
-                ["stale"] = !reachable || !IsReady(remote ?? status),
+                ["stale"] = !reachable || !IsReady(currentStatus) || manifestStale,
                 ["projectRoot"] = context.ProjectRoot,
                 ["solution"] = context.SolutionPath,
                 ["workspaceMode"] = "unity-snapshot",
                 ["snapshotExists"] = File.Exists(context.SnapshotManifestPath),
                 ["snapshotPath"] = context.SnapshotManifestPath,
-                ["snapshotVersion"] = (remote ?? status)?.Value<int?>("snapshotVersion") ?? 0,
-                ["generationId"] = (remote ?? status)?.Value<string>("generationId"),
-                ["assemblyCount"] = (remote ?? status)?.Value<int?>("assemblyCount") ?? 0,
-                ["sourceFileCount"] = (remote ?? status)?.Value<int?>("sourceFileCount") ?? 0,
-                ["excludedAssemblyCount"] = (remote ?? status)?.Value<int?>("excludedAssemblyCount") ?? 0,
-                ["excludedSourceFileCount"] = (remote ?? status)?.Value<int?>("excludedSourceFileCount") ?? 0,
-                ["includePackageCacheSourceAssemblies"] = (remote ?? status)?.Value<bool?>("includePackageCacheSourceAssemblies") ?? false,
-                ["buildTarget"] = (remote ?? status)?.Value<string>("buildTarget"),
-                ["unityVersion"] = (remote ?? status)?.Value<string>("unityVersion"),
-                ["staleReason"] = (remote ?? status)?.Value<string>("staleReason"),
+                ["snapshotVersion"] = currentStatus?.Value<int?>("snapshotVersion") ?? 0,
+                ["generationId"] = currentStatus?.Value<string>("generationId"),
+                ["snapshotContentHash"] = currentStatus?.Value<string>("snapshotContentHash"),
+                ["assemblyCount"] = currentStatus?.Value<int?>("assemblyCount") ?? 0,
+                ["sourceFileCount"] = currentStatus?.Value<int?>("sourceFileCount") ?? 0,
+                ["excludedAssemblyCount"] = currentStatus?.Value<int?>("excludedAssemblyCount") ?? 0,
+                ["excludedSourceFileCount"] = currentStatus?.Value<int?>("excludedSourceFileCount") ?? 0,
+                ["includePackageCacheSourceAssemblies"] = currentStatus?.Value<bool?>("includePackageCacheSourceAssemblies") ?? false,
+                ["buildTarget"] = currentStatus?.Value<string>("buildTarget"),
+                ["unityVersion"] = currentStatus?.Value<string>("unityVersion"),
+                ["staleReason"] = manifestStale ? "snapshotContentChanged" : currentStatus?.Value<string>("staleReason"),
                 ["statusPath"] = context.StatusPath,
                 ["daemon"] = daemon.DisplayPath,
                 ["issues"] = issues,
@@ -429,6 +569,31 @@ namespace AIBridgeCLI.Commands
             {
                 throw new InvalidOperationException("Failed to start AIBridgeCodeIndex daemon.");
             }
+
+            ApplyDaemonPriority(process, context.ProcessPriority);
+            process.Dispose();
+        }
+
+        private static void ApplyDaemonPriority(Process process, string priority)
+        {
+            if (process == null || string.IsNullOrWhiteSpace(priority))
+            {
+                return;
+            }
+
+            try
+            {
+                if (string.Equals(priority, "low", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(priority, "below-normal", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(priority, "belownormal", StringComparison.OrdinalIgnoreCase))
+                {
+                    process.PriorityClass = ProcessPriorityClass.BelowNormal;
+                }
+            }
+            catch
+            {
+                // 降低优先级是启动体验优化，平台不支持或权限不足时不应影响 daemon 启动。
+            }
         }
 
         private static async Task<JObject> WaitForStatusFileAsync(CodeIndexContext context, int timeout)
@@ -515,6 +680,7 @@ namespace AIBridgeCLI.Commands
                 ["snapshotPath"] = context.SnapshotManifestPath,
                 ["snapshotVersion"] = status.Value<int?>("snapshotVersion") ?? 0,
                 ["generationId"] = status.Value<string>("generationId"),
+                ["snapshotContentHash"] = status.Value<string>("snapshotContentHash"),
                 ["assemblyCount"] = status.Value<int?>("assemblyCount") ?? 0,
                 ["sourceFileCount"] = status.Value<int?>("sourceFileCount") ?? 0,
                 ["excludedAssemblyCount"] = status.Value<int?>("excludedAssemblyCount") ?? 0,
@@ -522,7 +688,7 @@ namespace AIBridgeCLI.Commands
                 ["includePackageCacheSourceAssemblies"] = status.Value<bool?>("includePackageCacheSourceAssemblies") ?? false,
                 ["buildTarget"] = status.Value<string>("buildTarget"),
                 ["unityVersion"] = status.Value<string>("unityVersion"),
-                ["staleReason"] = manifestStale ? "snapshotChanged" : status.Value<string>("staleReason"),
+                ["staleReason"] = manifestStale ? "snapshotContentChanged" : status.Value<string>("staleReason"),
                 ["loadedProjects"] = status.Value<int?>("loadedProjects") ?? 0,
                 ["loadedDocuments"] = status.Value<int?>("loadedDocuments") ?? 0,
                 ["endpoint"] = status.Value<string>("endpoint"),
@@ -584,6 +750,14 @@ namespace AIBridgeCLI.Commands
                 return true;
             }
 
+            var snapshotContentHash = status == null ? null : status.Value<string>("snapshotContentHash");
+            if (!string.IsNullOrWhiteSpace(snapshotContentHash))
+            {
+                var currentSnapshotContentHash = ReadSnapshotContentHash(context.SnapshotManifestPath);
+                return string.IsNullOrWhiteSpace(currentSnapshotContentHash)
+                       || !string.Equals(snapshotContentHash, currentSnapshotContentHash, StringComparison.OrdinalIgnoreCase);
+            }
+
             var generationId = status == null ? null : status.Value<string>("generationId");
             if (string.IsNullOrWhiteSpace(generationId))
             {
@@ -609,6 +783,148 @@ namespace AIBridgeCLI.Commands
             catch
             {
                 return null;
+            }
+        }
+
+        private static string ReadSnapshotContentHash(string manifestPath)
+        {
+            if (string.IsNullOrWhiteSpace(manifestPath) || !File.Exists(manifestPath))
+            {
+                return null;
+            }
+
+            try
+            {
+                using (var stream = new FileStream(manifestPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var reader = new BinaryReader(stream, Encoding.UTF8))
+                {
+                    var magic = Encoding.ASCII.GetString(reader.ReadBytes(SnapshotMagic.Length));
+                    var headerSchema = reader.ReadInt32();
+                    var formatKind = reader.ReadInt32();
+                    reader.ReadInt64();
+                    if (!string.Equals(magic, SnapshotMagic, StringComparison.Ordinal)
+                        || headerSchema != SnapshotSchemaVersion
+                        || formatKind != ManifestFormatKind)
+                    {
+                        return null;
+                    }
+
+                    var parts = new List<string>();
+                    var schemaVersion = reader.ReadInt32();
+                    AddContentPart(parts, "schemaVersion", schemaVersion.ToString(CultureInfo.InvariantCulture));
+                    AddContentPart(parts, "projectRootHash", ReadSnapshotString(reader));
+                    AddContentPart(parts, "unityVersion", ReadSnapshotString(reader));
+                    AddContentPart(parts, "buildTarget", ReadSnapshotString(reader));
+                    ReadSnapshotString(reader);
+                    AddContentPart(parts, "includePackageCacheSourceAssemblies", reader.ReadBoolean() ? "true" : "false");
+                    AddStringListContentParts(parts, "ignoredAssemblyPatterns", ReadSnapshotStringList(reader));
+                    AddStringListContentParts(parts, "ignoredSourcePathPatterns", ReadSnapshotStringList(reader));
+                    AddContentPart(parts, "filterHash", ReadSnapshotString(reader));
+                    AddContentPart(parts, "excludedAssemblyCount", reader.ReadInt32().ToString(CultureInfo.InvariantCulture));
+                    AddContentPart(parts, "excludedSourceFileCount", reader.ReadInt32().ToString(CultureInfo.InvariantCulture));
+                    if (schemaVersion != SnapshotSchemaVersion)
+                    {
+                        return null;
+                    }
+
+                    var assemblyCount = reader.ReadInt32();
+                    AddContentPart(parts, "assemblyCount", assemblyCount.ToString(CultureInfo.InvariantCulture));
+                    for (var i = 0; i < assemblyCount; i++)
+                    {
+                        AddAssemblyContentParts(parts, reader, i);
+                    }
+
+                    return ComputeHash(parts);
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static void AddAssemblyContentParts(List<string> parts, BinaryReader reader, int index)
+        {
+            AddContentPart(parts, "assembly[" + index + "].assemblyName", ReadSnapshotString(reader));
+            AddContentPart(parts, "assembly[" + index + "].assemblyId", ReadSnapshotString(reader));
+            AddContentPart(parts, "assembly[" + index + "].snapshotFile", ReadSnapshotString(reader));
+            AddContentPart(parts, "assembly[" + index + "].nameIndexFile", ReadSnapshotString(reader));
+            AddContentPart(parts, "assembly[" + index + "].tokenIndexFile", ReadSnapshotString(reader));
+            AddContentPart(parts, "assembly[" + index + "].outputPath", ReadSnapshotString(reader));
+            AddContentPart(parts, "assembly[" + index + "].asmdefPath", ReadSnapshotString(reader));
+            AddContentPart(parts, "assembly[" + index + "].languageVersion", ReadSnapshotString(reader));
+            AddContentPart(parts, "assembly[" + index + "].allowUnsafe", reader.ReadBoolean() ? "true" : "false");
+            AddContentPart(parts, "assembly[" + index + "].sourceFileCount", reader.ReadInt32().ToString(CultureInfo.InvariantCulture));
+            AddContentPart(parts, "assembly[" + index + "].referenceCount", reader.ReadInt32().ToString(CultureInfo.InvariantCulture));
+            AddContentPart(parts, "assembly[" + index + "].definesHash", ReadSnapshotString(reader));
+            AddContentPart(parts, "assembly[" + index + "].sourcesHash", ReadSnapshotString(reader));
+            AddContentPart(parts, "assembly[" + index + "].referencesHash", ReadSnapshotString(reader));
+            AddContentPart(parts, "assembly[" + index + "].compilerOptionsHash", ReadSnapshotString(reader));
+            AddContentPart(parts, "assembly[" + index + "].assemblyHash", ReadSnapshotString(reader));
+            AddContentPart(parts, "assembly[" + index + "].lastWriteTimeTicks", reader.ReadInt64().ToString(CultureInfo.InvariantCulture));
+            AddStringListContentParts(parts, "assembly[" + index + "].dependencyAssemblyIds", ReadSnapshotStringList(reader));
+            AddStringListContentParts(parts, "assembly[" + index + "].reverseDependencyAssemblyIds", ReadSnapshotStringList(reader));
+        }
+
+        private static List<string> ReadSnapshotStringList(BinaryReader reader)
+        {
+            var count = reader.ReadInt32();
+            var result = new List<string>(Math.Max(0, count));
+            for (var i = 0; i < count; i++)
+            {
+                result.Add(ReadSnapshotString(reader));
+            }
+
+            return result;
+        }
+
+        private static string ReadSnapshotString(BinaryReader reader)
+        {
+            var length = reader.ReadInt32();
+            if (length < 0)
+            {
+                return null;
+            }
+
+            return Encoding.UTF8.GetString(reader.ReadBytes(length));
+        }
+
+        private static void AddStringListContentParts(List<string> parts, string name, List<string> values)
+        {
+            var count = values == null ? 0 : values.Count;
+            AddContentPart(parts, name + ".count", count.ToString(CultureInfo.InvariantCulture));
+            for (var i = 0; values != null && i < values.Count; i++)
+            {
+                AddContentPart(parts, name + "[" + i + "]", values[i]);
+            }
+        }
+
+        private static void AddContentPart(List<string> parts, string name, string value)
+        {
+            parts.Add(name + "=" + (value ?? string.Empty));
+        }
+
+        private static string ComputeHash(IEnumerable<string> values)
+        {
+            var builder = new StringBuilder();
+            if (values != null)
+            {
+                foreach (var value in values)
+                {
+                    builder.Append(value ?? string.Empty).Append('\n');
+                }
+            }
+
+            using (var sha = SHA256.Create())
+            {
+                var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(builder.ToString()));
+                var result = new StringBuilder(bytes.Length * 2);
+                for (var i = 0; i < bytes.Length; i++)
+                {
+                    result.Append(bytes[i].ToString("x2", CultureInfo.InvariantCulture));
+                }
+
+                return result.ToString();
             }
         }
 
@@ -1077,6 +1393,16 @@ namespace AIBridgeCLI.Commands
                    && !string.Equals(value, "0", StringComparison.OrdinalIgnoreCase);
         }
 
+        private static int ResolveOptionInt(Dictionary<string, string> options, string key, int defaultValue)
+        {
+            if (options == null || !options.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+            {
+                return defaultValue;
+            }
+
+            return int.TryParse(value, out var result) ? result : defaultValue;
+        }
+
         private static Dictionary<string, object> BuildQueryParameters(string action, Dictionary<string, string> options)
         {
             var result = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
@@ -1235,6 +1561,7 @@ namespace AIBridgeCLI.Commands
             public int UnityPid { get; private set; }
             public bool Enabled { get; private set; }
             public bool AutoRefresh { get; private set; }
+            public string ProcessPriority { get; private set; }
             public bool FallbackToTextSearch { get; private set; }
             public bool IncludeSnapshotOnReset { get; private set; }
 
@@ -1258,6 +1585,7 @@ namespace AIBridgeCLI.Commands
                     UnityPid = unityPid,
                     Enabled = GetConfigBool(config, "enableCodeIndex", false),
                     AutoRefresh = ResolveBool(options, "auto-refresh", GetConfigBool(config, "autoRefreshOnFileChange", true)),
+                    ProcessPriority = ResolveString(options, "priority", "normal"),
                     FallbackToTextSearch = ResolveBool(options, "fallback", GetConfigBool(config, "fallbackToTextSearch", true)),
                     IncludeSnapshotOnReset = ResolveBool(options, "include-snapshot", false),
                     HasUnityProjectMarkers = Directory.Exists(Path.Combine(projectRoot, "Assets"))
@@ -1313,6 +1641,16 @@ namespace AIBridgeCLI.Commands
 
                 return !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase)
                        && !string.Equals(value, "0", StringComparison.OrdinalIgnoreCase);
+            }
+
+            private static string ResolveString(Dictionary<string, string> options, string key, string defaultValue)
+            {
+                if (options == null || !options.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+                {
+                    return defaultValue;
+                }
+
+                return value.Trim();
             }
 
             private static string ResolveProjectRoot(Dictionary<string, string> options)
@@ -1443,6 +1781,24 @@ namespace AIBridgeCLI.Commands
 
                 startInfo.ArgumentList.Add("--auto-refresh");
                 startInfo.ArgumentList.Add(context.AutoRefresh ? "true" : "false");
+            }
+
+            public void AddSnapshotWorkerArguments(ProcessStartInfo startInfo, CodeIndexContext context, string inputPath, int workers)
+            {
+                startInfo.ArgumentList.Add("--worker");
+                startInfo.ArgumentList.Add("snapshot");
+                startInfo.ArgumentList.Add("--input");
+                startInfo.ArgumentList.Add(inputPath);
+                startInfo.ArgumentList.Add("--project-root");
+                startInfo.ArgumentList.Add(context.ProjectRoot);
+                startInfo.ArgumentList.Add("--priority");
+                startInfo.ArgumentList.Add(context.ProcessPriority);
+
+                if (workers > 0)
+                {
+                    startInfo.ArgumentList.Add("--workers");
+                    startInfo.ArgumentList.Add(workers.ToString(CultureInfo.InvariantCulture));
+                }
             }
 
             private static string FindSourceProject(string startDirectory)

@@ -136,6 +136,7 @@ namespace AIBridgeCodeIndex
                     _status.snapshotExists = workspace.SnapshotExists;
                     _status.snapshotVersion = workspace.SnapshotVersion;
                     _status.generationId = workspace.GenerationId;
+                    _status.snapshotContentHash = workspace.SnapshotContentHash;
                     _status.assemblyCount = workspace.AssemblyCount;
                     _status.sourceFileCount = workspace.SourceFileCount;
                     _status.excludedAssemblyCount = workspace.ExcludedAssemblyCount;
@@ -173,6 +174,7 @@ namespace AIBridgeCodeIndex
                     _status.snapshotExists = workspace.SnapshotExists;
                     _status.snapshotVersion = workspace.SnapshotVersion;
                     _status.generationId = workspace.GenerationId;
+                    _status.snapshotContentHash = workspace.SnapshotContentHash;
                     _status.assemblyCount = workspace.AssemblyCount;
                     _status.sourceFileCount = workspace.SourceFileCount;
                     _status.excludedAssemblyCount = workspace.ExcludedAssemblyCount;
@@ -290,6 +292,7 @@ namespace AIBridgeCodeIndex
             response.snapshotExists = workspace.SnapshotExists;
             response.snapshotVersion = workspace.SnapshotVersion;
             response.generationId = workspace.GenerationId;
+            response.snapshotContentHash = workspace.SnapshotContentHash;
             response.assemblyCount = workspace.AssemblyCount;
             response.sourceFileCount = workspace.SourceFileCount;
             response.excludedAssemblyCount = workspace.ExcludedAssemblyCount;
@@ -305,6 +308,7 @@ namespace AIBridgeCodeIndex
                 _status.snapshotExists = workspace.SnapshotExists;
                 _status.snapshotVersion = workspace.SnapshotVersion;
                 _status.generationId = workspace.GenerationId;
+                _status.snapshotContentHash = workspace.SnapshotContentHash;
                 _status.assemblyCount = workspace.AssemblyCount;
                 _status.sourceFileCount = workspace.SourceFileCount;
                 _status.excludedAssemblyCount = workspace.ExcludedAssemblyCount;
@@ -342,6 +346,7 @@ namespace AIBridgeCodeIndex
                 snapshotExists = status != null && status.snapshotExists,
                 snapshotVersion = status == null ? 0 : status.snapshotVersion,
                 generationId = status == null ? null : status.generationId,
+                snapshotContentHash = status == null ? null : status.snapshotContentHash,
                 assemblyCount = status == null ? 0 : status.assemblyCount,
                 sourceFileCount = status == null ? 0 : status.sourceFileCount,
                 excludedAssemblyCount = status == null ? 0 : status.excludedAssemblyCount,
@@ -451,6 +456,7 @@ namespace AIBridgeCodeIndex
                     _status.snapshotExists = nextWorkspace.SnapshotExists;
                     _status.snapshotVersion = nextWorkspace.SnapshotVersion;
                     _status.generationId = nextWorkspace.GenerationId;
+                    _status.snapshotContentHash = nextWorkspace.SnapshotContentHash;
                     _status.assemblyCount = nextWorkspace.AssemblyCount;
                     _status.sourceFileCount = nextWorkspace.SourceFileCount;
                     _status.excludedAssemblyCount = nextWorkspace.ExcludedAssemblyCount;
@@ -620,6 +626,7 @@ namespace AIBridgeCodeIndex
                 snapshotExists = _workspace.SnapshotExists,
                 snapshotVersion = _workspace.SnapshotVersion,
                 generationId = _workspace.GenerationId,
+                snapshotContentHash = _workspace.SnapshotContentHash,
                 assemblyCount = _workspace.AssemblyCount,
                 sourceFileCount = _workspace.SourceFileCount,
                 excludedAssemblyCount = _workspace.ExcludedAssemblyCount,
@@ -664,6 +671,7 @@ namespace AIBridgeCodeIndex
                     snapshotExists = _status.snapshotExists,
                     snapshotVersion = _status.snapshotVersion,
                     generationId = _status.generationId,
+                    snapshotContentHash = _status.snapshotContentHash,
                     assemblyCount = _status.assemblyCount,
                     sourceFileCount = _status.sourceFileCount,
                     excludedAssemblyCount = _status.excludedAssemblyCount,

@@ -17,6 +17,7 @@ namespace AIBridgeCodeIndex
         public bool snapshotExists { get; set; }
         public int snapshotVersion { get; set; }
         public string generationId { get; set; }
+        public string snapshotContentHash { get; set; }
         public int assemblyCount { get; set; }
         public int sourceFileCount { get; set; }
         public int excludedAssemblyCount { get; set; }
@@ -51,6 +52,7 @@ namespace AIBridgeCodeIndex
         public bool snapshotExists { get; set; }
         public int snapshotVersion { get; set; }
         public string generationId { get; set; }
+        public string snapshotContentHash { get; set; }
         public int assemblyCount { get; set; }
         public int sourceFileCount { get; set; }
         public int excludedAssemblyCount { get; set; }
@@ -80,6 +82,7 @@ namespace AIBridgeCodeIndex
                 snapshotExists = status != null && status.snapshotExists,
                 snapshotVersion = status == null ? 0 : status.snapshotVersion,
                 generationId = status == null ? null : status.generationId,
+                snapshotContentHash = status == null ? null : status.snapshotContentHash,
                 assemblyCount = status == null ? 0 : status.assemblyCount,
                 sourceFileCount = status == null ? 0 : status.sourceFileCount,
                 excludedAssemblyCount = status == null ? 0 : status.excludedAssemblyCount,
