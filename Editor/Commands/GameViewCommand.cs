@@ -215,13 +215,31 @@ $CLI gameview list_resolutions
 
         private static PropertyInfo _currentGroupProp; // Unity 6000.x: GameViewSizes.currentGroup
 
-        private object GetMainGameView()
+        private object GetMainGameView(bool createIfMissing)
         {
             if (_getMainGameView != null)
-                return _getMainGameView.Invoke(null, null);
+            {
+                var mainView = _getMainGameView.Invoke(null, null);
+                if (mainView != null)
+                {
+                    return mainView;
+                }
+            }
+
             // Fallback for Unity 6000.x: find via Resources
             var views = Resources.FindObjectsOfTypeAll(_gameViewType);
-            return views != null && views.Length > 0 ? views[0] : null;
+            if (views != null && views.Length > 0)
+            {
+                return views[0];
+            }
+
+            if (!createIfMissing)
+            {
+                return null;
+            }
+
+            // 如果 Game 视图尚未打开，直接创建一个再读取当前分辨率。
+            return EditorWindow.GetWindow(_gameViewType);
         }
 
         private int GetSelectedSizeIndex(object gameView)
@@ -272,7 +290,7 @@ $CLI gameview list_resolutions
 
         private CommandResult GetResolution(CommandRequest request)
         {
-            var gameView = GetMainGameView();
+            var gameView = GetMainGameView(true);
             var group = GetCurrentSizeGroup();
 
             if (group == null)
@@ -344,7 +362,7 @@ $CLI gameview list_resolutions
                     $"Resolution {width}x{height} exceeds maximum allowed (8192x8192).");
             }
 
-            var gameView = GetMainGameView();
+            var gameView = GetMainGameView(true);
             if (gameView == null)
             {
                 return CommandResult.Failure(request.id,
@@ -417,7 +435,7 @@ $CLI gameview list_resolutions
                 });
             }
 
-            var gameView = GetMainGameView();
+            var gameView = GetMainGameView(false);
             int currentIndex = gameView != null ? GetSelectedSizeIndex(gameView) : -1;
 
             return CommandResult.Success(request.id, new

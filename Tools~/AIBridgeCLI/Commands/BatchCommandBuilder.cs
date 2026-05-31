@@ -68,29 +68,18 @@ namespace AIBridgeCLI.Commands
             else if (action == "from_text")
             {
                 // 从文本执行脚本
-                string scriptText = null;
-
-                // 从标准输入读取
-                if (options.TryGetValue("stdin", out var stdinValue) && stdinValue.ToLower() == "true")
-                {
-                    scriptText = Console.In.ReadToEnd();
-                }
-                // 从 --text 参数读取
-                else if (options.TryGetValue("text", out var textValue))
-                {
-                    scriptText = textValue;
-                }
-
-                if (string.IsNullOrEmpty(scriptText))
+                var scriptText = ResolveScriptText(options);
+                if (string.IsNullOrWhiteSpace(scriptText))
                 {
                     throw new ArgumentException("Script text is required. Use --text or --stdin.");
                 }
 
                 // 生成脚本文件路径（写入 .aibridge/scripts 目录）
-                string cacheDir = PathHelper.GetExchangeDirectory();
-                string scriptsDir = Path.Combine(cacheDir, "scripts");
-                string scriptName = options.TryGetValue("name", out var name) ? name : $"script_{DateTime.Now:yyyyMMddHHmmss}";
-                bool keepFile = options.TryGetValue("keep-file", out var keep) && keep.ToLower() == "true";
+                var cacheDir = PathHelper.GetExchangeDirectory();
+                var scriptsDir = Path.Combine(cacheDir, "scripts");
+                var scriptName = options.TryGetValue("name", out var name) ? name : $"script_{DateTime.Now:yyyyMMddHHmmss}";
+                var keepFile = options.TryGetValue("keep-file", out var keep) &&
+                               string.Equals(keep, "true", StringComparison.OrdinalIgnoreCase);
 
                 // 确保脚本目录存在
                 if (!Directory.Exists(scriptsDir))
@@ -99,7 +88,7 @@ namespace AIBridgeCLI.Commands
                 }
 
                 // 生成完整路径
-                string scriptPath = Path.Combine(scriptsDir, $"{scriptName}.txt");
+                var scriptPath = Path.Combine(scriptsDir, $"{scriptName}.txt");
 
                 // 写入脚本文件
                 File.WriteAllText(scriptPath, scriptText, Encoding.UTF8);
@@ -115,6 +104,28 @@ namespace AIBridgeCLI.Commands
             }
 
             return request;
+        }
+
+        private static string ResolveScriptText(Dictionary<string, string> options)
+        {
+            if (options.TryGetValue("text", out var textValue) && !string.IsNullOrWhiteSpace(textValue))
+            {
+                return textValue;
+            }
+
+            // Program.cs pre-reads --stdin and stores raw non-JSON input in json.
+            if (options.TryGetValue("json", out var jsonValue) && !string.IsNullOrWhiteSpace(jsonValue))
+            {
+                return jsonValue;
+            }
+
+            if (options.TryGetValue("stdin", out var stdinValue) &&
+                string.Equals(stdinValue, "true", StringComparison.OrdinalIgnoreCase))
+            {
+                return Console.In.ReadToEnd();
+            }
+
+            return null;
         }
     }
 }
