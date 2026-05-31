@@ -1095,7 +1095,10 @@ namespace AIBridgeCLI.Commands
                 ["totalQueued"] = status.Value<long?>("totalQueued") ?? 0L,
                 ["totalCompleted"] = status.Value<long?>("totalCompleted") ?? 0L,
                 ["totalTimedOut"] = status.Value<long?>("totalTimedOut") ?? 0L,
-                ["totalDeduplicated"] = status.Value<long?>("totalDeduplicated") ?? 0L
+                ["totalDeduplicated"] = status.Value<long?>("totalDeduplicated") ?? 0L,
+                ["queryCacheCount"] = status.Value<int?>("queryCacheCount") ?? 0,
+                ["queryCacheHits"] = status.Value<long?>("queryCacheHits") ?? 0L,
+                ["queryCacheMisses"] = status.Value<long?>("queryCacheMisses") ?? 0L
             };
         }
 

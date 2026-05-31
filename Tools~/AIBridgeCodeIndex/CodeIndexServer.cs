@@ -282,6 +282,7 @@ namespace AIBridgeCodeIndex
 
         private async Task<CodeIndexResponse> ExecuteQueryAsync(CodeIndexRequest query)
         {
+            AttachCurrentGeneration(query);
             return await _queryScheduler.EnqueueAsync(query, CancellationToken.None);
         }
 
@@ -296,8 +297,27 @@ namespace AIBridgeCodeIndex
                 action = "batch",
                 parameters = parameters,
                 queueTimeoutMs = batch == null ? 0 : batch.queueTimeoutMs,
-                executeTimeoutMs = batch == null ? 0 : batch.executeTimeoutMs
+                executeTimeoutMs = batch == null ? 0 : batch.executeTimeoutMs,
+                generationHash = GetCurrentGenerationHash()
             }, CancellationToken.None);
+        }
+
+        private void AttachCurrentGeneration(CodeIndexRequest query)
+        {
+            if (query == null || !string.IsNullOrWhiteSpace(query.generationHash))
+            {
+                return;
+            }
+
+            query.generationHash = GetCurrentGenerationHash();
+        }
+
+        private string GetCurrentGenerationHash()
+        {
+            var status = GetStatusSnapshot();
+            return !string.IsNullOrWhiteSpace(status.snapshotContentHash)
+                ? status.snapshotContentHash
+                : status.generationId;
         }
 
         private async Task<CodeIndexResponse> ExecuteScheduledQueryAsync(CodeIndexRequest query, CancellationToken cancellationToken)
@@ -938,6 +958,9 @@ namespace AIBridgeCodeIndex
             status.totalCompleted = stats.TotalCompleted;
             status.totalTimedOut = stats.TotalTimedOut;
             status.totalDeduplicated = stats.TotalDeduplicated;
+            status.queryCacheCount = stats.QueryCacheCount;
+            status.queryCacheHits = stats.QueryCacheHits;
+            status.queryCacheMisses = stats.QueryCacheMisses;
         }
 
         private void WriteStatus()

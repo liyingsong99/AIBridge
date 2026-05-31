@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace AIBridgeCodeIndex
 {
@@ -11,9 +12,13 @@ namespace AIBridgeCodeIndex
         private const int DefaultQueueTimeoutMs = 60000;
         private const int DefaultExecuteTimeoutMs = 30000;
         private const int MaxTimeoutMs = 600000;
+        private const int QueryCacheTtlMs = 300000;
+        private const int MaxQueryCacheEntries = 128;
+        private const int MaxQueryCacheResponseChars = 262144;
 
         private readonly object _sync = new object();
         private readonly LinkedList<ScheduledQuery> _queue = new LinkedList<ScheduledQuery>();
+        private readonly Dictionary<string, QueryCacheEntry> _queryCache = new Dictionary<string, QueryCacheEntry>(StringComparer.Ordinal);
         private readonly SemaphoreSlim _signal = new SemaphoreSlim(0);
         private readonly CancellationTokenSource _shutdown = new CancellationTokenSource();
         private readonly Func<CodeIndexRequest, CancellationToken, Task<CodeIndexResponse>> _executeAsync;
@@ -28,6 +33,9 @@ namespace AIBridgeCodeIndex
         private long _totalCompleted;
         private long _totalTimedOut;
         private long _totalDeduplicated;
+        private long _queryCacheHits;
+        private long _queryCacheMisses;
+        private string _queryCacheGenerationHash;
         private bool _disposed;
 
         public CodeIndexQueryScheduler(
@@ -61,6 +69,12 @@ namespace AIBridgeCodeIndex
             lock (_sync)
             {
                 ThrowIfDisposed();
+                CodeIndexResponse cachedResponse;
+                if (TryGetCachedResponse(scheduled, out cachedResponse))
+                {
+                    return Task.FromResult(cachedResponse);
+                }
+
                 if (_queue.Count >= _capacity)
                 {
                     return Task.FromResult(BuildQueueFailure(scheduled, "queue_full", "Code index query queue is full."));
@@ -99,7 +113,10 @@ namespace AIBridgeCodeIndex
                     TotalQueued = _totalQueued,
                     TotalCompleted = _totalCompleted,
                     TotalTimedOut = _totalTimedOut,
-                    TotalDeduplicated = _totalDeduplicated
+                    TotalDeduplicated = _totalDeduplicated,
+                    QueryCacheCount = _queryCache.Count,
+                    QueryCacheHits = _queryCacheHits,
+                    QueryCacheMisses = _queryCacheMisses
                 };
             }
         }
@@ -244,6 +261,11 @@ namespace AIBridgeCodeIndex
                 }
             }
 
+            if (!timedOut)
+            {
+                StoreCachedResponse(query, response);
+            }
+
             DecorateResponse(query, response, executionMs);
             query.Completion.TrySetResult(response);
             NotifyStatusChanged();
@@ -346,6 +368,135 @@ namespace AIBridgeCodeIndex
             response.totalCompleted = stats.TotalCompleted;
             response.totalTimedOut = stats.TotalTimedOut;
             response.totalDeduplicated = stats.TotalDeduplicated;
+            response.queryCacheCount = stats.QueryCacheCount;
+            response.queryCacheHits = stats.QueryCacheHits;
+            response.queryCacheMisses = stats.QueryCacheMisses;
+        }
+
+        private bool TryGetCachedResponse(ScheduledQuery query, out CodeIndexResponse response)
+        {
+            response = null;
+            if (!CanCache(query.Request))
+            {
+                return false;
+            }
+
+            EnsureCacheGeneration(query.Request.generationHash);
+            var key = BuildCacheKey(query.Request);
+            QueryCacheEntry entry;
+            if (!_queryCache.TryGetValue(key, out entry))
+            {
+                _queryCacheMisses++;
+                return false;
+            }
+
+            if ((DateTimeOffset.UtcNow - entry.StoredAtUtc).TotalMilliseconds > QueryCacheTtlMs)
+            {
+                _queryCache.Remove(key);
+                _queryCacheMisses++;
+                return false;
+            }
+
+            _queryCacheHits++;
+            entry.LastUsedAtUtc = DateTimeOffset.UtcNow;
+            response = CloneResponse(entry.Response);
+            response.cacheHit = true;
+            DecorateResponse(query, response, 0);
+            return true;
+        }
+
+        private void StoreCachedResponse(ScheduledQuery query, CodeIndexResponse response)
+        {
+            if (response == null || !response.success || !CanCache(query.Request))
+            {
+                return;
+            }
+
+            var serialized = JsonConvert.SerializeObject(response);
+            if (serialized.Length > MaxQueryCacheResponseChars)
+            {
+                return;
+            }
+
+            lock (_sync)
+            {
+                EnsureCacheGeneration(query.Request.generationHash);
+                _queryCache[BuildCacheKey(query.Request)] = new QueryCacheEntry
+                {
+                    Response = CloneResponse(response),
+                    StoredAtUtc = DateTimeOffset.UtcNow,
+                    LastUsedAtUtc = DateTimeOffset.UtcNow
+                };
+
+                TrimQueryCache();
+            }
+        }
+
+        private void EnsureCacheGeneration(string generationHash)
+        {
+            if (string.IsNullOrWhiteSpace(generationHash))
+            {
+                return;
+            }
+
+            if (string.Equals(_queryCacheGenerationHash, generationHash, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _queryCache.Clear();
+            _queryCacheGenerationHash = generationHash;
+        }
+
+        private void TrimQueryCache()
+        {
+            while (_queryCache.Count > MaxQueryCacheEntries)
+            {
+                string oldestKey = null;
+                var oldestUsedAt = DateTimeOffset.MaxValue;
+                foreach (var pair in _queryCache)
+                {
+                    if (pair.Value.LastUsedAtUtc < oldestUsedAt)
+                    {
+                        oldestUsedAt = pair.Value.LastUsedAtUtc;
+                        oldestKey = pair.Key;
+                    }
+                }
+
+                if (oldestKey == null)
+                {
+                    return;
+                }
+
+                _queryCache.Remove(oldestKey);
+            }
+        }
+
+        private static bool CanCache(CodeIndexRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.generationHash))
+            {
+                return false;
+            }
+
+            var action = string.IsNullOrWhiteSpace(request.action) ? string.Empty : request.action.Trim().ToLowerInvariant();
+            return string.Equals(action, "symbol", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(action, "definition", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(action, "references", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(action, "callers", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(action, "implementations", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(action, "derived", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string BuildCacheKey(CodeIndexRequest request)
+        {
+            var parameters = request.parameters == null ? string.Empty : JsonConvert.SerializeObject(request.parameters);
+            return request.generationHash + "|" + request.action.Trim().ToLowerInvariant() + "|" + parameters;
+        }
+
+        private static CodeIndexResponse CloneResponse(CodeIndexResponse response)
+        {
+            return JsonConvert.DeserializeObject<CodeIndexResponse>(JsonConvert.SerializeObject(response));
         }
 
         private static int NormalizeTimeout(int value, int fallback)
@@ -401,6 +552,13 @@ namespace AIBridgeCodeIndex
             public bool Started { get; set; }
             public string ActiveStartedAt { get; set; }
         }
+
+        private sealed class QueryCacheEntry
+        {
+            public CodeIndexResponse Response { get; set; }
+            public DateTimeOffset StoredAtUtc { get; set; }
+            public DateTimeOffset LastUsedAtUtc { get; set; }
+        }
     }
 
     internal sealed class CodeIndexQuerySchedulerStats
@@ -416,5 +574,8 @@ namespace AIBridgeCodeIndex
         public long TotalCompleted { get; set; }
         public long TotalTimedOut { get; set; }
         public long TotalDeduplicated { get; set; }
+        public int QueryCacheCount { get; set; }
+        public long QueryCacheHits { get; set; }
+        public long QueryCacheMisses { get; set; }
     }
 }

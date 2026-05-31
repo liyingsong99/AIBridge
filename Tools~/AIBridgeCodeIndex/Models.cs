@@ -42,6 +42,9 @@ namespace AIBridgeCodeIndex
         public long totalCompleted { get; set; }
         public long totalTimedOut { get; set; }
         public long totalDeduplicated { get; set; }
+        public int queryCacheCount { get; set; }
+        public long queryCacheHits { get; set; }
+        public long queryCacheMisses { get; set; }
     }
 
     internal sealed class CodeIndexRequest
@@ -51,6 +54,7 @@ namespace AIBridgeCodeIndex
         public int queueTimeoutMs { get; set; }
         public int executeTimeoutMs { get; set; }
         public string priority { get; set; }
+        public string generationHash { get; set; }
     }
 
     internal sealed class CodeIndexResponse
@@ -94,6 +98,10 @@ namespace AIBridgeCodeIndex
         public long totalCompleted { get; set; }
         public long totalTimedOut { get; set; }
         public long totalDeduplicated { get; set; }
+        public bool cacheHit { get; set; }
+        public int queryCacheCount { get; set; }
+        public long queryCacheHits { get; set; }
+        public long queryCacheMisses { get; set; }
         public List<CodeIndexItem> items { get; set; }
         public List<CodeIndexBatchResponseItem> results { get; set; }
 
@@ -133,7 +141,10 @@ namespace AIBridgeCodeIndex
                 totalQueued = status == null ? 0 : status.totalQueued,
                 totalCompleted = status == null ? 0 : status.totalCompleted,
                 totalTimedOut = status == null ? 0 : status.totalTimedOut,
-                totalDeduplicated = status == null ? 0 : status.totalDeduplicated
+                totalDeduplicated = status == null ? 0 : status.totalDeduplicated,
+                queryCacheCount = status == null ? 0 : status.queryCacheCount,
+                queryCacheHits = status == null ? 0 : status.queryCacheHits,
+                queryCacheMisses = status == null ? 0 : status.queryCacheMisses
             };
         }
     }
