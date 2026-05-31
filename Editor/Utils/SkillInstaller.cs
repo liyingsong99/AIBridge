@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using UnityEditor;
 using UnityEngine;
@@ -71,6 +72,15 @@ namespace AIBridge.Editor
                     return;
                 }
 
+                if (EditorApplication.isCompiling || EditorApplication.isUpdating)
+                {
+                    EditorApplication.delayCall += InstallSkillIfNeeded;
+                    return;
+                }
+
+                var projectRoot = GetProjectRoot();
+                CopyCliToCacheIfNeeded(projectRoot);
+
                 if (!EnsureEditorLanguageInitialized())
                 {
                     return;
@@ -82,7 +92,6 @@ namespace AIBridge.Editor
                     return;
                 }
 
-                var projectRoot = GetProjectRoot();
                 var targets = GetSelectedTargets(projectRoot);
                 
                 // 清理未勾选目标的注入内容
@@ -93,7 +102,6 @@ namespace AIBridge.Editor
                     return;
                 }
 
-                CopyCliToCacheIfNeeded(projectRoot);
                 var results = InstallAssistantIntegrations(projectRoot, targets);
                 SkillPluginAdapter.GenerateForTargets(projectRoot, targets);
                 LogResults(results);
@@ -114,6 +122,8 @@ namespace AIBridge.Editor
                 }
 
                 var projectRoot = GetProjectRoot();
+                CopyCliToCacheIfNeeded(projectRoot);
+
                 var targets = GetSelectedTargets(projectRoot);
                 CleanupUnselectedTargets(projectRoot, targets);
                 if (targets.Count == 0)
@@ -121,7 +131,6 @@ namespace AIBridge.Editor
                     return;
                 }
 
-                CopyCliToCacheIfNeeded(projectRoot);
                 var results = InstallAssistantIntegrations(projectRoot, targets);
                 SkillPluginAdapter.GenerateForTargets(projectRoot, targets);
                 LogResults(results);
@@ -196,7 +205,6 @@ namespace AIBridge.Editor
             var platformRID = GetPlatformRID();
             var cliExeName = GetCliExecutableName();
             var targetCliDir = Path.Combine(projectRoot, CLI_CACHE_FOLDER);
-            var targetCliExe = Path.Combine(targetCliDir, cliExeName);
             
             // Find source CLI directory (platform-specific)
             var sourceCliDir = GetSourceCliDirectory(platformRID);
@@ -219,16 +227,9 @@ namespace AIBridge.Editor
                 return;
             }
             
-            // Check if we need to copy (target doesn't exist or source is newer)
-            bool needsCopy = !File.Exists(targetCliExe);
-            if (!needsCopy)
-            {
-                var sourceTime = File.GetLastWriteTimeUtc(sourceCliExe);
-                var targetTime = File.GetLastWriteTimeUtc(targetCliExe);
-                needsCopy = sourceTime > targetTime;
-            }
-
-            needsCopy = needsCopy || IsCodeIndexCopyNeeded(sourceCliDir, targetCliDir);
+            // 包管理器更新时文件时间戳不一定递增，CLI 缓存必须按内容差异判断是否刷新。
+            var needsCopy = IsCliCopyNeeded(sourceCliDir, targetCliDir, cliExeName)
+                || IsCodeIndexCopyNeeded(sourceCliDir, targetCliDir);
             
             if (!needsCopy)
             {
@@ -241,50 +242,18 @@ namespace AIBridge.Editor
                 Directory.CreateDirectory(targetCliDir);
             }
             
-            // Copy all CLI files
-            int copiedCount = 0;
-            
-            // Copy executable first
-            try
-            {
-                File.Copy(sourceCliExe, targetCliExe, true);
-                copiedCount++;
-#if !UNITY_EDITOR_WIN
-                // Set executable permission on Unix platforms
-                try
-                {
-                    var process = new System.Diagnostics.Process();
-                    process.StartInfo.FileName = "chmod";
-                    process.StartInfo.Arguments = $"+x \"{targetCliExe}\"";
-                    process.StartInfo.UseShellExecute = false;
-                    process.StartInfo.CreateNoWindow = true;
-                    process.Start();
-                    process.WaitForExit();
-                }
-                catch { }
-#endif
-            }
-            catch (Exception ex)
-            {
-                AIBridgeLogger.LogWarning($"[SkillInstaller] Failed to copy {cliExeName}: {ex.Message}");
-            }
-            
-            // Copy other files
-            foreach (var fileName in CLI_FILES)
+            var copiedCount = 0;
+            foreach (var fileName in GetCliFilesToCopy(cliExeName))
             {
                 var sourceFile = Path.Combine(sourceCliDir, fileName);
                 var targetFile = Path.Combine(targetCliDir, fileName);
                 
                 if (File.Exists(sourceFile))
                 {
-                    try
+                    var makeExecutable = string.Equals(fileName, cliExeName, StringComparison.OrdinalIgnoreCase);
+                    if (CopyFileToCache(sourceFile, targetFile, fileName, makeExecutable))
                     {
-                        File.Copy(sourceFile, targetFile, true);
                         copiedCount++;
-                    }
-                    catch (Exception ex)
-                    {
-                        AIBridgeLogger.LogWarning($"[SkillInstaller] Failed to copy {fileName}: {ex.Message}");
                     }
                 }
             }
@@ -294,6 +263,129 @@ namespace AIBridge.Editor
             if (copiedCount > 0)
             {
                 AIBridgeLogger.LogInfo($"[SkillInstaller] Copied {copiedCount} CLI files to: {targetCliDir}");
+            }
+        }
+
+        private static bool IsCliCopyNeeded(string sourceCliDir, string targetCliDir, string cliExeName)
+        {
+            foreach (var fileName in GetCliFilesToCopy(cliExeName))
+            {
+                var sourceFile = Path.Combine(sourceCliDir, fileName);
+                if (!File.Exists(sourceFile))
+                {
+                    continue;
+                }
+
+                var targetFile = Path.Combine(targetCliDir, fileName);
+                if (IsFileCopyNeeded(sourceFile, targetFile))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<string> GetCliFilesToCopy(string cliExeName)
+        {
+            yield return cliExeName;
+
+            foreach (var fileName in CLI_FILES)
+            {
+                if (!string.Equals(fileName, cliExeName, StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return fileName;
+                }
+            }
+        }
+
+        private static bool CopyFileToCache(string sourceFile, string targetFile, string displayName, bool makeExecutable)
+        {
+            try
+            {
+                File.Copy(sourceFile, targetFile, true);
+                if (makeExecutable)
+                {
+                    EnsureExecutablePermission(targetFile);
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                AIBridgeLogger.LogWarning($"[SkillInstaller] Failed to copy {displayName}: {ex.Message}");
+                return false;
+            }
+        }
+
+        private static void EnsureExecutablePermission(string targetFile)
+        {
+#if !UNITY_EDITOR_WIN
+            try
+            {
+                var process = new System.Diagnostics.Process();
+                process.StartInfo.FileName = "chmod";
+                process.StartInfo.Arguments = $"+x \"{targetFile}\"";
+                process.StartInfo.UseShellExecute = false;
+                process.StartInfo.CreateNoWindow = true;
+                process.Start();
+                process.WaitForExit();
+            }
+            catch
+            {
+            }
+#endif
+        }
+
+        internal static bool IsFileCopyNeeded(string sourceFile, string targetFile)
+        {
+            if (!File.Exists(sourceFile))
+            {
+                return false;
+            }
+
+            if (!File.Exists(targetFile))
+            {
+                return true;
+            }
+
+            try
+            {
+                var sourceInfo = new FileInfo(sourceFile);
+                var targetInfo = new FileInfo(targetFile);
+                if (sourceInfo.Length != targetInfo.Length)
+                {
+                    return true;
+                }
+
+                if (sourceInfo.LastWriteTimeUtc > targetInfo.LastWriteTimeUtc)
+                {
+                    return true;
+                }
+
+                return !FilesHaveSameHash(sourceFile, targetFile);
+            }
+            catch
+            {
+                return true;
+            }
+        }
+
+        private static bool FilesHaveSameHash(string sourceFile, string targetFile)
+        {
+            using (var sha256 = SHA256.Create())
+            {
+                var sourceHash = ComputeFileHash(sha256, sourceFile);
+                var targetHash = ComputeFileHash(sha256, targetFile);
+                return sourceHash.SequenceEqual(targetHash);
+            }
+        }
+
+        private static byte[] ComputeFileHash(HashAlgorithm hashAlgorithm, string path)
+        {
+            using (var stream = File.OpenRead(path))
+            {
+                return hashAlgorithm.ComputeHash(stream);
             }
         }
 
@@ -311,7 +403,48 @@ namespace AIBridge.Editor
                 return true;
             }
 
-            return GetNewestWriteTimeUtc(sourceDir) > GetNewestWriteTimeUtc(targetDir);
+            return IsDirectoryCopyNeeded(sourceDir, targetDir);
+        }
+
+        private static bool IsDirectoryCopyNeeded(string sourceDir, string targetDir)
+        {
+            var sourceFiles = Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories);
+            var sourceRelativePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var sourceFile in sourceFiles)
+            {
+                var relativePath = GetRelativeFilePath(sourceDir, sourceFile);
+                sourceRelativePaths.Add(relativePath);
+
+                var targetFile = Path.Combine(targetDir, relativePath);
+                if (IsFileCopyNeeded(sourceFile, targetFile))
+                {
+                    return true;
+                }
+            }
+
+            foreach (var targetFile in Directory.GetFiles(targetDir, "*", SearchOption.AllDirectories))
+            {
+                var relativePath = GetRelativeFilePath(targetDir, targetFile);
+                if (!sourceRelativePaths.Contains(relativePath))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static string GetRelativeFilePath(string rootDirectory, string filePath)
+        {
+            var root = Path.GetFullPath(rootDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var fullPath = Path.GetFullPath(filePath);
+            var prefix = root + Path.DirectorySeparatorChar;
+            if (fullPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return fullPath.Substring(prefix.Length);
+            }
+
+            return Path.GetFileName(filePath);
         }
 
         private static int CopyCodeIndexToCache(string sourceCliDir, string targetCliDir)
@@ -359,21 +492,6 @@ namespace AIBridge.Editor
             return copied;
         }
 
-        private static DateTime GetNewestWriteTimeUtc(string directory)
-        {
-            var newest = Directory.GetLastWriteTimeUtc(directory);
-            foreach (var filePath in Directory.GetFiles(directory, "*", SearchOption.AllDirectories))
-            {
-                var writeTime = File.GetLastWriteTimeUtc(filePath);
-                if (writeTime > newest)
-                {
-                    newest = writeTime;
-                }
-            }
-
-            return newest;
-        }
-        
         /// <summary>
         /// Get the source CLI directory from the package.
         /// </summary>
