@@ -31,12 +31,26 @@ namespace AIBridgeCodeIndex
         public string startedAt { get; set; }
         public string updatedAt { get; set; }
         public string message { get; set; }
+        public int queueLength { get; set; }
+        public int queueCapacity { get; set; }
+        public string activeRequestId { get; set; }
+        public string activeAction { get; set; }
+        public string activeStartedAt { get; set; }
+        public long lastQueuedMs { get; set; }
+        public long lastExecutionMs { get; set; }
+        public long totalQueued { get; set; }
+        public long totalCompleted { get; set; }
+        public long totalTimedOut { get; set; }
+        public long totalDeduplicated { get; set; }
     }
 
     internal sealed class CodeIndexRequest
     {
         public string action { get; set; }
         public Dictionary<string, object> parameters { get; set; }
+        public int queueTimeoutMs { get; set; }
+        public int executeTimeoutMs { get; set; }
+        public string priority { get; set; }
     }
 
     internal sealed class CodeIndexResponse
@@ -65,6 +79,21 @@ namespace AIBridgeCodeIndex
         public int loadedDocuments { get; set; }
         public string warning { get; set; }
         public string error { get; set; }
+        public string errorCode { get; set; }
+        public string requestId { get; set; }
+        public long queuedMs { get; set; }
+        public long executionMs { get; set; }
+        public int queueLength { get; set; }
+        public int queueCapacity { get; set; }
+        public string activeRequestId { get; set; }
+        public string activeAction { get; set; }
+        public string activeStartedAt { get; set; }
+        public long lastQueuedMs { get; set; }
+        public long lastExecutionMs { get; set; }
+        public long totalQueued { get; set; }
+        public long totalCompleted { get; set; }
+        public long totalTimedOut { get; set; }
+        public long totalDeduplicated { get; set; }
         public List<CodeIndexItem> items { get; set; }
 
         public static CodeIndexResponse FromStatus(CodeIndexStatus status)
@@ -92,7 +121,18 @@ namespace AIBridgeCodeIndex
                 unityVersion = status == null ? null : status.unityVersion,
                 staleReason = status == null ? "missingStatus" : status.staleReason,
                 loadedProjects = status == null ? 0 : status.loadedProjects,
-                loadedDocuments = status == null ? 0 : status.loadedDocuments
+                loadedDocuments = status == null ? 0 : status.loadedDocuments,
+                queueLength = status == null ? 0 : status.queueLength,
+                queueCapacity = status == null ? 0 : status.queueCapacity,
+                activeRequestId = status == null ? null : status.activeRequestId,
+                activeAction = status == null ? null : status.activeAction,
+                activeStartedAt = status == null ? null : status.activeStartedAt,
+                lastQueuedMs = status == null ? 0 : status.lastQueuedMs,
+                lastExecutionMs = status == null ? 0 : status.lastExecutionMs,
+                totalQueued = status == null ? 0 : status.totalQueued,
+                totalCompleted = status == null ? 0 : status.totalCompleted,
+                totalTimedOut = status == null ? 0 : status.totalTimedOut,
+                totalDeduplicated = status == null ? 0 : status.totalDeduplicated
             };
         }
     }

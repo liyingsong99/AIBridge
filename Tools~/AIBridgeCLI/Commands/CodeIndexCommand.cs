@@ -24,6 +24,16 @@ namespace AIBridgeCLI.Commands
         private const string DaemonProcessFileName = "daemon-process.json";
         private const int SnapshotSchemaVersion = 2;
         private const int ManifestFormatKind = 1;
+        private const int DefaultStatusTimeoutMs = 1500;
+        private const int DefaultDoctorTimeoutMs = 5000;
+        private const int DefaultWarmupTimeoutMs = 30000;
+        private const int DefaultSymbolTimeoutMs = 10000;
+        private const int DefaultDefinitionTimeoutMs = 15000;
+        private const int DefaultHeavyQueryTimeoutMs = 30000;
+        private const int DefaultFullDiagnosticsTimeoutMs = 60000;
+        private const int DefaultQueryQueueTimeoutMs = 60000;
+        private const int QueryTransportPaddingMs = 1000;
+        private const int MaxCodeIndexTimeoutMs = 600000;
         private const string SnapshotMagic = "AIBCI";
         private const string DisabledMessage = "Code Index is disabled in AIBridge settings. Enable AIBridge > Settings > Code Index > Enable Code Index, or use rg and normal file reads.";
         private static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings
@@ -37,11 +47,13 @@ namespace AIBridgeCLI.Commands
             JObject result;
             try
             {
-                result = ExecuteAsync(action, options, Math.Max(1000, timeout), noWait).GetAwaiter().GetResult();
+                var normalizedAction = NormalizeAction(action);
+                var effectiveTimeout = ResolveActionTimeout(normalizedAction, options, timeout);
+                result = ExecuteAsync(normalizedAction, options, effectiveTimeout, noWait).GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {
-                result = BuildFailure(null, "code_index failed: " + ex.Message);
+                result = BuildFailure(null, "code_index failed: " + ex.Message, "cli_error");
             }
 
             result["executionTime"] = stopwatch.ElapsedMilliseconds;
@@ -51,7 +63,7 @@ namespace AIBridgeCLI.Commands
 
         private static async Task<JObject> ExecuteAsync(string action, Dictionary<string, string> options, int timeout, bool noWait)
         {
-            var normalizedAction = string.IsNullOrWhiteSpace(action) ? "status" : action.Trim().ToLowerInvariant();
+            var normalizedAction = NormalizeAction(action);
             var context = CodeIndexContext.Resolve(options);
             if (!context.Enabled)
             {
@@ -83,6 +95,45 @@ namespace AIBridgeCLI.Commands
             }
         }
 
+        private static string NormalizeAction(string action)
+        {
+            return string.IsNullOrWhiteSpace(action) ? "status" : action.Trim().ToLowerInvariant();
+        }
+
+        private static int ResolveActionTimeout(string normalizedAction, Dictionary<string, string> options, int timeout)
+        {
+            if (options != null && options.ContainsKey("timeout"))
+            {
+                return ClampTimeout(timeout);
+            }
+
+            switch (NormalizeAction(normalizedAction))
+            {
+                case "status":
+                    return DefaultStatusTimeoutMs;
+                case "doctor":
+                case "reset":
+                    return DefaultDoctorTimeoutMs;
+                case "warmup":
+                    return DefaultWarmupTimeoutMs;
+                case "symbol":
+                    return DefaultSymbolTimeoutMs;
+                case "definition":
+                    return DefaultDefinitionTimeoutMs;
+                case "references":
+                case "implementations":
+                case "derived":
+                case "callers":
+                    return DefaultHeavyQueryTimeoutMs;
+                case "diagnostics":
+                    return ResolveOptionBool(options, "all", false)
+                        ? DefaultFullDiagnosticsTimeoutMs
+                        : DefaultHeavyQueryTimeoutMs;
+                default:
+                    return ClampTimeout(timeout);
+            }
+        }
+
         private static async Task<JObject> ExecuteDisabledAsync(string normalizedAction, CodeIndexContext context, int timeout)
         {
             switch (normalizedAction)
@@ -105,16 +156,39 @@ namespace AIBridgeCLI.Commands
             var status = await EnsureDaemonAsync(context, timeout, false);
             if (IsReady(status))
             {
-                var response = await PostJsonAsync(
-                    status.Value<string>("endpoint"),
-                    "query",
-                    status.Value<string>("token"),
-                    new JObject
-                    {
-                        ["action"] = action,
-                        ["parameters"] = JObject.FromObject(BuildQueryParameters(action, options))
-                    },
-                    timeout);
+                var queryTimeouts = ResolveQueryTimeouts(action, options, timeout);
+                JObject response;
+                try
+                {
+                    response = await PostJsonAsync(
+                        status.Value<string>("endpoint"),
+                        "query",
+                        status.Value<string>("token"),
+                        new JObject
+                        {
+                            ["action"] = action,
+                            ["parameters"] = JObject.FromObject(BuildQueryParameters(action, options)),
+                            ["queueTimeoutMs"] = queryTimeouts.QueueTimeoutMs,
+                            ["executeTimeoutMs"] = queryTimeouts.ExecuteTimeoutMs
+                        },
+                        queryTimeouts.TransportTimeoutMs);
+                }
+                catch (TaskCanceledException)
+                {
+                    return BuildFailure(
+                        context,
+                        "code_index request timed out after " + queryTimeouts.TransportTimeoutMs.ToString(CultureInfo.InvariantCulture)
+                        + "ms before the daemon returned a queue or execution result.",
+                        "http_timeout");
+                }
+                catch (HttpRequestException ex)
+                {
+                    return BuildFailure(context, "Code index daemon is not reachable: " + ex.Message, "daemon_unreachable");
+                }
+                catch (JsonException ex)
+                {
+                    return BuildFailure(context, "Code index daemon returned invalid JSON: " + ex.Message, "invalid_daemon_response");
+                }
 
                 if (response.Value<bool>("success"))
                 {
@@ -122,7 +196,9 @@ namespace AIBridgeCLI.Commands
                     return response;
                 }
 
-                if (!IsFallbackEnabled(context, options) || string.Equals(action, "diagnostics", StringComparison.OrdinalIgnoreCase))
+                if (!IsFallbackEnabled(context, options)
+                    || string.Equals(action, "diagnostics", StringComparison.OrdinalIgnoreCase)
+                    || !ShouldFallbackForResponse(response))
                 {
                     response["enabled"] = context.Enabled;
                     return response;
@@ -133,10 +209,48 @@ namespace AIBridgeCLI.Commands
 
             if (!IsFallbackEnabled(context, options) || string.Equals(action, "diagnostics", StringComparison.OrdinalIgnoreCase))
             {
-                return BuildFailure(context, "Unity snapshot workspace is not ready.");
+                return BuildFailure(context, "Unity snapshot workspace is not ready.", "workspace_not_ready");
             }
 
             return BuildFallback(context, action, options, "Unity snapshot workspace is not ready. Returned text-search candidates only.");
+        }
+
+        private static CodeIndexQueryTimeouts ResolveQueryTimeouts(string action, Dictionary<string, string> options, int timeout)
+        {
+            var explicitTimeout = options != null && options.ContainsKey("timeout");
+            var defaultQueueTimeout = explicitTimeout ? timeout : DefaultQueryQueueTimeoutMs;
+            var queueTimeout = ClampTimeout(ResolveOptionInt(options, "queue-timeout", defaultQueueTimeout));
+            var executeTimeout = ClampTimeout(ResolveOptionInt(options, "execute-timeout", timeout));
+            var transportTimeout = Math.Max(timeout, queueTimeout + executeTimeout + QueryTransportPaddingMs);
+
+            return new CodeIndexQueryTimeouts
+            {
+                QueueTimeoutMs = queueTimeout,
+                ExecuteTimeoutMs = executeTimeout,
+                TransportTimeoutMs = ClampTimeout(transportTimeout)
+            };
+        }
+
+        private static bool ShouldFallbackForResponse(JObject response)
+        {
+            var errorCode = response == null ? null : response.Value<string>("errorCode");
+            if (string.IsNullOrWhiteSpace(errorCode))
+            {
+                return true;
+            }
+
+            switch (errorCode)
+            {
+                case "queue_timeout":
+                case "queue_full":
+                case "execute_timeout":
+                case "client_cancelled":
+                case "http_timeout":
+                case "daemon_unreachable":
+                    return false;
+                default:
+                    return true;
+            }
         }
 
         private static async Task<JObject> WarmupAsync(CodeIndexContext context, int timeout, bool noWait)
@@ -451,6 +565,7 @@ namespace AIBridgeCLI.Commands
                 {
                     reachable = true;
                     CopyStatusRuntimeFields(status, remote);
+                    status = remote;
                 }
             }
 
@@ -575,7 +690,7 @@ namespace AIBridgeCLI.Commands
             var startedStatus = await WaitForStatusFileAsync(context, timeout);
             if (startedStatus == null)
             {
-                return BuildFailure(context, "AIBridgeCodeIndex daemon did not write status.json before timeout.");
+                return BuildFailure(context, "AIBridgeCodeIndex daemon did not write status.json before timeout.", "daemon_start_timeout");
             }
 
             if (noWait)
@@ -781,7 +896,18 @@ namespace AIBridgeCLI.Commands
                 ["daemonPid"] = status.Value<int?>("daemonPid") ?? 0,
                 ["statusPath"] = context.StatusPath,
                 ["reachable"] = reachable,
-                ["message"] = status.Value<string>("message")
+                ["message"] = status.Value<string>("message"),
+                ["queueLength"] = status.Value<int?>("queueLength") ?? 0,
+                ["queueCapacity"] = status.Value<int?>("queueCapacity") ?? 0,
+                ["activeRequestId"] = status.Value<string>("activeRequestId"),
+                ["activeAction"] = status.Value<string>("activeAction"),
+                ["activeStartedAt"] = status.Value<string>("activeStartedAt"),
+                ["lastQueuedMs"] = status.Value<long?>("lastQueuedMs") ?? 0L,
+                ["lastExecutionMs"] = status.Value<long?>("lastExecutionMs") ?? 0L,
+                ["totalQueued"] = status.Value<long?>("totalQueued") ?? 0L,
+                ["totalCompleted"] = status.Value<long?>("totalCompleted") ?? 0L,
+                ["totalTimedOut"] = status.Value<long?>("totalTimedOut") ?? 0L,
+                ["totalDeduplicated"] = status.Value<long?>("totalDeduplicated") ?? 0L
             };
         }
 
@@ -1489,6 +1615,11 @@ namespace AIBridgeCLI.Commands
             return int.TryParse(value, out var result) ? result : defaultValue;
         }
 
+        private static int ClampTimeout(int timeout)
+        {
+            return Math.Min(MaxCodeIndexTimeoutMs, Math.Max(1000, timeout));
+        }
+
         private static Dictionary<string, object> BuildQueryParameters(string action, Dictionary<string, string> options)
         {
             var result = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
@@ -1568,7 +1699,12 @@ namespace AIBridgeCLI.Commands
 
         private static JObject BuildFailure(CodeIndexContext context, string error)
         {
-            return new JObject
+            return BuildFailure(context, error, null);
+        }
+
+        private static JObject BuildFailure(CodeIndexContext context, string error, string errorCode)
+        {
+            var result = new JObject
             {
                 ["success"] = false,
                 ["semantic"] = false,
@@ -1581,6 +1717,13 @@ namespace AIBridgeCLI.Commands
                 ["snapshotExists"] = context != null && File.Exists(context.SnapshotManifestPath),
                 ["error"] = error
             };
+
+            if (!string.IsNullOrWhiteSpace(errorCode))
+            {
+                result["errorCode"] = errorCode;
+            }
+
+            return result;
         }
 
         private static void DeleteFileIfExists(string path)
@@ -1925,6 +2068,13 @@ namespace AIBridgeCLI.Commands
             public int line { get; set; }
             public int column { get; set; }
             public string preview { get; set; }
+        }
+
+        private sealed class CodeIndexQueryTimeouts
+        {
+            public int QueueTimeoutMs { get; set; }
+            public int ExecuteTimeoutMs { get; set; }
+            public int TransportTimeoutMs { get; set; }
         }
     }
 }

@@ -103,6 +103,8 @@ namespace AIBridgeCLI.Commands
 
         private static List<ParameterInfo> WithCommon(List<ParameterInfo> parameters)
         {
+            parameters.Add(new ParameterInfo("queue-timeout", "Maximum queue wait timeout in milliseconds before the daemon returns queue_timeout", false, "60000"));
+            parameters.Add(new ParameterInfo("execute-timeout", "Maximum semantic query execution timeout in milliseconds before the daemon returns execute_timeout", false, "action default"));
             parameters.AddRange(CommonParameters());
             return parameters;
         }

@@ -14,6 +14,8 @@ namespace AIBridgeCodeIndex
 {
     internal sealed class CodeIndexServer
     {
+        private const int QueryQueueCapacity = 64;
+
         private static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings
         {
             NullValueHandling = NullValueHandling.Ignore
@@ -25,6 +27,7 @@ namespace AIBridgeCodeIndex
         private readonly object _refreshLock = new object();
         private readonly object _workspaceLock = new object();
         private readonly SemaphoreSlim _queryGate = new SemaphoreSlim(1, 1);
+        private readonly CodeIndexQueryScheduler _queryScheduler;
         private CodeIndexWorkspace _workspace;
         private TcpListener _listener;
         private CodeIndexStatus _status;
@@ -37,6 +40,11 @@ namespace AIBridgeCodeIndex
         {
             _options = options;
             _workspace = new CodeIndexWorkspace(options.ProjectRoot);
+            _queryScheduler = new CodeIndexQueryScheduler(
+                QueryQueueCapacity,
+                ExecuteScheduledQueryAsync,
+                BuildScheduledFailure,
+                WriteStatus);
         }
 
         private CodeIndexWorkspace GetWorkspace()
@@ -101,12 +109,15 @@ namespace AIBridgeCodeIndex
                 await Task.WhenAny(_refreshTask, Task.Delay(500));
             }
 
+            await _queryScheduler.StopAsync(500);
+
             var workspace = GetWorkspace();
             if (workspace != null)
             {
                 workspace.Dispose();
             }
 
+            _queryScheduler.Dispose();
             CleanupTransientState();
         }
 
@@ -263,10 +274,16 @@ namespace AIBridgeCodeIndex
 
         private async Task<CodeIndexResponse> ExecuteQueryAsync(CodeIndexRequest query)
         {
-            await _queryGate.WaitAsync();
+            return await _queryScheduler.EnqueueAsync(query, CancellationToken.None);
+        }
+
+        private async Task<CodeIndexResponse> ExecuteScheduledQueryAsync(CodeIndexRequest query, CancellationToken cancellationToken)
+        {
+            await _queryGate.WaitAsync(cancellationToken);
             try
             {
-                return await ExecuteQueryCoreAsync(query);
+                cancellationToken.ThrowIfCancellationRequested();
+                return await ExecuteQueryCoreAsync(query, cancellationToken);
             }
             finally
             {
@@ -274,17 +291,17 @@ namespace AIBridgeCodeIndex
             }
         }
 
-        private async Task<CodeIndexResponse> ExecuteQueryCoreAsync(CodeIndexRequest query)
+        private async Task<CodeIndexResponse> ExecuteQueryCoreAsync(CodeIndexRequest query, CancellationToken cancellationToken)
         {
             var status = GetStatusSnapshot();
             if (query == null || string.IsNullOrWhiteSpace(query.action))
             {
-                return BuildFailure(status, "Missing action.");
+                return BuildFailure(status, "Missing action.", "missing_action");
             }
 
             if (!string.Equals(status.state, "ready", StringComparison.OrdinalIgnoreCase))
             {
-                return BuildFailure(status, "Unity snapshot workspace is not ready. Current state: " + status.state);
+                return BuildFailure(status, "Unity snapshot workspace is not ready. Current state: " + status.state, "workspace_not_ready");
             }
 
             var workspace = GetWorkspace();
@@ -292,10 +309,12 @@ namespace AIBridgeCodeIndex
             status = GetStatusSnapshot();
             if (!string.Equals(status.state, "ready", StringComparison.OrdinalIgnoreCase))
             {
-                return BuildFailure(status, "Unity snapshot workspace is not ready. Current state: " + status.state);
+                return BuildFailure(status, "Unity snapshot workspace is not ready. Current state: " + status.state, "workspace_not_ready");
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             var response = await workspace.QueryAsync(query.action, query.parameters);
+            cancellationToken.ThrowIfCancellationRequested();
             response.success = true;
             response.semantic = true;
             response.source = "unity-snapshot";
@@ -346,7 +365,12 @@ namespace AIBridgeCodeIndex
             return response;
         }
 
-        private static CodeIndexResponse BuildFailure(CodeIndexStatus status, string error)
+        private CodeIndexResponse BuildScheduledFailure(string errorCode, string error)
+        {
+            return BuildFailure(GetStatusSnapshot(), error, errorCode);
+        }
+
+        private static CodeIndexResponse BuildFailure(CodeIndexStatus status, string error, string errorCode)
         {
             return new CodeIndexResponse
             {
@@ -372,7 +396,8 @@ namespace AIBridgeCodeIndex
                 staleReason = status == null ? "unknown" : status.staleReason,
                 loadedProjects = status == null ? 0 : status.loadedProjects,
                 loadedDocuments = status == null ? 0 : status.loadedDocuments,
-                error = error
+                error = error,
+                errorCode = errorCode
             };
         }
 
@@ -677,9 +702,10 @@ namespace AIBridgeCodeIndex
 
         private CodeIndexStatus GetStatusSnapshot()
         {
+            CodeIndexStatus snapshot;
             lock (_statusLock)
             {
-                return new CodeIndexStatus
+                snapshot = new CodeIndexStatus
                 {
                     projectRoot = _status.projectRoot,
                     projectHash = _status.projectHash,
@@ -710,6 +736,30 @@ namespace AIBridgeCodeIndex
                     message = _status.message
                 };
             }
+
+            ApplyQuerySchedulerStats(snapshot);
+            return snapshot;
+        }
+
+        private void ApplyQuerySchedulerStats(CodeIndexStatus status)
+        {
+            if (status == null || _queryScheduler == null)
+            {
+                return;
+            }
+
+            var stats = _queryScheduler.GetStats();
+            status.queueLength = stats.QueueLength;
+            status.queueCapacity = stats.QueueCapacity;
+            status.activeRequestId = stats.ActiveRequestId;
+            status.activeAction = stats.ActiveAction;
+            status.activeStartedAt = stats.ActiveStartedAt;
+            status.lastQueuedMs = stats.LastQueuedMs;
+            status.lastExecutionMs = stats.LastExecutionMs;
+            status.totalQueued = stats.TotalQueued;
+            status.totalCompleted = stats.TotalCompleted;
+            status.totalTimedOut = stats.TotalTimedOut;
+            status.totalDeduplicated = stats.TotalDeduplicated;
         }
 
         private void WriteStatus()
