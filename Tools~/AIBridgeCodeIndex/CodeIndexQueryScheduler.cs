@@ -182,9 +182,10 @@ namespace AIBridgeCodeIndex
                     _queue.RemoveFirst();
                     query.Node = null;
                     query.Started = true;
-                    query.ActiveStartedAt = DateTimeOffset.Now.ToString("o");
+                    query.ActiveStartedAtUtc = DateTimeOffset.UtcNow;
+                    query.ActiveStartedAt = query.ActiveStartedAtUtc.ToLocalTime().ToString("o");
                     _active = query;
-                    _lastQueuedMs = Math.Max(0, (long)(DateTimeOffset.UtcNow - query.EnqueuedAtUtc).TotalMilliseconds);
+                    _lastQueuedMs = CalculateQueuedMs(query, query.ActiveStartedAtUtc);
                 }
 
                 DisposeQueueWaitRegistrations(query);
@@ -295,7 +296,7 @@ namespace AIBridgeCodeIndex
 
             DecorateResponse(query, response, executionMs);
             query.Completion.TrySetResult(response);
-            CompleteDuplicates(duplicates, response, executionMs);
+            CompleteDuplicates(query, duplicates, response, executionMs);
             NotifyStatusChanged();
         }
 
@@ -340,7 +341,7 @@ namespace AIBridgeCodeIndex
             DisposeQueueWaitRegistrations(query);
             var response = BuildQueueFailure(query, errorCode, message);
             query.Completion.TrySetResult(response);
-            CompleteDuplicates(ReleaseInFlightForCancellation(query), response, 0);
+            CompleteDuplicates(query, ReleaseInFlightForCancellation(query), response, 0);
             NotifyStatusChanged();
         }
 
@@ -363,7 +364,7 @@ namespace AIBridgeCodeIndex
                 DisposeQueueWaitRegistrations(query);
                 var response = BuildQueueFailure(query, "client_cancelled", "Code index daemon is stopping.");
                 query.Completion.TrySetResult(response);
-                CompleteDuplicates(ReleaseInFlightForCancellation(query), response, 0);
+                CompleteDuplicates(query, ReleaseInFlightForCancellation(query), response, 0);
             }
 
             NotifyStatusChanged();
@@ -386,7 +387,9 @@ namespace AIBridgeCodeIndex
             }
 
             response.requestId = query.RequestId;
-            response.queuedMs = Math.Max(0, (long)(DateTimeOffset.UtcNow - query.EnqueuedAtUtc).TotalMilliseconds);
+            var completedAtUtc = DateTimeOffset.UtcNow;
+            response.queuedMs = CalculateQueuedMs(query, completedAtUtc);
+            response.totalLatencyMs = Math.Max(0, (long)(completedAtUtc - query.EnqueuedAtUtc).TotalMilliseconds);
             response.executionMs = Math.Max(0, executionMs);
             var stats = GetStats();
             response.queueLength = stats.QueueLength;
@@ -494,7 +497,7 @@ namespace AIBridgeCodeIndex
             }
         }
 
-        private void CompleteDuplicates(List<ScheduledQuery> duplicates, CodeIndexResponse response, long executionMs)
+        private void CompleteDuplicates(ScheduledQuery owner, List<ScheduledQuery> duplicates, CodeIndexResponse response, long executionMs)
         {
             if (duplicates == null || duplicates.Count == 0)
             {
@@ -505,9 +508,18 @@ namespace AIBridgeCodeIndex
             {
                 var duplicate = duplicates[i];
                 var duplicateResponse = CloneResponse(response);
+                duplicate.ActiveStartedAtUtc = owner == null ? default(DateTimeOffset) : owner.ActiveStartedAtUtc;
                 DecorateResponse(duplicate, duplicateResponse, executionMs);
                 duplicate.Completion.TrySetResult(duplicateResponse);
             }
+        }
+
+        private static long CalculateQueuedMs(ScheduledQuery query, DateTimeOffset fallbackUtc)
+        {
+            var activeStartedAtUtc = query.ActiveStartedAtUtc == default(DateTimeOffset)
+                ? fallbackUtc
+                : query.ActiveStartedAtUtc;
+            return Math.Max(0, (long)(activeStartedAtUtc - query.EnqueuedAtUtc).TotalMilliseconds);
         }
 
         private void StoreCachedResponse(ScheduledQuery query, CodeIndexResponse response)
@@ -656,6 +668,7 @@ namespace AIBridgeCodeIndex
             public CancellationTokenRegistration QueueTimeoutRegistration { get; set; }
             public bool Started { get; set; }
             public string ActiveStartedAt { get; set; }
+            public DateTimeOffset ActiveStartedAtUtc { get; set; }
             public string CacheKey { get; set; }
             public List<ScheduledQuery> Duplicates { get; set; }
         }

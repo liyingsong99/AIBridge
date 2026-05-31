@@ -86,6 +86,7 @@ namespace AIBridgeCodeIndex
         public string errorCode { get; set; }
         public string requestId { get; set; }
         public long queuedMs { get; set; }
+        public long totalLatencyMs { get; set; }
         public long executionMs { get; set; }
         public int queueLength { get; set; }
         public int queueCapacity { get; set; }

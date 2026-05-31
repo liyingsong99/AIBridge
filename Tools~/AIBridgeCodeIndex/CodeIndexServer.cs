@@ -1048,6 +1048,7 @@ namespace AIBridgeCodeIndex
                 DeleteFileIfExists(_options.StatusPath);
                 DeleteFileIfExists(Path.Combine(directory, "lock.json"));
                 DeleteFileIfExists(Path.Combine(directory, "daemon-process.json"));
+                DeleteFileIfExists(Path.Combine(directory, "daemon-processes", Process.GetCurrentProcess().Id.ToString() + ".json"));
 
                 var tempDirectory = Path.Combine(directory, "temp");
                 if (Directory.Exists(tempDirectory))

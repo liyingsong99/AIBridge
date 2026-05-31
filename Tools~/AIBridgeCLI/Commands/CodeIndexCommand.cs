@@ -22,12 +22,14 @@ namespace AIBridgeCLI.Commands
         private const string DaemonDirectoryName = "CodeIndex";
         private const string DaemonAssemblyName = "AIBridgeCodeIndex";
         private const string DaemonProcessFileName = "daemon-process.json";
+        private const string DaemonProcessDirectoryName = "daemon-processes";
+        private const string DaemonLaunchLockFileName = "daemon-launch.lock";
         private const int SnapshotSchemaVersion = 2;
         private const int ManifestFormatKind = 1;
         private const int DefaultStatusTimeoutMs = 1500;
         private const int DefaultDoctorTimeoutMs = 5000;
         private const int DefaultWarmupTimeoutMs = 30000;
-        private const int DefaultSymbolTimeoutMs = 10000;
+        private const int DefaultSymbolTimeoutMs = 30000;
         private const int DefaultDefinitionTimeoutMs = 15000;
         private const int DefaultHeavyQueryTimeoutMs = 30000;
         private const int DefaultFullDiagnosticsTimeoutMs = 60000;
@@ -461,22 +463,31 @@ namespace AIBridgeCLI.Commands
 
         private static async Task<JObject> ResetAsync(CodeIndexContext context, int timeout)
         {
-            var status = ReadStatusFile(context);
-            var daemonPid = status == null ? 0 : status.Value<int?>("daemonPid") ?? 0;
-            if (status != null && !string.IsNullOrWhiteSpace(status.Value<string>("endpoint")))
+            Directory.CreateDirectory(context.IndexDirectory);
+            using (var launchLock = await AcquireDaemonLaunchLockAsync(context, timeout))
             {
-                try
+                if (launchLock == null)
                 {
-                    await PostJsonAsync(status.Value<string>("endpoint"), "shutdown", status.Value<string>("token"), new JObject(), timeout);
+                    return BuildFailure(context, "Timed out waiting for the code_index daemon launch lock.", "daemon_launch_lock_timeout");
                 }
-                catch
+
+                var status = ReadStatusFile(context);
+                var daemonPid = status == null ? 0 : status.Value<int?>("daemonPid") ?? 0;
+                if (status != null && !string.IsNullOrWhiteSpace(status.Value<string>("endpoint")))
                 {
+                    try
+                    {
+                        await PostJsonAsync(status.Value<string>("endpoint"), "shutdown", status.Value<string>("token"), new JObject(), timeout);
+                    }
+                    catch
+                    {
+                    }
                 }
+
+                await EnsureDaemonStoppedAsync(daemonPid, context.DaemonProcessPath);
+                CleanupOrphanDaemons(context, 0);
+                ResetIndexDirectory(context, context.IncludeSnapshotOnReset);
             }
-
-            await EnsureDaemonStoppedAsync(daemonPid, context.DaemonProcessPath);
-
-            ResetIndexDirectory(context, context.IncludeSnapshotOnReset);
 
             return new JObject
             {
@@ -506,6 +517,7 @@ namespace AIBridgeCLI.Commands
             DeleteFileIfExists(context.StatusPath);
             DeleteFileIfExists(Path.Combine(context.IndexDirectory, "lock.json"));
             DeleteFileIfExists(context.DaemonProcessPath);
+            DeleteDirectoryIfExists(context.DaemonProcessDirectory);
             DeleteDirectoryIfExists(Path.Combine(context.IndexDirectory, "temp"));
             DeleteDirectoryIfExists(Path.Combine(context.IndexDirectory, "logs"));
             DeleteDirectoryIfExists(Path.Combine(context.IndexDirectory, "daemon"));
@@ -542,8 +554,7 @@ namespace AIBridgeCLI.Commands
 
             using (remaining)
             {
-                remaining.Kill();
-                remaining.WaitForExit(2000);
+                KillCodeIndexProcess(remaining);
             }
         }
 
@@ -871,11 +882,15 @@ namespace AIBridgeCLI.Commands
                 return BuildFailure(context, "No Unity compilation snapshot found. Open the Unity project once or run Code Index prewarm from AIBridge settings.");
             }
 
-            StartDaemon(context);
-            var startedStatus = await WaitForStatusFileAsync(context, timeout);
+            var startedStatus = await EnsureDaemonStartedUnderLockAsync(context, timeout);
             if (startedStatus == null)
             {
                 return BuildFailure(context, "AIBridgeCodeIndex daemon did not write status.json before timeout.", "daemon_start_timeout");
+            }
+
+            if (startedStatus.Value<bool?>("success") == false)
+            {
+                return startedStatus;
             }
 
             if (noWait)
@@ -885,6 +900,58 @@ namespace AIBridgeCLI.Commands
             }
 
             return await WaitUntilReadyAsync(startedStatus, timeout);
+        }
+
+        private static async Task<JObject> EnsureDaemonStartedUnderLockAsync(CodeIndexContext context, int timeout)
+        {
+            Directory.CreateDirectory(context.IndexDirectory);
+            using (var launchLock = await AcquireDaemonLaunchLockAsync(context, timeout))
+            {
+                if (launchLock == null)
+                {
+                    return BuildFailure(context, "Timed out waiting for the code_index daemon launch lock.", "daemon_launch_lock_timeout");
+                }
+
+                // 多个 CLI 可能同时发现 daemon 不可用；拿到跨进程锁后必须重查，避免重复启动。
+                var status = ReadStatusFile(context);
+                var remote = status == null ? null : await TryGetRemoteStatusAsync(status, timeout);
+                if (remote != null)
+                {
+                    CopyStatusRuntimeFields(status, remote);
+                    remote["reachable"] = true;
+                    return remote;
+                }
+
+                CleanupOrphanDaemons(context, 0);
+                DeleteFileIfExists(context.StatusPath);
+                DeleteFileIfExists(Path.Combine(context.IndexDirectory, "lock.json"));
+
+                StartDaemon(context);
+                return await WaitForStatusFileAsync(context, timeout);
+            }
+        }
+
+        private static async Task<FileStream> AcquireDaemonLaunchLockAsync(CodeIndexContext context, int timeout)
+        {
+            var deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(500, timeout));
+            Directory.CreateDirectory(context.IndexDirectory);
+            while (DateTime.UtcNow < deadline)
+            {
+                try
+                {
+                    return new FileStream(context.DaemonLaunchLockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                }
+                catch (IOException)
+                {
+                    await Task.Delay(100);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    await Task.Delay(100);
+                }
+            }
+
+            return null;
         }
 
         private static void StartDaemon(CodeIndexContext context)
@@ -899,12 +966,22 @@ namespace AIBridgeCLI.Commands
             var token = Guid.NewGuid().ToString("N");
             var startInfo = daemon.CreateStartInfo();
             startInfo.WorkingDirectory = context.ProjectRoot;
-            startInfo.UseShellExecute = false;
-            startInfo.CreateNoWindow = true;
-            startInfo.WindowStyle = ProcessWindowStyle.Hidden;
-            startInfo.RedirectStandardOutput = false;
-            startInfo.RedirectStandardError = false;
             daemon.AddLaunchArguments(startInfo, context, token);
+            if (daemon.UseShellExecuteForDetachedLaunch)
+            {
+                // Windows 可执行文件用 ShellExecute 启动，避免继承调用方捕获 stdout/stderr 时使用的管道句柄。
+                startInfo.UseShellExecute = true;
+                startInfo.WindowStyle = ProcessWindowStyle.Hidden;
+            }
+            else
+            {
+                startInfo.UseShellExecute = false;
+                startInfo.CreateNoWindow = true;
+                startInfo.WindowStyle = ProcessWindowStyle.Hidden;
+                // dotnet/source fallback 仍显式重定向，避免 daemon 继承父 CLI 标准句柄。
+                startInfo.RedirectStandardOutput = true;
+                startInfo.RedirectStandardError = true;
+            }
 
             var process = Process.Start(startInfo);
             if (process == null)
@@ -943,20 +1020,162 @@ namespace AIBridgeCLI.Commands
 
                 File.WriteAllText(
                     context.DaemonProcessPath,
-                    new JObject
-                    {
-                        ["daemonPid"] = process.Id,
-                        ["processName"] = process.ProcessName,
-                        ["startedAtUtcTicks"] = startedAtUtcTicks,
-                        ["launchMode"] = daemon.LaunchMode,
-                        ["daemonPath"] = daemon.DisplayPath,
-                        ["projectRoot"] = context.ProjectRoot
-                    }.ToString(Formatting.None),
+                    BuildDaemonProcessMarker(context, daemon, process, startedAtUtcTicks).ToString(Formatting.None),
+                    Encoding.UTF8);
+
+                Directory.CreateDirectory(context.DaemonProcessDirectory);
+                File.WriteAllText(
+                    GetDaemonProcessMarkerPath(context, process.Id),
+                    BuildDaemonProcessMarker(context, daemon, process, startedAtUtcTicks).ToString(Formatting.None),
                     Encoding.UTF8);
             }
             catch
             {
                 // marker 只用于 dotnet 启动模式下的保守清理；写入失败不能阻止 daemon 启动。
+            }
+        }
+
+        private static JObject BuildDaemonProcessMarker(
+            CodeIndexContext context,
+            CodeIndexDaemonExecutable daemon,
+            Process process,
+            long startedAtUtcTicks)
+        {
+            return new JObject
+            {
+                ["markerVersion"] = 2,
+                ["daemonPid"] = process.Id,
+                ["processName"] = process.ProcessName,
+                ["startedAtUtcTicks"] = startedAtUtcTicks,
+                ["launchMode"] = daemon.LaunchMode,
+                ["daemonPath"] = daemon.DisplayPath,
+                ["projectRoot"] = context.ProjectRoot
+            };
+        }
+
+        private static string GetDaemonProcessMarkerPath(CodeIndexContext context, int processId)
+        {
+            return Path.Combine(context.DaemonProcessDirectory, processId.ToString(CultureInfo.InvariantCulture) + ".json");
+        }
+
+        private static void CleanupOrphanDaemons(CodeIndexContext context, int keepPid)
+        {
+            if (context == null)
+            {
+                return;
+            }
+
+            foreach (var markerPath in EnumerateDaemonProcessMarkerPaths(context))
+            {
+                var marker = ReadJsonFile(markerPath);
+                if (!MarkerMatchesProject(marker, context))
+                {
+                    continue;
+                }
+
+                var pid = marker.Value<int?>("daemonPid") ?? 0;
+                if (pid <= 0 || pid == keepPid)
+                {
+                    continue;
+                }
+
+                if (TryGetCodeIndexProcess(pid, markerPath, out var process))
+                {
+                    using (process)
+                    {
+                        KillCodeIndexProcess(process);
+                    }
+                }
+
+                DeleteFileIfExists(markerPath);
+            }
+        }
+
+        private static IEnumerable<string> EnumerateDaemonProcessMarkerPaths(CodeIndexContext context)
+        {
+            if (File.Exists(context.DaemonProcessPath))
+            {
+                yield return context.DaemonProcessPath;
+            }
+
+            if (!Directory.Exists(context.DaemonProcessDirectory))
+            {
+                yield break;
+            }
+
+            foreach (var markerPath in Directory.EnumerateFiles(context.DaemonProcessDirectory, "*.json"))
+            {
+                yield return markerPath;
+            }
+        }
+
+        private static JObject ReadJsonFile(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                return null;
+            }
+
+            try
+            {
+                return JObject.Parse(File.ReadAllText(path, Encoding.UTF8));
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool MarkerMatchesProject(JObject marker, CodeIndexContext context)
+        {
+            if (marker == null || context == null)
+            {
+                return false;
+            }
+
+            var projectRoot = marker.Value<string>("projectRoot");
+            return !string.IsNullOrWhiteSpace(projectRoot) && PathsEqual(projectRoot, context.ProjectRoot);
+        }
+
+        private static bool PathsEqual(string left, string right)
+        {
+            if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+            {
+                return false;
+            }
+
+            try
+            {
+                left = Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                right = Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            }
+            catch
+            {
+            }
+
+            var comparison = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            return string.Equals(left, right, comparison);
+        }
+
+        private static void KillCodeIndexProcess(Process process)
+        {
+            if (process == null)
+            {
+                return;
+            }
+
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill();
+                    process.WaitForExit(2000);
+                }
+            }
+            catch
+            {
             }
         }
 
@@ -1985,6 +2204,8 @@ namespace AIBridgeCLI.Commands
             public string SnapshotJsonPath { get; private set; }
             public string StatusPath { get; private set; }
             public string DaemonProcessPath { get; private set; }
+            public string DaemonProcessDirectory { get; private set; }
+            public string DaemonLaunchLockPath { get; private set; }
             public bool HasUnityProjectMarkers { get; private set; }
             public int UnityPid { get; private set; }
             public bool Enabled { get; private set; }
@@ -2011,6 +2232,8 @@ namespace AIBridgeCLI.Commands
                     SnapshotJsonPath = Path.Combine(snapshotDirectory, "manifest.json"),
                     StatusPath = Path.Combine(indexDirectory, "status.json"),
                     DaemonProcessPath = Path.Combine(indexDirectory, DaemonProcessFileName),
+                    DaemonProcessDirectory = Path.Combine(indexDirectory, DaemonProcessDirectoryName),
+                    DaemonLaunchLockPath = Path.Combine(indexDirectory, DaemonLaunchLockFileName),
                     UnityPid = unityPid,
                     Enabled = GetConfigBool(config, "enableCodeIndex", false),
                     AutoRefresh = ResolveBool(options, "auto-refresh", GetConfigBool(config, "autoRefreshOnFileChange", true)),
@@ -2147,6 +2370,14 @@ namespace AIBridgeCLI.Commands
             public bool CanStart { get { return !string.IsNullOrEmpty(_path); } }
             public string DisplayPath { get { return _path; } }
             public string LaunchMode { get { return _mode.ToString(); } }
+            public bool UseShellExecuteForDetachedLaunch
+            {
+                get
+                {
+                    return RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                           && _mode == DaemonLaunchMode.Executable;
+                }
+            }
 
             public static CodeIndexDaemonExecutable Resolve()
             {
