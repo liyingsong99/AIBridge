@@ -4,6 +4,9 @@
   "title": "Prefab Asset Sweep",
   "description": "Inspect many Prefab, Scene, or asset files in parallel, merge patch proposals, then apply approved writes serially.",
   "version": "1.0.0",
+  "requiredSkills": [
+    "aibridge-development-workflow"
+  ],
   "inputs": {
     "assetSearch": {
       "description": "Search expression, directory, or GUID list for target assets."
@@ -21,12 +24,18 @@
       "id": "search-assets",
       "type": "serial",
       "description": "Find candidate assets for read-only inspection.",
+      "requiredSkills": [
+        "aibridge"
+      ],
       "steps": [
         {
           "id": "search-candidates",
           "kind": "manual",
           "role": "asset-searcher",
           "description": "Use asset search or repository file search to list candidates.",
+          "requiredSkills": [
+            "aibridge"
+          ],
           "outputs": [
             "ArtifactRef"
           ]
@@ -41,12 +50,20 @@
         "search-assets"
       ],
       "itemSource": "outputs.search-candidates",
+      "requiredSkills": [
+        "aibridge-workflow-orchestration",
+        "aibridge-prefab-patch"
+      ],
       "steps": [
         {
           "id": "inspect-asset",
           "kind": "agent",
           "role": "asset-inspector",
           "description": "Inspect one asset shard and return Finding[] and PatchProposal[] without editing.",
+          "requiredSkills": [
+            "aibridge-workflow-orchestration",
+            "aibridge-prefab-patch"
+          ],
           "outputs": [
             "Finding",
             "PatchProposal"
@@ -60,6 +77,10 @@
       "description": "Merge patch proposals and remove conflicting writes before any serialized asset edit.",
       "dependsOn": [
         "parallel-inspect"
+      ],
+      "requiredSkills": [
+        "aibridge-workflow-orchestration",
+        "aibridge-prefab-patch"
       ],
       "steps": [
         {
@@ -79,12 +100,20 @@
       "dependsOn": [
         "proposal-barrier"
       ],
+      "requiredSkills": [
+        "aibridge",
+        "aibridge-prefab-patch"
+      ],
       "steps": [
         {
           "id": "dry-run-patches",
           "kind": "manual",
           "role": "validator",
           "description": "Run prefab patch dry-run or equivalent checks for proposed edits.",
+          "requiredSkills": [
+            "aibridge",
+            "aibridge-prefab-patch"
+          ],
           "outputs": [
             "ValidationResult",
             "ArtifactRef"
@@ -99,12 +128,23 @@
       "dependsOn": [
         "dry-run"
       ],
+      "requiredSkills": [
+        "aibridge",
+        "aibridge-prefab-patch"
+      ],
+      "releaseSkillsAfter": [
+        "aibridge-prefab-patch"
+      ],
       "steps": [
         {
           "id": "apply-approved-patches",
           "kind": "manual",
           "role": "implementer",
           "description": "Apply approved patch proposals one at a time. Never write the same serialized asset concurrently.",
+          "requiredSkills": [
+            "aibridge",
+            "aibridge-prefab-patch"
+          ],
           "outputs": [
             "ValidationResult"
           ]
@@ -117,6 +157,12 @@
       "description": "Compile and check logs after serial writes.",
       "dependsOn": [
         "serial-apply"
+      ],
+      "requiredSkills": [
+        "aibridge"
+      ],
+      "releaseSkillsAfter": [
+        "aibridge"
       ],
       "steps": [
         {

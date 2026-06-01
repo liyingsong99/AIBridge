@@ -4,6 +4,9 @@
   "title": "Runtime Target Sweep",
   "description": "Collect status, logs, screenshot, and perf evidence from Runtime targets and summarize target health.",
   "version": "1.0.0",
+  "requiredSkills": [
+    "aibridge-development-workflow"
+  ],
   "inputs": {
     "target": {
       "description": "Runtime target id, latest, URL-backed target, or platform selector.",
@@ -23,6 +26,9 @@
       "id": "discover",
       "type": "serial",
       "description": "List known Runtime targets.",
+      "requiredSkills": [
+        "aibridge"
+      ],
       "steps": [
         {
           "id": "runtime-list-targets",
@@ -42,6 +48,12 @@
       "description": "Collect Runtime evidence for the selected target.",
       "dependsOn": [
         "discover"
+      ],
+      "requiredSkills": [
+        "aibridge"
+      ],
+      "releaseSkillsAfter": [
+        "aibridge"
       ],
       "steps": [
         {
@@ -91,6 +103,12 @@
       "description": "Compare collected evidence and summarize health differences.",
       "dependsOn": [
         "collect"
+      ],
+      "requiredSkills": [
+        "aibridge-workflow-orchestration"
+      ],
+      "releaseSkillsAfter": [
+        "aibridge-workflow-orchestration"
       ],
       "steps": [
         {

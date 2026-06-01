@@ -74,6 +74,16 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
+        public void SkillInstallTargetRejectsPackageSourceSkillRoot()
+        {
+            var sourceSkillRoot = Path.Combine(ProjectRoot, "Packages", "cn.lys.aibridge", "Skill~");
+
+            Assert.IsTrue(SkillInstaller.IsUnsafeSkillInstallTarget(sourceSkillRoot, sourceSkillRoot));
+            Assert.IsTrue(SkillInstaller.IsUnsafeSkillInstallTarget(sourceSkillRoot, Path.Combine(sourceSkillRoot, "aibridge")));
+            Assert.IsFalse(SkillInstaller.IsUnsafeSkillInstallTarget(sourceSkillRoot, Path.Combine(ProjectRoot, ".codex", "skills", "aibridge")));
+        }
+
+        [Test]
         public void DevelopmentWorkflowRoutesCSharpLookupToCodeIndex()
         {
             var target = AssistantIntegrationRegistry.GetTargets().First(item => item.Id == "codex");

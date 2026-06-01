@@ -95,7 +95,9 @@ namespace AIBridgeCLI.Workflow
             {
                 PhaseId = phase.Id,
                 Status = "running",
-                StartedAtUtc = DateTime.UtcNow.ToString("o")
+                StartedAtUtc = DateTime.UtcNow.ToString("o"),
+                RequiredSkills = CopySkillList(phase.RequiredSkills),
+                ReleaseSkillsAfter = CopySkillList(phase.ReleaseSkillsAfter)
             };
             store.SavePhaseState(phaseState);
 
@@ -146,7 +148,9 @@ namespace AIBridgeCLI.Workflow
                 StepId = step.Id,
                 PhaseId = phase.Id,
                 Kind = step.Kind,
-                StartedAtUtc = DateTime.UtcNow.ToString("o")
+                StartedAtUtc = DateTime.UtcNow.ToString("o"),
+                RequiredSkills = CopySkillList(step.RequiredSkills),
+                ReleaseSkillsAfter = CopySkillList(step.ReleaseSkillsAfter)
             };
 
             if (string.Equals(step.Kind, "cli", StringComparison.OrdinalIgnoreCase))
@@ -198,6 +202,11 @@ namespace AIBridgeCLI.Workflow
 
             state.EndedAtUtc = DateTime.UtcNow.ToString("o");
             return state;
+        }
+
+        private static List<string> CopySkillList(List<string> skills)
+        {
+            return skills == null ? new List<string>() : new List<string>(skills);
         }
 
         private static WorkflowRunManifest CreateManifest(WorkflowRecipeDocument doc, WorkflowRunStore store)

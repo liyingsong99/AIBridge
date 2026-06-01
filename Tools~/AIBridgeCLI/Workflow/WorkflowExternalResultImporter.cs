@@ -64,17 +64,64 @@ namespace AIBridgeCLI.Workflow
 
         private static void ValidatePayload(string schema, JToken payload)
         {
-            if (!string.Equals(schema, "Verdict", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(schema, "Verdict", StringComparison.OrdinalIgnoreCase))
             {
+                ValidateVerdictPayload(payload);
                 return;
             }
 
+            if (string.Equals(schema, "SkillHandoff", StringComparison.OrdinalIgnoreCase))
+            {
+                ValidateRequiredFields(
+                    schema,
+                    payload,
+                    new[] { "completedMode", "summary" },
+                    new[] { "releasedSkills", "nextRecommendedSkills", "artifactRefs", "gates", "openRisks" });
+                return;
+            }
+
+            if (string.Equals(schema, "EvidenceRef", StringComparison.OrdinalIgnoreCase))
+            {
+                ValidateRequiredFields(schema, payload, new[] { "id", "kind", "summary" }, new string[0]);
+                return;
+            }
+
+            if (string.Equals(schema, "CommandEvidence", StringComparison.OrdinalIgnoreCase))
+            {
+                ValidateRequiredFields(schema, payload, new[] { "id", "command", "status", "summary" }, new string[0]);
+            }
+        }
+
+        private static void ValidateVerdictPayload(JToken payload)
+        {
             foreach (var item in EnumerateObjects(payload))
             {
                 var status = (string)item["status"];
                 if (string.IsNullOrWhiteSpace(status) || !VerdictStatuses.Contains(status))
                 {
                     throw new InvalidOperationException("Verdict.status must be confirmed, refuted, or uncertain.");
+                }
+            }
+        }
+
+        private static void ValidateRequiredFields(string schema, JToken payload, string[] requiredStrings, string[] requiredArrays)
+        {
+            foreach (var item in EnumerateObjects(payload))
+            {
+                foreach (var field in requiredStrings)
+                {
+                    if (string.IsNullOrWhiteSpace((string)item[field]))
+                    {
+                        throw new InvalidOperationException(schema + "." + field + " is required.");
+                    }
+                }
+
+                foreach (var field in requiredArrays)
+                {
+                    if (!(item[field] is JArray))
+                    {
+                        throw new InvalidOperationException(schema + "." + field + " must be an array.");
+                    }
                 }
             }
         }

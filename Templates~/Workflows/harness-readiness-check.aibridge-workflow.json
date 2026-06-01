@@ -4,6 +4,9 @@
   "title": "Harness Readiness Check",
   "description": "Probe the current AI harness, AIBridge CLI, workflow support, and optional Unity/Runtime capabilities before a long or delegated workflow.",
   "version": "1.0.0",
+  "requiredSkills": [
+    "aibridge-development-workflow"
+  ],
   "inputs": {
     "taskKind": {
       "description": "implementation, review, debug, validation, runtime, or workflow.",
@@ -27,12 +30,18 @@
       "id": "locate-integration",
       "type": "serial",
       "description": "Record harness rule files, Skill root, CLI path, and whether external agent/manual steps can run.",
+      "requiredSkills": [
+        "aibridge-development-workflow"
+      ],
       "steps": [
         {
           "id": "record-harness-context",
           "kind": "manual",
           "role": "main-agent",
           "description": "Return EvidenceRef[] for RootRule, Skill root, CLI path, and external executor availability.",
+          "requiredSkills": [
+            "aibridge-development-workflow"
+          ],
           "outputs": [
             "EvidenceRef",
             "ValidationResult"
@@ -46,6 +55,10 @@
       "description": "Run deterministic workflow CLI checks that do not require Unity Editor or Runtime targets.",
       "dependsOn": [
         "locate-integration"
+      ],
+      "requiredSkills": [
+        "aibridge",
+        "aibridge-workflow-orchestration"
       ],
       "steps": [
         {
@@ -98,12 +111,24 @@
       "dependsOn": [
         "probe-workflow-cli"
       ],
+      "requiredSkills": [
+        "aibridge",
+        "aibridge-workflow-orchestration"
+      ],
+      "releaseSkillsAfter": [
+        "aibridge",
+        "aibridge-workflow-orchestration"
+      ],
       "steps": [
         {
           "id": "record-optional-capabilities",
           "kind": "manual",
           "role": "main-agent",
           "description": "When required by inputs, run compile unity, get_logs, code_index status, runtime list_targets, or harness sub-agent checks and import CommandEvidence/EvidenceRef.",
+          "requiredSkills": [
+            "aibridge",
+            "aibridge-workflow-orchestration"
+          ],
           "outputs": [
             "CommandEvidence",
             "EvidenceRef",

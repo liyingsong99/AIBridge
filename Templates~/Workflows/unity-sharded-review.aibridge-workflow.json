@@ -4,6 +4,9 @@
   "title": "Unity Sharded Review",
   "description": "Review a broad Unity scope by shard, merge findings, adversarially verify claims, and report confirmed issues only.",
   "version": "1.0.0",
+  "requiredSkills": [
+    "aibridge-development-workflow"
+  ],
   "inputs": {
     "scopePaths": {
       "description": "Directories, assemblies, packages, or files to review."
@@ -21,12 +24,18 @@
       "id": "shard",
       "type": "serial",
       "description": "Split the review scope into independent read-only shards.",
+      "requiredSkills": [
+        "aibridge-workflow-orchestration"
+      ],
       "steps": [
         {
           "id": "plan-shards",
           "kind": "agent",
           "role": "shard-planner",
           "description": "Return shard ids, paths, and review focus.",
+          "requiredSkills": [
+            "aibridge-workflow-orchestration"
+          ],
           "outputs": [
             "PlanItem"
           ]
@@ -41,12 +50,18 @@
         "shard"
       ],
       "itemSource": "outputs.plan-shards",
+      "requiredSkills": [
+        "aibridge-workflow-orchestration"
+      ],
       "steps": [
         {
           "id": "review-shard",
           "kind": "agent",
           "role": "reviewer",
           "description": "Inspect one shard without editing files and return Finding[].",
+          "requiredSkills": [
+            "aibridge-workflow-orchestration"
+          ],
           "outputs": [
             "Finding"
           ]
@@ -59,6 +74,9 @@
       "description": "Merge duplicate findings by file, line, claim, and evidence.",
       "dependsOn": [
         "parallel-review"
+      ],
+      "requiredSkills": [
+        "aibridge-workflow-orchestration"
       ],
       "steps": [
         {
@@ -78,12 +96,21 @@
       "dependsOn": [
         "deduplicate"
       ],
+      "requiredSkills": [
+        "aibridge-workflow-orchestration"
+      ],
+      "releaseSkillsAfter": [
+        "aibridge-workflow-orchestration"
+      ],
       "steps": [
         {
           "id": "verify-findings",
           "kind": "agent",
           "role": "verifier",
           "description": "Return Verdict[] using confirmed, refuted, or uncertain.",
+          "requiredSkills": [
+            "aibridge-workflow-orchestration"
+          ],
           "outputs": [
             "Verdict"
           ]

@@ -4,6 +4,9 @@
   "title": "Unity Change Implementation",
   "description": "Implement a scoped Unity or AIBridge package change and collect compile, log, and optional runtime evidence.",
   "version": "1.0.0",
+  "requiredSkills": [
+    "aibridge-development-workflow"
+  ],
   "inputs": {
     "request": {
       "description": "User request or implementation goal."
@@ -21,12 +24,18 @@
       "id": "analyze",
       "type": "serial",
       "description": "Analyze existing implementation patterns, constraints, and risks.",
+      "requiredSkills": [
+        "aibridge-development-workflow"
+      ],
       "steps": [
         {
           "id": "analyze-request",
           "kind": "agent",
           "role": "analyzer",
           "description": "Return PlanItem[] and risk notes for the scoped request.",
+          "requiredSkills": [
+            "aibridge-development-workflow"
+          ],
           "outputs": [
             "PlanItem"
           ]
@@ -40,12 +49,20 @@
       "dependsOn": [
         "analyze"
       ],
+      "requiredSkills": [
+        "aibridge-development-workflow",
+        "aibridge"
+      ],
       "steps": [
         {
           "id": "implement-change",
           "kind": "manual",
           "role": "implementer",
           "description": "Edit code, assets, or package files in the requested scope.",
+          "requiredSkills": [
+            "aibridge-development-workflow",
+            "aibridge"
+          ],
           "outputs": [
             "PatchProposal"
           ]
@@ -58,6 +75,12 @@
       "description": "Collect deterministic Unity evidence.",
       "dependsOn": [
         "implement"
+      ],
+      "requiredSkills": [
+        "aibridge"
+      ],
+      "releaseSkillsAfter": [
+        "aibridge"
       ],
       "steps": [
         {
@@ -83,6 +106,9 @@
           "id": "optional-visual-runtime",
           "kind": "manual",
           "description": "When validationLevel is runtime-or-screenshot, run a targeted screenshot or runtime validation command.",
+          "requiredSkills": [
+            "aibridge"
+          ],
           "outputs": [
             "ValidationResult",
             "ArtifactRef"

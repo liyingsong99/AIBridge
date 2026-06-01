@@ -383,6 +383,7 @@ namespace AIBridgeCLI.Commands
                 { "manifestPath", WorkflowPathHelper.ToDisplayPath(store.ManifestPath) },
                 { "reportPath", File.Exists(store.ReportPath) ? WorkflowPathHelper.ToDisplayPath(store.ReportPath) : null },
                 { "summary", manifest.Summary },
+                { "skillScopes", BuildSkillScopeSummary(manifest) },
                 { "gateResults", BuildGateSummary(manifest) },
                 { "stepGaps", BuildStepGapSummary(manifest) },
                 { "failedCommands", BuildFailedCommandSummary(manifest) }
@@ -420,6 +421,74 @@ namespace AIBridgeCLI.Commands
             return result;
         }
 
+        private static object BuildSkillScopeSummary(WorkflowRunManifest manifest)
+        {
+            return new
+            {
+                phases = BuildPhaseSkillScopeSummary(manifest),
+                steps = BuildStepSkillScopeSummary(manifest)
+            };
+        }
+
+        private static List<object> BuildPhaseSkillScopeSummary(WorkflowRunManifest manifest)
+        {
+            var result = new List<object>();
+            if (manifest == null || manifest.PhaseStates == null)
+            {
+                return result;
+            }
+
+            foreach (var phase in manifest.PhaseStates)
+            {
+                if (IsEmptySkillScope(phase.RequiredSkills, phase.ReleaseSkillsAfter))
+                {
+                    continue;
+                }
+
+                result.Add(new
+                {
+                    phaseId = phase.PhaseId,
+                    requiredSkills = phase.RequiredSkills,
+                    releaseSkillsAfter = phase.ReleaseSkillsAfter
+                });
+            }
+
+            return result;
+        }
+
+        private static List<object> BuildStepSkillScopeSummary(WorkflowRunManifest manifest)
+        {
+            var result = new List<object>();
+            if (manifest == null || manifest.StepStates == null)
+            {
+                return result;
+            }
+
+            foreach (var step in manifest.StepStates)
+            {
+                if (IsEmptySkillScope(step.RequiredSkills, step.ReleaseSkillsAfter))
+                {
+                    continue;
+                }
+
+                result.Add(new
+                {
+                    stepId = step.StepId,
+                    phaseId = step.PhaseId,
+                    requiredSkills = step.RequiredSkills,
+                    releaseSkillsAfter = step.ReleaseSkillsAfter
+                });
+            }
+
+            return result;
+        }
+
+        private static bool IsEmptySkillScope(List<string> requiredSkills, List<string> releaseSkillsAfter)
+        {
+            return (requiredSkills == null || requiredSkills.Count == 0)
+                && (releaseSkillsAfter == null || releaseSkillsAfter.Count == 0);
+        }
+
         private static List<object> BuildStepGapSummary(WorkflowRunManifest manifest)
         {
             var result = new List<object>();
@@ -442,6 +511,8 @@ namespace AIBridgeCLI.Commands
                     status = step.Status,
                     command = step.Command,
                     error = step.Error,
+                    requiredSkills = step.RequiredSkills,
+                    releaseSkillsAfter = step.ReleaseSkillsAfter,
                     artifactIds = step.ArtifactIds
                 });
             }

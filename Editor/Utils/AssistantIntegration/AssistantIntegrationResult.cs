@@ -12,6 +12,7 @@ namespace AIBridge.Editor
         AlreadyUpToDate,
         SkippedMissing,
         SkippedDisabled,
+        SkippedUnsafePath,
         Failed
     }
 

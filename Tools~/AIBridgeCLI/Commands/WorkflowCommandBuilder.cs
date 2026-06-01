@@ -76,7 +76,7 @@ namespace AIBridgeCLI.Commands
             {
                 new ParameterInfo("run", "Workflow run id. Defaults to active run or AIBRIDGE_WORKFLOW_RUN_ID", false),
                 new ParameterInfo("step", "Source workflow step id", false),
-                new ParameterInfo("schema", "Imported schema: Verdict, Finding, PatchProposal, ValidationResult, EvidenceRef, CommandEvidence", false, "Verdict"),
+                new ParameterInfo("schema", "Imported schema: Verdict, Finding, PatchProposal, ValidationResult, EvidenceRef, CommandEvidence, SkillHandoff", false, "Verdict"),
                 new ParameterInfo("kind", "Artifact kind override, e.g. verdict, finding, patch-proposal", false),
                 new ParameterInfo("file", "JSON file to import", true)
             },

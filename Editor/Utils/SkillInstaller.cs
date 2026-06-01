@@ -679,6 +679,13 @@ namespace AIBridge.Editor
             var resolvedSkillDirectory = target.GetResolvedSkillDirectoryRelativePath(projectRoot);
             var targetDir = Path.Combine(projectRoot, resolvedSkillDirectory.Replace('/', Path.DirectorySeparatorChar));
             skillFilePath = Path.Combine(targetDir, target.SkillFileName);
+            var sourceSkillRoot = Path.GetDirectoryName(sourceSkillPath);
+            if (IsUnsafeSkillInstallTarget(sourceSkillRoot, targetDir))
+            {
+                AIBridgeLogger.LogWarning("[SkillInstaller] Refused to install Skill into package source Skill~ directory: " + targetDir);
+                return IntegrationAction.SkippedUnsafePath;
+            }
+
             var existed = File.Exists(skillFilePath);
 
             GenerateAndWriteSkillFile(sourceSkillPath, targetDir, skillFilePath);
@@ -697,6 +704,12 @@ namespace AIBridge.Editor
             var targetSkillRoot = GetTargetSkillRootDirectory(projectRoot, target);
             if (string.IsNullOrEmpty(targetSkillRoot))
             {
+                return installedSkillFiles;
+            }
+
+            if (IsUnsafeSkillInstallTarget(sourceSkillRoot, targetSkillRoot))
+            {
+                AIBridgeLogger.LogWarning("[SkillInstaller] Refused to install additional Skills into package source Skill~ directory: " + targetSkillRoot);
                 return installedSkillFiles;
             }
 
@@ -798,6 +811,48 @@ namespace AIBridge.Editor
             {
                 var targetChildDir = Path.Combine(targetDir, Path.GetFileName(childDir));
                 CopyDirectory(childDir, targetChildDir);
+            }
+        }
+
+        internal static bool IsUnsafeSkillInstallTarget(string sourceSkillRoot, string targetDirectory)
+        {
+            if (string.IsNullOrEmpty(sourceSkillRoot) || string.IsNullOrEmpty(targetDirectory))
+            {
+                return false;
+            }
+
+            // 安装目录不能落在包内 Skill~ 源目录下，否则刷新时会先删目标目录并误删源 Skill。
+            return IsSameOrChildDirectory(sourceSkillRoot, targetDirectory);
+        }
+
+        private static bool IsSameOrChildDirectory(string parentDirectory, string candidateDirectory)
+        {
+            var parent = NormalizeFullDirectoryPath(parentDirectory);
+            var candidate = NormalizeFullDirectoryPath(candidateDirectory);
+            if (string.IsNullOrEmpty(parent) || string.IsNullOrEmpty(candidate))
+            {
+                return false;
+            }
+
+            if (string.Equals(parent, candidate, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return candidate.StartsWith(parent + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeFullDirectoryPath(string path)
+        {
+            try
+            {
+                return Path.GetFullPath(path)
+                    .Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar)
+                    .TrimEnd(Path.DirectorySeparatorChar);
+            }
+            catch
+            {
+                return null;
             }
         }
 
@@ -1052,16 +1107,29 @@ namespace AIBridge.Editor
         private static void CleanupSkillDirectoriesForTarget(string projectRoot, AssistantIntegrationTarget target)
         {
             var skillDirs = new List<string>();
+            var sourceSkillRoot = GetSourceSkillRootPath();
             var resolvedSkillDirectory = target.GetResolvedSkillDirectoryRelativePath(projectRoot);
             if (!string.IsNullOrEmpty(resolvedSkillDirectory))
             {
-                skillDirs.Add(Path.Combine(projectRoot, resolvedSkillDirectory.Replace('/', Path.DirectorySeparatorChar)));
+                var resolvedSkillPath = Path.Combine(projectRoot, resolvedSkillDirectory.Replace('/', Path.DirectorySeparatorChar));
+                if (IsUnsafeSkillInstallTarget(sourceSkillRoot, resolvedSkillPath))
+                {
+                    AIBridgeLogger.LogWarning("[SkillInstaller] Refused to cleanup package source Skill~ directory: " + resolvedSkillPath);
+                    return;
+                }
+
+                skillDirs.Add(resolvedSkillPath);
             }
 
             var targetSkillRoot = GetTargetSkillRootDirectory(projectRoot, target);
-            var sourceSkillRoot = GetSourceSkillRootPath();
             if (!string.IsNullOrEmpty(targetSkillRoot) && !string.IsNullOrEmpty(sourceSkillRoot) && Directory.Exists(sourceSkillRoot))
             {
+                if (IsUnsafeSkillInstallTarget(sourceSkillRoot, targetSkillRoot))
+                {
+                    AIBridgeLogger.LogWarning("[SkillInstaller] Refused to cleanup additional Skills from package source Skill~ directory: " + targetSkillRoot);
+                    return;
+                }
+
                 foreach (var sourceSkillDir in Directory.GetDirectories(sourceSkillRoot))
                 {
                     if (File.Exists(Path.Combine(sourceSkillDir, SKILL_FILE_NAME)))

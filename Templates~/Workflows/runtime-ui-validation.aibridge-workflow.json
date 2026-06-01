@@ -4,6 +4,9 @@
   "title": "Runtime UI Validation",
   "description": "Validate a Play Mode or Player UI path by performing actions, collecting screenshots and logs, and recording a verdict.",
   "version": "1.0.0",
+  "requiredSkills": [
+    "aibridge-development-workflow"
+  ],
   "inputs": {
     "target": {
       "description": "Runtime target id or latest.",
@@ -21,6 +24,9 @@
       "id": "prepare",
       "type": "serial",
       "description": "Confirm the Runtime target is reachable before actions run.",
+      "requiredSkills": [
+        "aibridge"
+      ],
       "steps": [
         {
           "id": "runtime-status",
@@ -41,12 +47,18 @@
       "dependsOn": [
         "prepare"
       ],
+      "requiredSkills": [
+        "aibridge"
+      ],
       "steps": [
         {
           "id": "run-actions",
           "kind": "manual",
           "role": "action-runner",
           "description": "Run the requested click, drag, type, or runtime handler actions in order.",
+          "requiredSkills": [
+            "aibridge"
+          ],
           "outputs": [
             "ValidationResult"
           ]
@@ -59,6 +71,12 @@
       "description": "Collect logs and screenshot evidence after the UI path.",
       "dependsOn": [
         "perform-actions"
+      ],
+      "requiredSkills": [
+        "aibridge"
+      ],
+      "releaseSkillsAfter": [
+        "aibridge"
       ],
       "steps": [
         {
@@ -89,12 +107,21 @@
       "dependsOn": [
         "collect-evidence"
       ],
+      "requiredSkills": [
+        "aibridge-workflow-orchestration"
+      ],
+      "releaseSkillsAfter": [
+        "aibridge-workflow-orchestration"
+      ],
       "steps": [
         {
           "id": "ui-verdict",
           "kind": "agent",
           "role": "visual-log-validator",
           "description": "Return a confirmed, refuted, or uncertain Verdict from screenshots, logs, and expectedState.",
+          "requiredSkills": [
+            "aibridge-workflow-orchestration"
+          ],
           "outputs": [
             "Verdict"
           ]

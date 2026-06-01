@@ -104,6 +104,8 @@ namespace AIBridge.Editor.Tests
             var packageRoot = GetPackageRoot();
             var exporter = File.ReadAllText(Path.Combine(packageRoot, "Tools~", "AIBridgeCLI", "Workflow", "WorkflowExporter.cs"));
             var importer = File.ReadAllText(Path.Combine(packageRoot, "Tools~", "AIBridgeCLI", "Workflow", "WorkflowExternalResultImporter.cs"));
+            var command = File.ReadAllText(Path.Combine(packageRoot, "Tools~", "AIBridgeCLI", "Commands", "WorkflowCommand.cs"));
+            var report = File.ReadAllText(Path.Combine(packageRoot, "Tools~", "AIBridgeCLI", "Workflow", "WorkflowReportWriter.cs"));
             var registry = File.ReadAllText(Path.Combine(packageRoot, "Tools~", "AIBridgeCLI", "Commands", "CommandRegistry.cs"));
             var harnessCommand = File.ReadAllText(Path.Combine(packageRoot, "Tools~", "AIBridgeCLI", "Commands", "HarnessCommand.cs"));
 
@@ -116,6 +118,9 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("\"evidence\"", importer);
             StringAssert.Contains("\"command-evidence\"", importer);
             StringAssert.Contains("\"skill-handoff\"", importer);
+            StringAssert.Contains("SkillHandoff.completedMode", importer);
+            StringAssert.Contains("skillScopes", command);
+            StringAssert.Contains("## Skill Scope", report);
             StringAssert.Contains("HarnessCommandBuilder", registry);
             StringAssert.Contains("capabilities.json", harnessCommand);
         }
@@ -128,6 +133,8 @@ namespace AIBridge.Editor.Tests
             Assert.AreEqual(1, recipe.schemaVersion, file);
             Assert.IsTrue(allowedNames.Contains(recipe.name), file);
             Assert.IsFalse(string.IsNullOrWhiteSpace(recipe.description), file);
+            Assert.IsNotNull(recipe.requiredSkills, file);
+            Assert.IsTrue(recipe.requiredSkills.Contains("aibridge-development-workflow"), file);
             Assert.IsNotNull(recipe.phases, file);
             Assert.Greater(recipe.phases.Length, 0, file);
             Assert.IsNotNull(recipe.gates, file);
@@ -158,6 +165,12 @@ namespace AIBridge.Editor.Tests
                     Assert.IsFalse(string.IsNullOrWhiteSpace(step.id), file);
                     Assert.IsTrue(seenSteps.Add(step.id), "Duplicate step id in " + file + ": " + step.id);
                     Assert.IsTrue(StepKinds.Contains(step.kind), "Unsupported step kind in " + file + ": " + step.kind);
+                    if (step.kind == "agent" || step.kind == "manual")
+                    {
+                        Assert.IsNotNull(step.requiredSkills, "External step missing requiredSkills in " + file + ": " + step.id);
+                        Assert.Greater(step.requiredSkills.Length, 0, "External step has empty requiredSkills in " + file + ": " + step.id);
+                    }
+
                     if (step.kind == "cli")
                     {
                         Assert.IsFalse(string.IsNullOrWhiteSpace(step.command), "CLI step missing command in " + file + ": " + step.id);
@@ -189,6 +202,7 @@ namespace AIBridge.Editor.Tests
             public int schemaVersion;
             public string name;
             public string description;
+            public string[] requiredSkills;
             public Phase[] phases;
             public Gate[] gates;
         }
@@ -199,6 +213,8 @@ namespace AIBridge.Editor.Tests
             public string id;
             public string type;
             public string[] dependsOn;
+            public string[] requiredSkills;
+            public string[] releaseSkillsAfter;
             public Step[] steps;
         }
 
@@ -208,6 +224,8 @@ namespace AIBridge.Editor.Tests
             public string id;
             public string kind;
             public string command;
+            public string[] requiredSkills;
+            public string[] releaseSkillsAfter;
         }
 
         [Serializable]

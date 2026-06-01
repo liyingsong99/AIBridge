@@ -4,6 +4,9 @@
   "title": "Bug Hunter Loop",
   "description": "Iteratively collect evidence, generate candidate causes, verify claims, implement one confirmed fix, and validate.",
   "version": "1.0.0",
+  "requiredSkills": [
+    "aibridge-development-workflow"
+  ],
   "inputs": {
     "initialEvidence": {
       "description": "Logs, screenshots, repro steps, test failures, or Runtime symptoms."
@@ -21,6 +24,9 @@
       "id": "collect-evidence",
       "type": "serial",
       "description": "Collect deterministic evidence before proposing causes.",
+      "requiredSkills": [
+        "aibridge"
+      ],
       "steps": [
         {
           "id": "check-console-errors",
@@ -37,6 +43,9 @@
           "kind": "manual",
           "role": "evidence-collector",
           "description": "Collect tests, screenshots, Runtime status/logs, or Code Index clues relevant to initialEvidence.",
+          "requiredSkills": [
+            "aibridge"
+          ],
           "outputs": [
             "ArtifactRef",
             "ValidationResult"
@@ -51,12 +60,18 @@
       "dependsOn": [
         "collect-evidence"
       ],
+      "requiredSkills": [
+        "aibridge-workflow-orchestration"
+      ],
       "steps": [
         {
           "id": "generate-candidates",
           "kind": "agent",
           "role": "candidate-generator",
           "description": "Return evidence-backed Finding[] without editing.",
+          "requiredSkills": [
+            "aibridge-workflow-orchestration"
+          ],
           "outputs": [
             "Finding"
           ]
@@ -70,12 +85,21 @@
       "dependsOn": [
         "candidate-generation"
       ],
+      "requiredSkills": [
+        "aibridge-workflow-orchestration"
+      ],
+      "releaseSkillsAfter": [
+        "aibridge-workflow-orchestration"
+      ],
       "steps": [
         {
           "id": "verify-candidates",
           "kind": "agent",
           "role": "verifier",
           "description": "Return Verdict[] with confirmed, refuted, or uncertain status.",
+          "requiredSkills": [
+            "aibridge-workflow-orchestration"
+          ],
           "outputs": [
             "Verdict"
           ]
@@ -89,12 +113,20 @@
       "dependsOn": [
         "adversarial-verify"
       ],
+      "requiredSkills": [
+        "aibridge-development-workflow",
+        "aibridge"
+      ],
       "steps": [
         {
           "id": "apply-one-fix",
           "kind": "manual",
           "role": "implementer",
           "description": "Apply one confirmed fix serially and leave unconfirmed candidates untouched.",
+          "requiredSkills": [
+            "aibridge-development-workflow",
+            "aibridge"
+          ],
           "outputs": [
             "PatchProposal"
           ]
@@ -107,6 +139,12 @@
       "description": "Validate after the fix using repeatable gates.",
       "dependsOn": [
         "implement-one"
+      ],
+      "requiredSkills": [
+        "aibridge"
+      ],
+      "releaseSkillsAfter": [
+        "aibridge"
       ],
       "steps": [
         {

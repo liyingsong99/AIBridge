@@ -34,11 +34,13 @@ namespace AIBridgeCLI.Workflow
             sb.AppendLine("| Failed gates | " + manifest.Summary.FailedGateCount + " |");
             sb.AppendLine();
 
+            WriteSkillScopeSection(sb, manifest);
+
             sb.AppendLine("## Phases");
             sb.AppendLine();
             sb.AppendLine("| Phase | Status | Steps | Artifacts | Error |");
             sb.AppendLine("|---|---|---:|---:|---|");
-            foreach (var phase in manifest.PhaseStates)
+            foreach (var phase in manifest.PhaseStates ?? new List<WorkflowPhaseState>())
             {
                 sb.AppendLine("| `" + phase.PhaseId + "` | `" + phase.Status + "` | " + phase.StepIds.Count + " | " + phase.ArtifactIds.Count + " | " + EscapeTable(phase.Error) + " |");
             }
@@ -48,7 +50,7 @@ namespace AIBridgeCLI.Workflow
             sb.AppendLine();
             sb.AppendLine("| Step | Kind | Status | Command | Error |");
             sb.AppendLine("|---|---|---|---|---|");
-            foreach (var step in manifest.StepStates)
+            foreach (var step in manifest.StepStates ?? new List<WorkflowStepState>())
             {
                 sb.AppendLine("| `" + step.StepId + "` | `" + step.Kind + "` | `" + step.Status + "` | " + EscapeTable(step.Command) + " | " + EscapeTable(step.Error) + " |");
             }
@@ -94,6 +96,82 @@ namespace AIBridgeCLI.Workflow
             sb.AppendLine("AIBridgeCLI workflow report --run " + manifest.RunId + " --format markdown");
             sb.AppendLine("```");
             return sb.ToString();
+        }
+
+        private static void WriteSkillScopeSection(StringBuilder sb, WorkflowRunManifest manifest)
+        {
+            if (!HasSkillScopes(manifest))
+            {
+                return;
+            }
+
+            sb.AppendLine("## Skill Scope");
+            sb.AppendLine();
+            sb.AppendLine("| Scope | Required Skills | Release After |");
+            sb.AppendLine("|---|---|---|");
+            foreach (var phase in manifest.PhaseStates ?? new List<WorkflowPhaseState>())
+            {
+                if (!HasSkillScope(phase.RequiredSkills, phase.ReleaseSkillsAfter))
+                {
+                    continue;
+                }
+
+                sb.AppendLine("| `phase:" + phase.PhaseId + "` | " + FormatSkillList(phase.RequiredSkills) + " | " + FormatSkillList(phase.ReleaseSkillsAfter) + " |");
+            }
+
+            foreach (var step in manifest.StepStates ?? new List<WorkflowStepState>())
+            {
+                if (!HasSkillScope(step.RequiredSkills, step.ReleaseSkillsAfter))
+                {
+                    continue;
+                }
+
+                sb.AppendLine("| `step:" + step.StepId + "` | " + FormatSkillList(step.RequiredSkills) + " | " + FormatSkillList(step.ReleaseSkillsAfter) + " |");
+            }
+
+            sb.AppendLine();
+        }
+
+        private static bool HasSkillScopes(WorkflowRunManifest manifest)
+        {
+            if (manifest == null)
+            {
+                return false;
+            }
+
+            foreach (var phase in manifest.PhaseStates ?? new List<WorkflowPhaseState>())
+            {
+                if (HasSkillScope(phase.RequiredSkills, phase.ReleaseSkillsAfter))
+                {
+                    return true;
+                }
+            }
+
+            foreach (var step in manifest.StepStates ?? new List<WorkflowStepState>())
+            {
+                if (HasSkillScope(step.RequiredSkills, step.ReleaseSkillsAfter))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool HasSkillScope(List<string> requiredSkills, List<string> releaseSkillsAfter)
+        {
+            return requiredSkills != null && requiredSkills.Count > 0
+                || releaseSkillsAfter != null && releaseSkillsAfter.Count > 0;
+        }
+
+        private static string FormatSkillList(List<string> skills)
+        {
+            if (skills == null || skills.Count == 0)
+            {
+                return "";
+            }
+
+            return "`" + string.Join("`, `", skills.ToArray()) + "`";
         }
 
         private static void WriteVerdictSection(StringBuilder sb, WorkflowRunManifest manifest)

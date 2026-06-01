@@ -4,6 +4,9 @@
   "title": "Runtime Debug Investigation",
   "description": "Collect Editor and Runtime evidence, reproduce symptoms, verify candidate root causes, and report a diagnosis without applying fixes by default.",
   "version": "1.0.0",
+  "requiredSkills": [
+    "aibridge-development-workflow"
+  ],
   "inputs": {
     "symptom": {
       "description": "Observed problem, error, performance issue, UI symptom, or runtime behavior to investigate."
@@ -40,12 +43,18 @@
       "id": "frame-problem",
       "type": "serial",
       "description": "Normalize symptom, target, expected state, repro steps, and whether fixes are allowed.",
+      "requiredSkills": [
+        "aibridge-development-workflow"
+      ],
       "steps": [
         {
           "id": "frame-debug-scope",
           "kind": "manual",
           "role": "debug-lead",
           "description": "Record symptom, expectedState, reproSteps, target, platform, and allowFix before collecting evidence.",
+          "requiredSkills": [
+            "aibridge-development-workflow"
+          ],
           "outputs": [
             "ValidationResult"
           ]
@@ -58,6 +67,9 @@
       "description": "Collect deterministic Editor compile and Console evidence.",
       "dependsOn": [
         "frame-problem"
+      ],
+      "requiredSkills": [
+        "aibridge"
       ],
       "steps": [
         {
@@ -87,6 +99,9 @@
       "description": "Collect Runtime reachability, diagnostics, logs, screenshot, perf, and handler evidence.",
       "dependsOn": [
         "collect-editor-baseline"
+      ],
+      "requiredSkills": [
+        "aibridge"
       ],
       "steps": [
         {
@@ -166,12 +181,21 @@
       "dependsOn": [
         "collect-runtime-baseline"
       ],
+      "requiredSkills": [
+        "aibridge"
+      ],
+      "releaseSkillsAfter": [
+        "aibridge"
+      ],
       "steps": [
         {
           "id": "run-repro-actions",
           "kind": "manual",
           "role": "action-runner",
           "description": "Execute reproSteps with input, game view actions, or runtime call commands in a serial order.",
+          "requiredSkills": [
+            "aibridge"
+          ],
           "outputs": [
             "ValidationResult",
             "ArtifactRef"
@@ -186,12 +210,18 @@
       "dependsOn": [
         "reproduce-or-trace"
       ],
+      "requiredSkills": [
+        "aibridge-workflow-orchestration"
+      ],
       "steps": [
         {
           "id": "generate-root-cause-candidates",
           "kind": "agent",
           "role": "debug-analyzer",
           "description": "Return Finding[] using only collected Editor, Runtime, screenshot, perf, handler, Code Index, or rg evidence.",
+          "requiredSkills": [
+            "aibridge-workflow-orchestration"
+          ],
           "outputs": [
             "Finding"
           ]
@@ -205,12 +235,21 @@
       "dependsOn": [
         "analyze-candidates"
       ],
+      "requiredSkills": [
+        "aibridge-workflow-orchestration"
+      ],
+      "releaseSkillsAfter": [
+        "aibridge-workflow-orchestration"
+      ],
       "steps": [
         {
           "id": "verify-root-cause-candidates",
           "kind": "agent",
           "role": "debug-verifier",
           "description": "Return Verdict[] with evidence and remaining risk for each candidate.",
+          "requiredSkills": [
+            "aibridge-workflow-orchestration"
+          ],
           "outputs": [
             "Verdict"
           ]

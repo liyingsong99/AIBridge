@@ -225,6 +225,12 @@ namespace AIBridgeCLI.Workflow
         [JsonProperty("artifactIds")]
         public List<string> ArtifactIds { get; set; } = new List<string>();
 
+        [JsonProperty("requiredSkills")]
+        public List<string> RequiredSkills { get; set; } = new List<string>();
+
+        [JsonProperty("releaseSkillsAfter")]
+        public List<string> ReleaseSkillsAfter { get; set; } = new List<string>();
+
         [JsonProperty("error")]
         public string Error { get; set; }
     }
@@ -251,6 +257,12 @@ namespace AIBridgeCLI.Workflow
 
         [JsonProperty("artifactIds")]
         public List<string> ArtifactIds { get; set; } = new List<string>();
+
+        [JsonProperty("requiredSkills")]
+        public List<string> RequiredSkills { get; set; } = new List<string>();
+
+        [JsonProperty("releaseSkillsAfter")]
+        public List<string> ReleaseSkillsAfter { get; set; } = new List<string>();
 
         [JsonProperty("startedAtUtc")]
         public string StartedAtUtc { get; set; }
