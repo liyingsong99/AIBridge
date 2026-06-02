@@ -128,6 +128,19 @@ namespace AIBridgeCodeIndex
             }
         }
 
+        public void InvalidateCacheForGeneration(string generationHash)
+        {
+            if (string.IsNullOrWhiteSpace(generationHash))
+            {
+                return;
+            }
+
+            lock (_sync)
+            {
+                EnsureCacheGeneration(generationHash);
+            }
+        }
+
         public async Task StopAsync(int timeoutMs)
         {
             if (_disposed)

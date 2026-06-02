@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -17,11 +19,15 @@ namespace AIBridgeCodeIndex
         private const int QueryQueueCapacity = 64;
         private const int StatusFileWriteRetryCount = 5;
         private const int StatusFileWriteRetryDelayMs = 20;
+        private const int SourceFileCountForForcedMemoryCollection = 1000;
 
         private static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings
         {
             NullValueHandling = NullValueHandling.Ignore
         };
+
+        [DllImport("psapi.dll")]
+        private static extern bool EmptyWorkingSet(IntPtr processHandle);
 
         private readonly CodeIndexOptions _options;
         private readonly object _statusLock = new object();
@@ -320,6 +326,18 @@ namespace AIBridgeCodeIndex
             return !string.IsNullOrWhiteSpace(status.snapshotContentHash)
                 ? status.snapshotContentHash
                 : status.generationId;
+        }
+
+        private static string GetWorkspaceGenerationHash(CodeIndexWorkspace workspace)
+        {
+            if (workspace == null)
+            {
+                return null;
+            }
+
+            return !string.IsNullOrWhiteSpace(workspace.SnapshotContentHash)
+                ? workspace.SnapshotContentHash
+                : workspace.GenerationId;
         }
 
         private async Task<CodeIndexResponse> ExecuteScheduledQueryAsync(CodeIndexRequest query, CancellationToken cancellationToken)
@@ -696,6 +714,7 @@ namespace AIBridgeCodeIndex
         private async Task RefreshWorkspaceInBackgroundAsync()
         {
             var nextWorkspace = new CodeIndexWorkspace(_options.ProjectRoot);
+            CodeIndexWorkspace oldWorkspaceToDispose = null;
             var swapped = false;
             try
             {
@@ -715,15 +734,12 @@ namespace AIBridgeCodeIndex
 
                     var stale = nextWorkspace.IsStale();
                     var staleReason = nextWorkspace.StaleReason;
-                    CodeIndexWorkspace oldWorkspace;
                     lock (_workspaceLock)
                     {
-                        oldWorkspace = _workspace;
+                        oldWorkspaceToDispose = _workspace;
                         _workspace = nextWorkspace;
                         swapped = true;
                     }
-
-                    ScheduleWorkspaceDispose(oldWorkspace);
 
                     lock (_statusLock)
                     {
@@ -754,20 +770,19 @@ namespace AIBridgeCodeIndex
                         _status.updatedAt = DateTimeOffset.Now.ToString("o");
                     }
 
+                    _queryScheduler.InvalidateCacheForGeneration(GetWorkspaceGenerationHash(nextWorkspace));
                     WriteStatus();
                 }
                 finally
                 {
                     _queryGate.Release();
                 }
+
+                DisposeWorkspace(oldWorkspaceToDispose);
+                oldWorkspaceToDispose = null;
             }
             catch (Exception ex)
             {
-                if (!swapped)
-                {
-                    nextWorkspace.Dispose();
-                }
-
                 if (_shutdownRequested)
                 {
                     return;
@@ -789,6 +804,14 @@ namespace AIBridgeCodeIndex
                 WriteStatus();
                 Log("Background refresh failed: " + ex);
             }
+            finally
+            {
+                DisposeWorkspace(oldWorkspaceToDispose);
+                if (!swapped)
+                {
+                    DisposeWorkspace(nextWorkspace);
+                }
+            }
         }
 
         private void RefreshStaleState()
@@ -796,18 +819,70 @@ namespace AIBridgeCodeIndex
             RefreshStaleState(GetWorkspace());
         }
 
-        private static void ScheduleWorkspaceDispose(CodeIndexWorkspace workspace)
+        private void DisposeWorkspace(CodeIndexWorkspace workspace)
         {
             if (workspace == null)
             {
                 return;
             }
 
-            _ = Task.Run(async () =>
+            try
             {
-                await Task.Delay(30000);
+                var shouldCollect = ShouldCollectReleasedWorkspaceMemory(workspace);
                 workspace.Dispose();
-            });
+                if (shouldCollect)
+                {
+                    CollectReleasedWorkspaceMemory();
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("Failed to dispose stale Code Index workspace: " + ex.Message);
+            }
+        }
+
+        private static bool ShouldCollectReleasedWorkspaceMemory(CodeIndexWorkspace workspace)
+        {
+            return workspace != null
+                   && (workspace.LoadedProjects > 0
+                       || workspace.LoadedDocuments > 0
+                       || workspace.SourceFileCount >= SourceFileCountForForcedMemoryCollection);
+        }
+
+        private void CollectReleasedWorkspaceMemory()
+        {
+            try
+            {
+                GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+                GC.WaitForPendingFinalizers();
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+                TrimCurrentProcessWorkingSet();
+            }
+            catch (Exception ex)
+            {
+                Log("Failed to collect released Code Index workspace memory: " + ex.Message);
+            }
+        }
+
+        private void TrimCurrentProcessWorkingSet()
+        {
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                return;
+            }
+
+            try
+            {
+                using (var process = Process.GetCurrentProcess())
+                {
+                    EmptyWorkingSet(process.Handle);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("Failed to trim Code Index working set: " + ex.Message);
+            }
         }
 
         private void RefreshStaleState(CodeIndexWorkspace workspace)
