@@ -70,6 +70,20 @@ namespace AIBridgeCodeIndex
                 _workspace = null;
             }
 
+            _solution = null;
+            _manifest = null;
+            _symbols.Clear();
+            _workspaceWarnings.Clear();
+            _metadataReferenceCache.Clear();
+            _documentPathMap.Clear();
+            _sourcePathMap.Clear();
+            _symbolNameMap.Clear();
+            _assemblyById.Clear();
+            _loadedAssemblyIds.Clear();
+            _tokenDocumentCache.Clear();
+            _semanticSymbols = null;
+            _semanticSymbolsSnapshotContentHash = null;
+            _loadedSnapshotContentHash = null;
             _loadGate.Dispose();
         }
 
@@ -278,7 +292,7 @@ namespace AIBridgeCodeIndex
             _loadedSnapshotContentHash = manifest.SnapshotContentHash;
             StaleReason = null;
             SnapshotExists = true;
-            ScheduleWorkspaceDispose(previousWorkspace);
+            DisposeWorkspace(previousWorkspace);
         }
 
         private SnapshotManifest LoadSnapshotManifestWithAssemblies()
@@ -414,18 +428,21 @@ namespace AIBridgeCodeIndex
             }
         }
 
-        private static void ScheduleWorkspaceDispose(AdhocWorkspace workspace)
+        private static void DisposeWorkspace(AdhocWorkspace workspace)
         {
             if (workspace == null)
             {
                 return;
             }
 
-            _ = Task.Run(async () =>
+            try
             {
-                await Task.Delay(30000);
                 workspace.Dispose();
-            });
+            }
+            catch
+            {
+                // Roslyn workspace disposal should not make the current query fail.
+            }
         }
 
         private bool IsSemanticWorkspaceLoadedFor(HashSet<string> requiredAssemblyIds, bool loadAllAssemblies)

@@ -657,7 +657,7 @@ namespace AIBridgeCLI.Commands
             var daemon = CodeIndexDaemonExecutable.Resolve();
             if (!daemon.CanStart)
             {
-                return BuildFailure(context, "AIBridgeCodeIndex worker executable or project was not found.");
+                return BuildDaemonUnavailableFailure(context, daemon);
             }
 
             var workers = ResolveOptionInt(options, "workers", 0);
@@ -809,8 +809,10 @@ namespace AIBridgeCLI.Commands
             var daemon = CodeIndexDaemonExecutable.Resolve();
             if (!daemon.CanStart)
             {
-                issues.Add("AIBridgeCodeIndex daemon executable or project was not found.");
-                suggestions.Add("Build the CLI package so Tools~/CLI/<rid>/CodeIndex is available.");
+                issues.Add(daemon.DiagnosticMessage);
+                suggestions.Add(daemon.HasMissingFiles
+                    ? "Rebuild and refresh the AIBridge CLI cache so Tools~/CLI/<rid>/CodeIndex is copied completely."
+                    : "Build the CLI package so Tools~/CLI/<rid>/CodeIndex is available.");
             }
 
             var status = ReadStatusFile(context);
@@ -828,7 +830,7 @@ namespace AIBridgeCLI.Commands
 
             var currentStatus = remote ?? status;
             var manifestStale = IsSnapshotStale(context, currentStatus);
-            return new JObject
+            var result = new JObject
             {
                 ["success"] = true,
                 ["healthy"] = issues.Count == 0,
@@ -854,10 +856,11 @@ namespace AIBridgeCLI.Commands
                 ["unityVersion"] = currentStatus?.Value<string>("unityVersion"),
                 ["staleReason"] = manifestStale ? "snapshotContentChanged" : currentStatus?.Value<string>("staleReason"),
                 ["statusPath"] = context.StatusPath,
-                ["daemon"] = daemon.DisplayPath,
                 ["issues"] = issues,
                 ["suggestions"] = suggestions
             };
+            AddDaemonDiagnosticFields(result, daemon);
+            return result;
         }
 
         private static JObject BuildDisabledDoctor(CodeIndexContext context)
@@ -959,7 +962,13 @@ namespace AIBridgeCLI.Commands
                 DeleteFileIfExists(context.StatusPath);
                 DeleteFileIfExists(Path.Combine(context.IndexDirectory, "lock.json"));
 
-                StartDaemon(context);
+                var daemon = CodeIndexDaemonExecutable.Resolve();
+                if (!daemon.CanStart)
+                {
+                    return BuildDaemonUnavailableFailure(context, daemon);
+                }
+
+                StartDaemon(context, daemon);
                 return await WaitForStatusFileAsync(context, timeout);
             }
         }
@@ -1060,13 +1069,12 @@ namespace AIBridgeCLI.Commands
             return null;
         }
 
-        private static void StartDaemon(CodeIndexContext context)
+        private static void StartDaemon(CodeIndexContext context, CodeIndexDaemonExecutable daemon)
         {
             Directory.CreateDirectory(context.IndexDirectory);
-            var daemon = CodeIndexDaemonExecutable.Resolve();
             if (!daemon.CanStart)
             {
-                throw new FileNotFoundException("AIBridgeCodeIndex daemon was not found.", daemon.DisplayPath);
+                throw new FileNotFoundException(daemon.DiagnosticMessage, daemon.DisplayPath);
             }
 
             var token = Guid.NewGuid().ToString("N");
@@ -1355,9 +1363,10 @@ namespace AIBridgeCLI.Commands
 
         private static JObject BuildStatusResult(CodeIndexContext context, JObject status, bool reachable)
         {
+            var daemon = CodeIndexDaemonExecutable.Resolve();
             if (status == null)
             {
-                return new JObject
+                var missingStatus = new JObject
                 {
                     ["success"] = true,
                     ["enabled"] = context.Enabled,
@@ -1373,10 +1382,12 @@ namespace AIBridgeCLI.Commands
                     ["statusPath"] = context.StatusPath,
                     ["reachable"] = false
                 };
+                AddDaemonDiagnosticFields(missingStatus, daemon);
+                return missingStatus;
             }
 
             var manifestStale = IsSnapshotStale(context, status);
-            return new JObject
+            var result = new JObject
             {
                 ["success"] = true,
                 ["enabled"] = context.Enabled,
@@ -1422,6 +1433,8 @@ namespace AIBridgeCLI.Commands
                 ["queryCacheHits"] = status.Value<long?>("queryCacheHits") ?? 0L,
                 ["queryCacheMisses"] = status.Value<long?>("queryCacheMisses") ?? 0L
             };
+            AddDaemonDiagnosticFields(result, daemon);
+            return result;
         }
 
         private static JObject BuildDisabledStatus(CodeIndexContext context)
@@ -2225,6 +2238,48 @@ namespace AIBridgeCLI.Commands
             return BuildFailure(context, error, null);
         }
 
+        private static JObject BuildDaemonUnavailableFailure(CodeIndexContext context, CodeIndexDaemonExecutable daemon)
+        {
+            var result = BuildFailure(
+                context,
+                daemon == null ? "AIBridgeCodeIndex daemon executable or project was not found." : daemon.DiagnosticMessage,
+                daemon != null && daemon.HasMissingFiles ? "code_index_daemon_incomplete" : "code_index_daemon_missing");
+            AddDaemonDiagnosticFields(result, daemon);
+            return result;
+        }
+
+        private static void AddDaemonDiagnosticFields(JObject result, CodeIndexDaemonExecutable daemon)
+        {
+            if (result == null || daemon == null)
+            {
+                return;
+            }
+
+            result["daemon"] = daemon.DisplayPath;
+            result["daemonLaunchMode"] = daemon.LaunchMode;
+            result["daemonReady"] = daemon.CanStart;
+            if (daemon.HasMissingFiles)
+            {
+                result["daemonMissingFiles"] = CreateStringArray(daemon.MissingFiles);
+            }
+        }
+
+        private static JArray CreateStringArray(IEnumerable<string> values)
+        {
+            var array = new JArray();
+            if (values == null)
+            {
+                return array;
+            }
+
+            foreach (var value in values)
+            {
+                array.Add(value);
+            }
+
+            return array;
+        }
+
         private static JObject BuildFailure(CodeIndexContext context, string error, string errorCode)
         {
             var result = new JObject
@@ -2463,6 +2518,23 @@ namespace AIBridgeCLI.Commands
 
         private sealed class CodeIndexDaemonExecutable
         {
+            private static readonly string[] RequiredManagedFiles = new[]
+            {
+                DaemonAssemblyName + ".dll",
+                DaemonAssemblyName + ".deps.json",
+                DaemonAssemblyName + ".runtimeconfig.json",
+                "Newtonsoft.Json.dll",
+                "Microsoft.CodeAnalysis.dll",
+                "Microsoft.CodeAnalysis.CSharp.dll",
+                "Microsoft.CodeAnalysis.Workspaces.dll",
+                "Microsoft.CodeAnalysis.CSharp.Workspaces.dll",
+                "System.Composition.AttributedModel.dll",
+                "System.Composition.Convention.dll",
+                "System.Composition.Hosting.dll",
+                "System.Composition.Runtime.dll",
+                "System.Composition.TypedParts.dll"
+            };
+
             private enum DaemonLaunchMode
             {
                 Executable,
@@ -2472,10 +2544,26 @@ namespace AIBridgeCLI.Commands
 
             private DaemonLaunchMode _mode;
             private string _path;
+            private string[] _missingFiles;
 
-            public bool CanStart { get { return !string.IsNullOrEmpty(_path); } }
+            public bool CanStart { get { return !string.IsNullOrEmpty(_path) && !HasMissingFiles; } }
             public string DisplayPath { get { return _path; } }
             public string LaunchMode { get { return _mode.ToString(); } }
+            public string[] MissingFiles { get { return _missingFiles ?? Array.Empty<string>(); } }
+            public bool HasMissingFiles { get { return MissingFiles.Length > 0; } }
+            public string DiagnosticMessage
+            {
+                get
+                {
+                    if (HasMissingFiles)
+                    {
+                        return "AIBridgeCodeIndex published directory is incomplete. Missing: " + string.Join(", ", MissingFiles);
+                    }
+
+                    return "AIBridgeCodeIndex daemon executable or project was not found.";
+                }
+            }
+
             public bool UseShellExecuteForDetachedLaunch
             {
                 get
@@ -2494,13 +2582,23 @@ namespace AIBridgeCLI.Commands
                 var executablePath = Path.Combine(baseDirectory, DaemonDirectoryName, executableName);
                 if (File.Exists(executablePath))
                 {
-                    return new CodeIndexDaemonExecutable { _mode = DaemonLaunchMode.Executable, _path = executablePath };
+                    return new CodeIndexDaemonExecutable
+                    {
+                        _mode = DaemonLaunchMode.Executable,
+                        _path = executablePath,
+                        _missingFiles = GetMissingPublishedFiles(Path.GetDirectoryName(executablePath), executableName)
+                    };
                 }
 
                 var dllPath = Path.Combine(baseDirectory, DaemonDirectoryName, DaemonAssemblyName + ".dll");
                 if (File.Exists(dllPath))
                 {
-                    return new CodeIndexDaemonExecutable { _mode = DaemonLaunchMode.Dll, _path = dllPath };
+                    return new CodeIndexDaemonExecutable
+                    {
+                        _mode = DaemonLaunchMode.Dll,
+                        _path = dllPath,
+                        _missingFiles = GetMissingPublishedFiles(Path.GetDirectoryName(dllPath), null)
+                    };
                 }
 
                 var sourceProject = FindSourceProject(baseDirectory) ?? FindSourceProject(Directory.GetCurrentDirectory());
@@ -2592,6 +2690,31 @@ namespace AIBridgeCLI.Commands
                 }
 
                 return null;
+            }
+
+            private static string[] GetMissingPublishedFiles(string directory, string executableName)
+            {
+                var missing = new List<string>();
+                if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+                {
+                    missing.Add(DaemonDirectoryName);
+                    return missing.ToArray();
+                }
+
+                if (!string.IsNullOrWhiteSpace(executableName) && !File.Exists(Path.Combine(directory, executableName)))
+                {
+                    missing.Add(executableName);
+                }
+
+                foreach (var fileName in RequiredManagedFiles)
+                {
+                    if (!File.Exists(Path.Combine(directory, fileName)))
+                    {
+                        missing.Add(fileName);
+                    }
+                }
+
+                return missing.ToArray();
             }
         }
 

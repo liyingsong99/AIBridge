@@ -35,7 +35,7 @@ Default `harness status` output is compact. Use `--detail full` or `--include-sn
 ## Operating Rules
 
 - Use `compile unity` for Unity validation. `compile dotnet` is an explicit extra solution-build check, not a Unity fallback.
-- For Unity assets, prefer `asset search/find --format paths`; use host file reads for file contents, and `asset read_text` only when host reads are unavailable.
+- For Unity imported asset path discovery, including script, prefab, scene, ScriptableObject, texture, material, audio, animation, shader, font, and model assets by name/type/filter, prefer `asset search/find --format paths` before host `rg --files` when the Editor is available. Use `rg --files` for ordinary repository files, unimported files, `.meta`, ProjectSettings, and arbitrary path regexes; use host file reads for file contents, and `asset read_text` only when host reads are unavailable.
 - Resource edit order: `inspector set_property/set_properties` -> `aibridge-prefab-patch` for supported complex Prefab edits -> Unity Editor scripts for high-level generated assets -> `unity-yaml-editing` only for unsupported serialized-file structure work.
 - For scene objects, Prefabs, and serialized Unity assets, discover targets with `inspector get_components/get_properties/find_property`, then write with AIBridge/Unity APIs when possible.
 - For prefab asset edits, use `assetPath + objectPath + componentName` or `componentIndex`; `componentInstanceId` is scene-only.

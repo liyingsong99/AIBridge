@@ -51,6 +51,8 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("Code Index: enabled", rootRule);
             StringAssert.Contains("C# code lookup or source navigation", rootRule);
             StringAssert.Contains("load `aibridge-code-index` first", rootRule);
+            StringAssert.Contains("asset search/find --format paths", rootRule);
+            StringAssert.Contains("Unity imported asset", rootRule);
             StringAssert.Contains("this root rule or the workflow", rootRule);
             StringAssert.Contains("probes harness readiness", rootRule);
             StringAssert.Contains("Harness capability snapshot", rootRule);
@@ -71,6 +73,7 @@ namespace AIBridge.Editor.Tests
             var rootRule = File.ReadAllText(Path.Combine(ProjectRoot, "AGENTS.md"));
             StringAssert.Contains("Code Index: disabled", rootRule);
             StringAssert.Contains("Do not call `code_index`", rootRule);
+            StringAssert.Contains("asset search/find --format paths", rootRule);
         }
 
         [Test]
@@ -94,7 +97,10 @@ namespace AIBridge.Editor.Tests
             var workflowSkill = File.ReadAllText(workflowSkillPath);
             StringAssert.Contains("C# 代码查找", workflowSkill);
             StringAssert.Contains("优先加入 `aibridge-code-index`", workflowSkill);
+            StringAssert.Contains("Unity 已导入资源路径查找", workflowSkill);
+            StringAssert.Contains("asset search/find --format paths", workflowSkill);
             StringAssert.Contains("字面量字符串", workflowSkill);
+            StringAssert.Contains("rg -n", workflowSkill);
             StringAssert.Contains("Harness 能力探测模式", workflowSkill);
             StringAssert.Contains("references/harness-readiness.md", workflowSkill);
             StringAssert.Contains("【Preflight / Skill 路由】", workflowSkill);
@@ -125,7 +131,8 @@ namespace AIBridge.Editor.Tests
 
             var snapshot = File.ReadAllText(snapshotPath);
             StringAssert.Contains("\"schemaVersion\"", snapshot);
-            StringAssert.Contains("\"capabilities.json\"", snapshot);
+            StringAssert.Contains("\"snapshotPath\"", snapshot);
+            StringAssert.Contains("capabilities.json", snapshot);
             StringAssert.Contains("\"codeIndex\"", snapshot);
             StringAssert.Contains("\"enabled\": true", snapshot);
             StringAssert.Contains("\"externalExecutor\": \"unknown\"", snapshot);
