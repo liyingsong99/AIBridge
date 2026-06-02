@@ -1064,14 +1064,14 @@ namespace AIBridge.Editor
             {
                 return AIBridgeEditorText.For(
                     language,
-                    "Code Index: enabled. For C# code lookup or source navigation, load `aibridge-code-index` first when the query can be expressed as symbol, definition, reference, implementation, derived type, caller, or diagnostic lookup. Use `rg` for literal, fuzzy, non-C# searches, or when Code Index is unavailable.",
-                    "Code Index：已启用。C# 代码查找或源码导航中，只要查询可表达为符号、定义、引用、实现、派生类型、调用者或诊断查询，应优先加载 `aibridge-code-index`。字面量、模糊文本、非 C# 搜索或 Code Index 不可用时使用 `rg`。");
+                    "Code Index: enabled. For C# code lookup or source navigation, load `aibridge-code-index` first when the query can be expressed as symbol, definition, reference, implementation, derived type, caller, or diagnostic lookup. For Unity imported asset or script asset name/type lookup, use `asset search/find --format paths` when AIBridge and the Editor are available. Use `rg` for literal content, fuzzy text, non-C# repository files, arbitrary path regexes, or when Code Index/AIBridge is unavailable.",
+                    "Code Index：已启用。C# 代码查找或源码导航中，只要查询可表达为符号、定义、引用、实现、派生类型、调用者或诊断查询，应优先加载 `aibridge-code-index`。Unity 已导入资源或脚本资源的名称/类型查找中，当 AIBridge 和 Editor 可用时使用 `asset search/find --format paths`。字面量内容、模糊文本、非 C# 仓库文件、任意路径正则或 Code Index/AIBridge 不可用时使用 `rg`。");
             }
 
             return AIBridgeEditorText.For(
                 language,
-                "Code Index: disabled. Do not call `code_index`; use `rg`, file reads, or regular AIBridge commands for code search.",
-                "Code Index：已关闭。不要调用 `code_index`；请使用 `rg`、文件读取或常规 AIBridge 命令搜索代码。");
+                "Code Index: disabled. Do not call `code_index`; use `asset search/find --format paths` for Unity imported asset name/type lookup when AIBridge and the Editor are available, and use `rg` plus file reads for ordinary code/content searches.",
+                "Code Index：已关闭。不要调用 `code_index`；当 AIBridge 和 Editor 可用时，Unity 已导入资源的名称/类型查找使用 `asset search/find --format paths`，普通代码/内容搜索使用 `rg` 和文件读取。");
         }
 
         private static bool ShouldInstallSkillDirectory(string sourceSkillDir)
