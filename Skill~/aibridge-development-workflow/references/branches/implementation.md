@@ -7,7 +7,7 @@
 ## 进入规则
 
 1. 先确认项目偏好中实施分支已启用。
-2. 如果需求边界、非目标、约束或验收标准还没锁定，先进入需求讨论模式并完成方案确认与必要的方案自动写入，不直接进入实施分支。
+2. 如果需求边界、非目标、约束或验收标准还没锁定，先进入需求讨论模式并完成方案确认与必要的方案自动写入到 `.aibridge/plan`，再按需同步正式文档，不直接进入实施分支。
 3. 修改前读取 `risk-gates.md` 和 `coding-rules.md`。
 4. 涉及复杂一次性 Editor 侧 C# 任务时读取 `editor-generation.md`。
 5. 只在当前任务确实需要时加载 `aibridge-code-index`、`aibridge-prefab-patch`、`unity-yaml-editing` 或 `aibridge-batch-script`。

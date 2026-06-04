@@ -671,7 +671,7 @@
       <section class="section" id="plan-output">
         <h2>方案写入策略</h2>
         <p class="section-lead">
-          方案确认后，应自动把方案写入对应文档。默认先写 Markdown 作为源文件，再按展示需求生成 HTML。HTML 不是替代品，而是更适合流程图、决策树、对比表和开发者浏览的展示层。
+          方案确认后，应先写入 `.aibridge/plan` 作为工作底稿，再按需要同步到正式文档目录。HTML 不是替代品，而是更适合流程图、决策树、对比表和开发者浏览的展示层。
         </p>
 
         <div class="table-wrap" aria-label="方案输出策略">
@@ -685,24 +685,29 @@
             </thead>
             <tbody>
               <tr>
+                <td>需要上下文恢复、subagent / multi-agent 续跑</td>
+                <td><code>.aibridge/plan/&lt;slug&gt;.md</code></td>
+                <td>作为工作底稿和状态锚点，方便压缩后回读。</td>
+              </tr>
+              <tr>
                 <td>短方案、纯文本约定、局部修订</td>
-                <td><code>md</code></td>
-                <td>优先保持可审阅、可 diff、可追踪；确认后自动落盘。</td>
+                <td><code>.aibridge/plan/&lt;slug&gt;.md</code></td>
+                <td>优先保持可审阅、可 diff、可追踪；确认后更新为 <code>confirmed</code>。</td>
               </tr>
               <tr>
                 <td>有流程图、决策树、比较表</td>
-                <td><code>md</code> + <code>html</code></td>
-                <td><code>md</code> 作为源文件，<code>html</code> 作为展示页。</td>
-              </tr>
-              <tr>
-                <td>用户明确希望给开发者看</td>
-                <td><code>md</code> + <code>html</code></td>
-                <td><code>html</code> 更适合浏览，但仍应保留 <code>md</code> 作为主文档。</td>
+                <td><code>.aibridge/plan/&lt;slug&gt;.md</code> + <code>html</code></td>
+                <td><code>html</code> 作为工作底稿目录内的展示页；正式文档目录如存在则同步生成。</td>
               </tr>
               <tr>
                 <td>项目存在对应功能文档归类</td>
-                <td>写入对应文档目录</td>
-                <td>优先放入模块或包的文档根，再按内容决定是否生成 <code>html</code>。</td>
+                <td><code>.aibridge/plan/&lt;slug&gt;.md</code> + 正式文档</td>
+                <td>工作底稿先落 `.aibridge/plan`，再同步到正式文档目录，便于 Git review。</td>
+              </tr>
+              <tr>
+                <td>用户明确希望给开发者看</td>
+                <td><code>.aibridge/plan/&lt;slug&gt;.md</code> + <code>html</code></td>
+                <td><code>html</code> 更适合浏览；若存在正式文档位置，再同步镜像。</td>
               </tr>
             </tbody>
           </table>
@@ -710,7 +715,7 @@
 
         <div class="callout">
           <strong>推荐策略：</strong>
-          默认把 <code>md</code> 作为方案主文档，<code>html</code> 作为视觉化展示页。这样 Git 里好 review，浏览时也能直接看流程图。
+          默认把 <code>.aibridge/plan</code> 作为方案工作底稿，正式文档目录作为发布版；这样 Git 里好 review，subagent 也有稳定回读点。
         </div>
       </section>
 

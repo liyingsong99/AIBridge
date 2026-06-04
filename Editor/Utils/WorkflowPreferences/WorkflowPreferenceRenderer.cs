@@ -102,9 +102,9 @@ namespace AIBridge.Editor
             builder.AppendLine("需求讨论模式是 Preflight 的前置模式，不是可选主分支。它只在需求不清晰、边界待定、方案方向分歧，或用户要求先分析/先确认时触发。");
             builder.AppendLine();
             builder.AppendLine("- 目标是收敛目标、边界、非目标、约束、方案选项和确认结论。");
-            builder.AppendLine("- 若用户要求，或项目存在相应功能文档归类，确认后的方案必须自动写入文档。");
-            builder.AppendLine("- 默认以 Markdown 作为方案源文件；当方案包含流程图、决策树、对比表，或更适合开发者浏览时，再同步生成 HTML 展示页。");
-            builder.AppendLine("- Markdown 和 HTML 应保持同目录、同 basename；Markdown 负责可审阅的版本记录，HTML 负责更强的视觉呈现与开发者浏览。");
+            builder.AppendLine("- 若用户要求，或项目存在相应功能文档归类，确认后的方案必须先写入 `.aibridge/plan` 工作底稿，再按需同步到正式文档位置。");
+            builder.AppendLine("- 默认以 Markdown 工作底稿作为方案源文件；当方案包含流程图、决策树、对比表，或更适合开发者浏览时，再在每个落点目录内同步生成 HTML 展示页。");
+            builder.AppendLine("- Markdown 和 HTML 应保持同目录、同 basename；`.aibridge/plan` 负责 AI 续跑和多 agent 协作，正式文档负责 Git review 和对外呈现。");
             builder.AppendLine("- 需求讨论完成并确认后，再重新执行 Preflight / Skill 路由进入正式主分支。");
             builder.AppendLine();
 
@@ -153,7 +153,7 @@ namespace AIBridge.Editor
             builder.AppendLine("【模式：需求讨论模式】");
             builder.AppendLine("Skills：aibridge-development-workflow");
             builder.AppendLine("已加载规范：requirements.md、risk-gates.md");
-            builder.AppendLine("输出目标：收敛需求边界并输出可写入的方案文档。");
+            builder.AppendLine("输出目标：收敛需求边界并输出 `.aibridge/plan` 工作底稿。");
             builder.AppendLine();
             builder.AppendLine("【模式：<启用分支之一>】");
             builder.AppendLine("Skills：<当前分支 Skills>");
