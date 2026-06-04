@@ -72,14 +72,14 @@ namespace AIBridge.Editor
 
             if (language == AIBridgeEditorLanguage.SimplifiedChinese)
             {
-                return "Harness 能力快照：`" + SnapshotRelativePath + "`。开发任务先读取该快照；仅在缺失、过期或任务需要未确认能力时运行完整探测。"
+                return "Harness 能力快照：`" + SnapshotRelativePath + "`。RootRule 只提供 compact 摘要；工作流任务需要确认能力时先用 `$CLI harness status` compact 输出，仅在缺失、过期或任务需要未确认能力时读取完整 snapshot 或运行完整探测。"
                     + "已选助手：" + selectedText + "。"
                     + "Skill 根目录：" + skillRootText + "。"
                     + "Code Index：" + codeIndexText + "。"
                     + "外部 agent/sub-agent 能力：Unity 无法判断，按 unknown 处理。";
             }
 
-            return "Harness capability snapshot: `" + SnapshotRelativePath + "`. Read this snapshot first; run full harness probes only when it is missing, stale, or the task needs an unconfirmed capability. "
+            return "Harness capability snapshot: `" + SnapshotRelativePath + "`. RootRule only provides a compact summary; for workflow tasks that need capability confirmation, use compact `$CLI harness status` first and read the full snapshot or run full probes only when it is missing, stale, or the task needs an unconfirmed capability. "
                 + "Selected assistants: " + selectedText + ". "
                 + "Skill root: " + skillRootText + ". "
                 + "Code Index: " + codeIndexText + ". "

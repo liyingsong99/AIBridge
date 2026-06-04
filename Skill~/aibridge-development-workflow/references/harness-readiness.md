@@ -2,12 +2,12 @@
 
 ## 目标
 
-在进入 AIBridge workflow 前，优先读取 Unity Editor 生成的能力快照，避免每轮 AI 重复探测。完整探测只在快照缺失、过期，或任务需要未确认能力时执行。
+在进入 AIBridge workflow 前，优先使用 RootRule 中的 compact 能力摘要或 `$CLI harness status` compact 输出，避免每轮 AI 读取完整 snapshot 或重复探测。完整 snapshot 和完整探测只在快照缺失、过期，或任务需要未确认能力时使用。
 
 ## 默认入口
 
-1. 先读取 `.aibridge/harness/capabilities.json`，或执行 compact 形式的 `$CLI harness status`。
-2. 如果状态是 `fresh`，按快照分流，不再重复探测 CLI/Skill/Code Index/workflow。
+1. 先使用 RootRule 的能力摘要；需要确认状态或 freshness 时执行 `$CLI harness status`，使用默认 compact 输出。
+2. 如果状态是 `fresh`，按 compact summary 分流，不读取完整 snapshot，不再重复探测 CLI/Skill/Code Index/workflow。
 3. 如果状态是 `missing`、`stale` 或 `invalid`，再按下方矩阵做最小补测。
 
 快照由 Unity Editor/SkillInstaller 自动生成，只包含项目侧可确认能力。sub-agent、shell、sandbox、网络等 harness 原生权限必须视为 `unknown`，除非当前 harness 明确提供。
@@ -16,7 +16,7 @@
 
 | 能力 | 何时探测 | 探测方式 | 失败时 fallback |
 |---|---|---|---|
-| Snapshot | 所有开发、调试、workflow、Skill 任务 | 读取 `.aibridge/harness/capabilities.json` 或 `$CLI harness status` | 缺失/过期/无效时才进入完整探测 |
+| Snapshot | 所有开发、调试、workflow、Skill 任务 | RootRule 摘要或 `$CLI harness status` compact 输出 | 缺失/过期/无效时才读取完整 snapshot 或进入完整探测 |
 | Skill 装载 | 快照缺失或需要确认 sibling Skill | 读取当前 Skill 和 sibling Skill 路径 | 使用 RootRule 最小规则，不反复尝试同一路径 |
 | CLI 路径 | 任何 AIBridge 命令前 | 检查 `$CLI` 或 `./.aibridge/cli/AIBridgeCLI.exe` 是否存在 | 静态检查、`rg`、文件读取；声明 AIBridge CLI 未验证 |
 | Unity Editor | 编译、资源、场景、Prefab、Inspector、日志任务 | `$CLI compile unity` 或目标命令结果 | 不用 `dotnet build` 冒充 Unity 编译；报告 Unity 未验证 |
@@ -58,8 +58,8 @@ $CLI harness status --include-snapshot true
 
 ## Fallback 规则
 
-- Snapshot fresh：直接按快照分流，不执行完整探测。
-- Snapshot missing/stale/invalid：执行 `$CLI harness status` 或读取 RootRule 最小信息；只补测任务必需能力。
+- Snapshot fresh：直接按 compact summary 分流，不读取完整 snapshot，不执行完整探测。
+- Snapshot missing/stale/invalid：执行 `$CLI harness status`，必要时读取完整 snapshot；只补测任务必需能力。
 - Skill 不可读：继续使用 RootRule 的 CLI 路径、通用验证和路由规则；不要假设隐藏 Skill 内容。
 - CLI 不存在：只执行 host 侧命令，如 `rg`、文件读取、`dotnet build`；最终明确 AIBridge/Unity 验证未执行。
 - Unity 命令超时或被 modal dialog 阻塞：先检查 `dialog status` 或使用显式 `--on-dialog` 策略；仍失败时报告 blocked。

@@ -83,6 +83,56 @@ namespace AIBridge.Editor.Tests
             }
         }
 
+        [Test]
+        public void ImportSkillHandoffRequiresCompletedMode()
+        {
+            var packageRoot = GetPackageRoot();
+            var cliPath = ResolveCliPath(packageRoot);
+            if (string.IsNullOrEmpty(cliPath) || !File.Exists(cliPath))
+            {
+                Assert.Ignore("AIBridgeCLI executable was not found for this platform.");
+            }
+
+            var projectRoot = CreateTemporaryUnityProject();
+            try
+            {
+                var begin = RunCli(cliPath, projectRoot, "workflow begin --recipe unity-change-implementation --raw");
+                var beginResult = JsonUtility.FromJson<WorkflowCommandResultView>(begin.Stdout);
+
+                Assert.AreEqual(0, begin.ExitCode, begin.Stderr + begin.Stdout);
+                Assert.IsNotNull(beginResult, begin.Stdout);
+                Assert.IsNotNull(beginResult.data, begin.Stdout);
+                Assert.IsFalse(string.IsNullOrWhiteSpace(beginResult.data.runId), begin.Stdout);
+
+                var payloadPath = Path.Combine(projectRoot, "skill-handoff-missing-completed-mode.json");
+                File.WriteAllText(payloadPath, "{\n"
+                    + "  \"summary\": \"missing completedMode\",\n"
+                    + "  \"releasedSkills\": [],\n"
+                    + "  \"nextRecommendedSkills\": [],\n"
+                    + "  \"artifactRefs\": [],\n"
+                    + "  \"gates\": [],\n"
+                    + "  \"openRisks\": []\n"
+                    + "}\n");
+
+                var import = RunCli(
+                    cliPath,
+                    projectRoot,
+                    "workflow import --run " + beginResult.data.runId
+                    + " --step handoff --schema SkillHandoff --file " + QuoteCliValue(payloadPath)
+                    + " --raw");
+
+                Assert.AreNotEqual(0, import.ExitCode, import.Stdout + import.Stderr);
+                StringAssert.Contains("SkillHandoff.completedMode is required", import.Stdout + import.Stderr);
+            }
+            finally
+            {
+                if (Directory.Exists(projectRoot))
+                {
+                    Directory.Delete(projectRoot, true);
+                }
+            }
+        }
+
         private static void AssertRequiredGateStatus(WorkflowGateResultView[] gateResults, string gateId, string expectedStatus)
         {
             Assert.IsNotNull(gateResults, "Gate results are missing.");
@@ -247,6 +297,7 @@ namespace AIBridge.Editor.Tests
         [Serializable]
         private sealed class WorkflowDataView
         {
+            public string runId;
             public string status;
             public string manifestPath;
             public WorkflowGateResultView[] gateResults;

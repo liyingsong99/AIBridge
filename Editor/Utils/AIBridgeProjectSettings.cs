@@ -120,7 +120,7 @@ namespace AIBridge.Editor
             public List<AssistantWorkflowPromptEntry> AssistantPromptPrefixes = new List<AssistantWorkflowPromptEntry>();
         }
 
-        public const int CurrentDataVersion = 17;
+        public const int CurrentDataVersion = 18;
         public const string DefaultEditorLanguage = "English";
         public const string LegacySharedSkillRootDirectory = ".skills";
         public const string DefaultSkillRootDirectory = "";

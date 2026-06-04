@@ -54,6 +54,6 @@
 ## 模板维护规则
 1. `Templates~/ProjectRules/AGENTS.zh-CN.md` 和 `Templates~/ProjectRules/AGENTS.en-US.md` 是安装到 Unity 项目的示例文件
 2. `Templates~/Rules/AIBridge.RootRule.md` 是注入到已有规则文件的通用最小引导块
-3. RootRule 只放 CLI 路径、常用命令、Skill 根目录提示和“开发任务先加载工作流”的路由规则
+3. RootRule 只放 CLI 路径、常用命令、“快速任务不进工作流 / 工作流任务先加载工作流”的路由规则、Skill 根目录提示、项目版本和 compact 能力摘要
 4. 完整行为规范必须放在 `aibridge-development-workflow`
 5. CLI 详细命令说明必须放在对应 Skill 的 `references/*.md`

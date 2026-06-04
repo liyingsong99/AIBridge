@@ -44,7 +44,7 @@ $CLI workflow clean --older-than 3d --save-settings true --auto-clean true
 
 `import` copies structured external results into run artifacts. `Verdict.status` must be `confirmed`, `refuted`, or `uncertain`; `externalVerdict` gates pass only from imported Verdict artifacts, not from prose summaries. `ValidationResult` imports use the `validation-report` artifact kind by default.
 
-For resumed work, run `workflow status --run <runId>` before adding new evidence. Status, run-cli, finish, and JSON report outputs are compact by default; use `--detail full` only when the full manifest JSON is needed. Use active-run attachment only when the current task clearly belongs to that run; otherwise pass `--workflow-run <runId>` explicitly or start a new run.
+For resumed work, run `workflow status --run <runId>` before adding new evidence. Status, run-cli, finish, and JSON report outputs are compact by default; use `--detail full` only when the full manifest JSON is needed. Default handoff should keep `runDirectory`, `manifestPath`, `reportPath`, artifact ids, gate summaries, and gaps as refs; do not read full `manifest.json` or Markdown reports for routine status. Use active-run attachment only when the current task clearly belongs to that run; otherwise pass `--workflow-run <runId>` explicitly or start a new run.
 
 `export` compiles a recipe into an external task package or script (`codex-task-pack`, `generic-cli`, `claude-workflow`). Exporters do not run external agents and do not provide an LLM runtime.
 

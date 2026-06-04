@@ -35,7 +35,6 @@ namespace AIBridge.Editor
             builder.AppendLine("> 本文件由 AIBridge/Workflows 根据项目设置生成。不要手动编辑；修改请回到 Unity 的 `AIBridge/Workflows > Workflow Options`。");
             builder.AppendLine();
             builder.AppendLine("- Assistant: " + target.DisplayName + " (`" + target.Id + "`)");
-            builder.AppendLine("- Settings Hash: `" + ComputeSettingsHash(projectRoot, target) + "`");
             builder.AppendLine();
 
             builder.AppendLine("## 启用分支");
@@ -70,6 +69,10 @@ namespace AIBridge.Editor
             builder.AppendLine("3. 如果用户明确要求进入禁用分支，先说明该分支已关闭，并请求用户确认是否临时继续或回到 Workflows 面板启用。");
             builder.AppendLine("4. 选择主分支后，只读取该分支对应的 `references/branches/<branch>.md`，不要预加载其它分支文档。");
             builder.AppendLine("5. 验证和证据收集默认遵守本文件中的验证策略。");
+            builder.AppendLine();
+            builder.AppendLine("## 元数据");
+            builder.AppendLine();
+            builder.AppendLine("- Settings Hash: `" + ComputeSettingsHash(projectRoot, target) + "`");
             return builder.ToString();
         }
 
@@ -163,6 +166,8 @@ namespace AIBridge.Editor
             builder.AppendLine("-> <当前步骤>");
             builder.AppendLine("<当前步骤正在收集或产出的内容>");
             builder.AppendLine("```");
+            builder.AppendLine();
+
             return builder.ToString();
         }
 
