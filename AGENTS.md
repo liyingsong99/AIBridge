@@ -24,6 +24,7 @@
 ## 项目验证
 - 编译.\Tools~\AIBridgeCLI\AIBridgeCLI.csproj 项目确认无报错
 - 检查所有Runtime和Editor下的代码文件都有生成相应的meta文件
+- 检查以 `~` 结尾的目录或文件是否保留了 `.meta`；Unity 默认忽略这类路径，原则上不要提交它们的 `.meta`，清理时连同对应目录下的 `.meta` 一并删除
 - 检查编辑器面板新增或修改的用户可见文本已适配英文和简体中文
 - 涉及 Unity API 或编译兼容性时，必须确保 `package.json` 声明的最低 Unity 2019.4 到 Unity 6000.x 兼容；能访问对应编辑器时至少验证 Unity 2019.4 和 Unity 6000.x 编译，无法验证的版本必须明确说明
 
