@@ -36,10 +36,12 @@ namespace AIBridgeCLI.Core
 
         public RuntimeTransportKind Kind => RuntimeTransportKind.Http;
 
-        public IReadOnlyList<RuntimeTargetInfo> ListTargets()
+        public IReadOnlyList<RuntimeTargetInfo> ListTargets(RuntimeTargetQueryOptions options = null)
         {
+            options = options ?? RuntimeTargetQueryOptions.Quick;
             var targets = new List<RuntimeTargetInfo>();
             var cached = RuntimeDiscoveryClient.ReadFreshCache(RuntimeDiscoveryClient.DefaultCacheSeconds);
+            var cachedHealthTimeout = options.ProbeLocalPorts ? CachedHealthProbeTimeoutMs : HealthProbeTimeoutMs;
             AddTargetFromHealth(targets, _options.HttpUrl, TryGetHealth(_options.HttpUrl), FindCachedTargetByUrl(cached, _options.HttpUrl));
             for (var i = 0; i < cached.Count; i++)
             {
@@ -52,10 +54,10 @@ namespace AIBridgeCLI.Core
                     continue;
                 }
 
-                AddTargetFromHealth(targets, targetUrl, TryGetHealth(targetUrl, CachedHealthProbeTimeoutMs), target);
+                AddTargetFromHealth(targets, targetUrl, TryGetHealth(targetUrl, cachedHealthTimeout), target);
             }
 
-            if (!_options.HttpUrlExplicit && !HasPreferredFilters())
+            if (options.ProbeLocalPorts && !_options.HttpUrlExplicit && !HasPreferredFilters())
             {
                 AddLocalPortScanTargets(targets);
             }
@@ -64,9 +66,9 @@ namespace AIBridgeCLI.Core
             return targets;
         }
 
-        public RuntimeTargetInfo ResolveTarget(string target)
+        public RuntimeTargetInfo ResolveTarget(string target, RuntimeTargetQueryOptions options = null)
         {
-            var targets = ListTargets();
+            var targets = ListTargets(options);
             if (targets.Count == 0)
             {
                 return null;
@@ -332,7 +334,7 @@ namespace AIBridgeCLI.Core
 
             try
             {
-                var targetInfo = ResolveTarget(target);
+                var targetInfo = ResolveTarget(target, RuntimeTargetQueryOptions.Probe);
                 var diagnosticUrl = targetInfo == null || string.IsNullOrWhiteSpace(targetInfo.path)
                     ? _options.HttpUrl
                     : targetInfo.path;

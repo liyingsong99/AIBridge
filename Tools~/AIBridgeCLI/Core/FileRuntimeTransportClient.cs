@@ -24,12 +24,12 @@ namespace AIBridgeCLI.Core
 
         public RuntimeTransportKind Kind => RuntimeTransportKind.File;
 
-        public IReadOnlyList<RuntimeTargetInfo> ListTargets()
+        public IReadOnlyList<RuntimeTargetInfo> ListTargets(RuntimeTargetQueryOptions options = null)
         {
             return RuntimePathHelper.ListTargets(_runtimeDirectory);
         }
 
-        public RuntimeTargetInfo ResolveTarget(string target)
+        public RuntimeTargetInfo ResolveTarget(string target, RuntimeTargetQueryOptions options = null)
         {
             return RuntimePathHelper.ResolveTarget(_runtimeDirectory, target);
         }

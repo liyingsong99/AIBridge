@@ -23,7 +23,15 @@ namespace AIBridgeCLI
             parsed.Options.TryGetValue("transport", out var transport);
 
             var actualTimeout = ResolveRuntimeTimeout(parsed, request, timeout);
-            var sender = new RuntimeCommandSender(runtimeDirectory, target, actualTimeout, transport: transport);
+            var probeTargets = ShouldProbeRuntimeTargets(parsed, runtimeAction);
+            var diagnoseTargetNotFound = parsed.GetBool("diagnose") || parsed.GetBool("deep");
+            var sender = new RuntimeCommandSender(
+                runtimeDirectory,
+                target,
+                actualTimeout,
+                transport: transport,
+                probeTargets: probeTargets,
+                diagnoseTargetNotFound: diagnoseTargetNotFound);
             CommandResult result;
 
             if (noWait)
@@ -111,6 +119,26 @@ namespace AIBridgeCLI
             TryAttachWorkflowResult(parsed, result, result.success ? 0 : 1);
             OutputFormatter.PrintResult(result, outputMode, includeIdInRaw: false);
             return result.success ? 0 : 1;
+        }
+
+        private static bool ShouldProbeRuntimeTargets(ParsedArgs parsed, string runtimeAction)
+        {
+            if (parsed == null)
+            {
+                return false;
+            }
+
+            if (parsed.GetBool("quick"))
+            {
+                return false;
+            }
+
+            if (parsed.GetBool("probe") || parsed.GetBool("scan-local") || parsed.GetBool("scanLocal"))
+            {
+                return true;
+            }
+
+            return string.Equals(runtimeAction, "runtime.diagnose", StringComparison.OrdinalIgnoreCase);
         }
 
         private static int ResolveRuntimeTimeout(ParsedArgs parsed, CommandRequest request, int timeout)

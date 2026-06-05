@@ -42,6 +42,7 @@ $CLI get_logs --regex "<关键字|异常名|对象名>"
 
 ```bash
 $CLI runtime list_targets
+$CLI runtime list_targets --probe true
 $CLI runtime status --target latest
 $CLI runtime diagnose --target latest
 $CLI runtime logs --target latest --logType Error --count 100
@@ -57,6 +58,8 @@ $CLI runtime call --target latest --action <handler> --json "<json>"
 ```
 
 多目标或多平台差异排查时，优先使用 `runtime-target-sweep` 或 `runtime-debug-investigation` recipe，并保留 target id、URL、截图、日志和 perf artifact。
+
+`runtime list_targets` 默认是 quick 路径；只有确实需要本机端口扫描时才加 `--probe true`，深诊断用 `runtime diagnose` 显式触发。
 
 ### 4. 复现与交互
 

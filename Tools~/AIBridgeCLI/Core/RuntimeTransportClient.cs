@@ -5,12 +5,29 @@ namespace AIBridgeCLI.Core
     public interface IRuntimeTransportClient
     {
         RuntimeTransportKind Kind { get; }
-        IReadOnlyList<RuntimeTargetInfo> ListTargets();
-        RuntimeTargetInfo ResolveTarget(string target);
+        IReadOnlyList<RuntimeTargetInfo> ListTargets(RuntimeTargetQueryOptions options = null);
+        RuntimeTargetInfo ResolveTarget(string target, RuntimeTargetQueryOptions options = null);
         RuntimeSendResult Send(RuntimeTargetInfo target, CommandRequest request);
         RuntimeReceiveResult WaitResult(RuntimeTargetInfo target, string commandId, int timeoutMs, int pollIntervalMs);
         void CleanupCommand(RuntimeTargetInfo target, string commandId);
         RuntimeDiagnosticReport Diagnose(string target, RuntimeCommandTrace commandTrace = null);
+    }
+
+    public sealed class RuntimeTargetQueryOptions
+    {
+        public static RuntimeTargetQueryOptions Quick => new RuntimeTargetQueryOptions
+        {
+            ProbeLocalPorts = false
+        };
+
+        public static RuntimeTargetQueryOptions Probe => new RuntimeTargetQueryOptions
+        {
+            ProbeLocalPorts = true
+        };
+
+        public bool ProbeLocalPorts { get; set; }
+
+        public string mode => ProbeLocalPorts ? "probe" : "quick";
     }
 
     public sealed class RuntimeSendResult

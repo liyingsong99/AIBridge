@@ -21,7 +21,7 @@
 | CLI 路径 | 任何 AIBridge 命令前 | 检查 `$CLI` 或 `./.aibridge/cli/AIBridgeCLI.exe` 是否存在 | 静态检查、`rg`、文件读取；声明 AIBridge CLI 未验证 |
 | Unity Editor | 编译、资源、场景、Prefab、Inspector、日志任务 | `$CLI compile unity` 或目标命令结果 | 不用 `dotnet build` 冒充 Unity 编译；报告 Unity 未验证 |
 | Code Index | C# 符号、定义、引用、调用者、诊断查询 | `$CLI code_index status` | 使用 `rg` 和直接文件读取 |
-| Runtime target | Runtime、Player、Play Mode、UI、性能任务 | `$CLI runtime list_targets`，再选 target | 只给静态或 Editor 结论，Runtime 状态标记未验证 |
+| Runtime target | Runtime、Player、Play Mode、UI、性能任务 | 先用 quick `$CLI runtime list_targets`；只有需要本机端口扫描时加 `--probe true`，再选 target | 只给静态或 Editor 结论，Runtime 状态标记未验证；深诊断显式用 `$CLI runtime diagnose` |
 | Workflow run | recipe、长任务、跨 turn 任务 | 从用户、上一轮输出或 `.aibridge/workflows/active-run.json` 确认 run id 后执行 `$CLI workflow status --run <runId>` | 新建 run 前说明未发现可恢复状态 |
 | 外部执行器 | `agent` / `manual` step、多 agent 协作 | 当前 harness 是否能创建子任务或人工步骤 | 导出 task pack 或由主 agent 执行并 `workflow import` |
 

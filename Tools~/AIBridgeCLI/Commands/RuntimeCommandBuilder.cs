@@ -313,7 +313,13 @@ namespace AIBridgeCLI.Commands
                 || string.Equals(key, "url", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(key, "token", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(key, "platform", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(key, "projectHint", StringComparison.OrdinalIgnoreCase);
+                || string.Equals(key, "projectHint", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "probe", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "scan-local", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "scanLocal", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "quick", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "diagnose", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "deep", StringComparison.OrdinalIgnoreCase);
         }
 
         private static object ParseStaticValue(string value)
@@ -356,7 +362,11 @@ namespace AIBridgeCLI.Commands
                 new ParameterInfo("url", "HTTP runtime base URL, e.g. http://host:27182", false),
                 new ParameterInfo("token", "Optional runtime auth token", false),
                 new ParameterInfo("platform", "Prefer cached HTTP target by platform, e.g. Android", false),
-                new ParameterInfo("projectHint", "Prefer cached HTTP target by project name", false)
+                new ParameterInfo("projectHint", "Prefer cached HTTP target by project name", false),
+                new ParameterInfo("probe", "Probe local runtime ports while resolving targets", false, "false"),
+                new ParameterInfo("scan-local", "Alias for --probe true", false, "false"),
+                new ParameterInfo("quick", "Skip local runtime port scanning", false, "true"),
+                new ParameterInfo("diagnose", "Run deep diagnostics when target resolution fails", false, "false")
             };
         }
     }

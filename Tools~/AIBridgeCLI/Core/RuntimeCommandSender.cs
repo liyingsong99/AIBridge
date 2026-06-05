@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
@@ -13,19 +14,26 @@ namespace AIBridgeCLI.Core
         private readonly string _target;
         private readonly int _timeout;
         private readonly int _pollInterval;
+        private readonly RuntimeTargetQueryOptions _targetQueryOptions;
+        private readonly bool _diagnoseTargetNotFound;
+        private IReadOnlyList<RuntimeTargetInfo> _targets;
 
         public RuntimeCommandSender(
             string runtimeDirectoryOverride,
             string target,
             int timeout = 5000,
             int pollInterval = 50,
-            string transport = null)
+            string transport = null,
+            bool probeTargets = false,
+            bool diagnoseTargetNotFound = false)
         {
             _options = RuntimeTransportOptions.Create(transport, runtimeDirectoryOverride, target, timeout, pollInterval);
             _transportClient = RuntimeTransportClientFactory.Create(_options);
             _target = _options.Target;
             _timeout = timeout;
             _pollInterval = pollInterval;
+            _targetQueryOptions = probeTargets ? RuntimeTargetQueryOptions.Probe : RuntimeTargetQueryOptions.Quick;
+            _diagnoseTargetNotFound = diagnoseTargetNotFound;
         }
 
         public CommandResult SendCommand(CommandRequest request)
@@ -41,7 +49,7 @@ namespace AIBridgeCLI.Core
                 return Diagnose(request?.id);
             }
 
-            var targetInfo = _transportClient.ResolveTarget(_target);
+            var targetInfo = ResolveTarget();
             if (targetInfo == null)
             {
                 return CreateTargetNotFoundResult(request?.id);
@@ -108,7 +116,7 @@ namespace AIBridgeCLI.Core
                 return Diagnose(request?.id);
             }
 
-            var targetInfo = _transportClient.ResolveTarget(_target);
+            var targetInfo = ResolveTarget();
             if (targetInfo == null)
             {
                 return CreateTargetNotFoundResult(request?.id);
@@ -138,7 +146,7 @@ namespace AIBridgeCLI.Core
 
         public CommandResult ListTargets(string requestId = null)
         {
-            var targets = _transportClient.ListTargets();
+            var targets = GetTargets();
             return new CommandResult
             {
                 id = requestId,
@@ -147,6 +155,7 @@ namespace AIBridgeCLI.Core
                 {
                     transport = GetTransportName(),
                     runtimeDirectory = _options.RuntimeDirectory,
+                    mode = _targetQueryOptions.mode,
                     count = targets.Count,
                     targets = targets
                 }
@@ -167,7 +176,10 @@ namespace AIBridgeCLI.Core
 
         private CommandResult CreateTargetNotFoundResult(string requestId)
         {
-            var diagnostic = _transportClient.Diagnose(_target);
+            var targets = GetTargets();
+            var diagnostic = _diagnoseTargetNotFound
+                ? RuntimeDiagnosticSummary.FromReport(_transportClient.Diagnose(_target))
+                : null;
             return new CommandResult
             {
                 id = requestId,
@@ -178,10 +190,54 @@ namespace AIBridgeCLI.Core
                     transport = GetTransportName(),
                     runtimeDirectory = _options.RuntimeDirectory,
                     target = _target,
-                    targets = _transportClient.ListTargets(),
-                    diagnostic = RuntimeDiagnosticSummary.FromReport(diagnostic)
+                    mode = _targetQueryOptions.mode,
+                    targetCount = targets.Count,
+                    targets = targets,
+                    diagnostic = diagnostic,
+                    suggestions = new[]
+                    {
+                        "Run: $CLI runtime list_targets --probe true",
+                        "Run: $CLI runtime discover --timeout 500",
+                        "Run: $CLI runtime diagnose --target " + _target
+                    }
                 }
             };
+        }
+
+        private IReadOnlyList<RuntimeTargetInfo> GetTargets()
+        {
+            if (_targets == null)
+            {
+                _targets = _transportClient.ListTargets(_targetQueryOptions);
+            }
+
+            return _targets;
+        }
+
+        private RuntimeTargetInfo ResolveTarget()
+        {
+            var targets = GetTargets();
+            if (targets == null || targets.Count == 0)
+            {
+                return null;
+            }
+
+            var resolvedTarget = string.IsNullOrWhiteSpace(_target) ? RuntimeTransportOptions.DefaultTarget : _target;
+            if (string.Equals(resolvedTarget, RuntimeTransportOptions.DefaultTarget, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(resolvedTarget, targets[0].targetId, StringComparison.OrdinalIgnoreCase))
+            {
+                return targets[0];
+            }
+
+            for (var i = 0; i < targets.Count; i++)
+            {
+                if (string.Equals(resolvedTarget, targets[i].targetId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return targets[i];
+                }
+            }
+
+            return null;
         }
 
         private CommandResult CreateTransportFailureResult(string requestId, string runtimeAction, RuntimeTargetInfo targetInfo, string error)
