@@ -26,6 +26,7 @@ namespace AIBridge.Editor
         private const string CODE_INDEX_BACKUP_PREFIX = CODE_INDEX_FOLDER + ".old.";
         private const string CODE_INDEX_DAEMON_SHUTDOWN_CLEANUP_MODE = "processOnly";
         private const int CODE_INDEX_DAEMON_SHUTDOWN_TIMEOUT_MS = 3000;
+        private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
         private static readonly string[] CLI_FILES = new[]
         {
             "AIBridgeCLI.dll",
@@ -766,7 +767,7 @@ namespace AIBridge.Editor
             }
 
             content = ApplyProjectVersionTokens(content);
-            File.WriteAllText(targetFile, content, System.Text.Encoding.UTF8);
+            File.WriteAllText(targetFile, content, Utf8NoBom);
         }
 
         private static List<AssistantIntegrationResult> InstallAssistantIntegrations(string projectRoot)
@@ -960,8 +961,8 @@ namespace AIBridge.Editor
             var branchSelectionPath = Path.Combine(workflowSkillDirectory, WorkflowPreferenceRenderer.BranchSelectionRelativePath.Replace('/', Path.DirectorySeparatorChar));
             EnsureParentDirectory(preferencesPath);
             EnsureParentDirectory(branchSelectionPath);
-            File.WriteAllText(preferencesPath, WorkflowPreferenceRenderer.RenderPreferences(projectRoot, target), Encoding.UTF8);
-            File.WriteAllText(branchSelectionPath, WorkflowPreferenceRenderer.RenderBranchSelection(projectRoot, target), Encoding.UTF8);
+            File.WriteAllText(preferencesPath, WorkflowPreferenceRenderer.RenderPreferences(projectRoot, target), Utf8NoBom);
+            File.WriteAllText(branchSelectionPath, WorkflowPreferenceRenderer.RenderBranchSelection(projectRoot, target), Utf8NoBom);
             generatedFiles.Add(preferencesPath);
             generatedFiles.Add(branchSelectionPath);
             return generatedFiles;

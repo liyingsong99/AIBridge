@@ -53,5 +53,38 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("EvidenceRef", readiness);
             StringAssert.Contains("CommandEvidence", readiness);
         }
+
+        [Test]
+        public void GeneratedWorkflowSkillFilesUseUtf8WithoutBom()
+        {
+            var target = AssistantIntegrationRegistry.GetTargets().First(item => item.Id == "codex");
+
+            SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
+
+            var aibridgeSkillPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge", "SKILL.md");
+            var workflowSkillPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "SKILL.md");
+            var preferencesPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "project-workflow-preferences.md");
+            var branchSelectionPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "branch-selection.md");
+
+            AssertNoUtf8Bom(aibridgeSkillPath);
+            AssertNoUtf8Bom(workflowSkillPath);
+            AssertNoUtf8Bom(preferencesPath);
+            AssertNoUtf8Bom(branchSelectionPath);
+            AssertStartsWithFrontmatter(aibridgeSkillPath);
+            AssertStartsWithFrontmatter(workflowSkillPath);
+        }
+
+        private static void AssertNoUtf8Bom(string path)
+        {
+            var bytes = File.ReadAllBytes(path);
+            var hasBom = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
+            Assert.IsFalse(hasBom, path);
+        }
+
+        private static void AssertStartsWithFrontmatter(string path)
+        {
+            var text = File.ReadAllText(path);
+            Assert.IsTrue(text.StartsWith("---\n") || text.StartsWith("---\r\n"), path);
+        }
     }
 }
