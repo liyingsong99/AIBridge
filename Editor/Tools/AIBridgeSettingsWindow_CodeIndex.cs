@@ -25,6 +25,7 @@ namespace AIBridge.Editor
 
         private void DrawCodeIndexSettingsTab()
         {
+            AIBridgeCodeIndexEditorUtility.CleanupOrphanDaemonsFromSettingsPanel();
             var settings = AIBridgeProjectSettings.Instance.CodeIndex;
             var wasCodeIndexEnabled = settings.EnableCodeIndex;
 

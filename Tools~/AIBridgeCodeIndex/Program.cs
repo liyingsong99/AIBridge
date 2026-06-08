@@ -99,6 +99,16 @@ namespace AIBridgeCodeIndex
                 request.SnapshotDirectory = Path.Combine(request.ProjectRoot, ".aibridge", "code-index", "snapshot");
             }
 
+            if (request.OwnerPid <= 0 && options.OwnerPid > 0)
+            {
+                request.OwnerPid = options.OwnerPid;
+            }
+
+            if (request.OwnerStartTicks <= 0L && options.OwnerStartTicks > 0L)
+            {
+                request.OwnerStartTicks = options.OwnerStartTicks;
+            }
+
             string message;
             var success = AIBridgeCodeIndexSnapshotUtility.GenerateSnapshot(request, out message);
             Console.WriteLine(JsonConvert.SerializeObject(new Dictionary<string, object>
@@ -108,7 +118,9 @@ namespace AIBridgeCodeIndex
                 ["message"] = message,
                 ["projectRoot"] = request.ProjectRoot,
                 ["snapshotPath"] = request.SnapshotDirectory,
-                ["workerCount"] = request.WorkerCount
+                ["workerCount"] = request.WorkerCount,
+                ["ownerPid"] = request.OwnerPid,
+                ["ownerStartTicks"] = request.OwnerStartTicks
             }));
             return success ? 0 : 1;
         }

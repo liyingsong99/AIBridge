@@ -7,6 +7,10 @@ namespace AIBridgeCodeIndex
         public string projectRoot { get; set; }
         public string projectHash { get; set; }
         public int unityPid { get; set; }
+        public int ownerPid { get; set; }
+        public long ownerStartTicks { get; set; }
+        public bool ownerAlive { get; set; }
+        public string ownerMonitorMode { get; set; }
         public int daemonPid { get; set; }
         public string endpoint { get; set; }
         public string token { get; set; }
@@ -66,6 +70,10 @@ namespace AIBridgeCodeIndex
         public bool stale { get; set; }
         public string projectRoot { get; set; }
         public string solution { get; set; }
+        public int ownerPid { get; set; }
+        public long ownerStartTicks { get; set; }
+        public bool ownerAlive { get; set; }
+        public string ownerMonitorMode { get; set; }
         public string workspaceMode { get; set; }
         public bool snapshotExists { get; set; }
         public int snapshotVersion { get; set; }
@@ -117,6 +125,10 @@ namespace AIBridgeCodeIndex
                 stale = status == null || status.stale,
                 projectRoot = status == null ? null : status.projectRoot,
                 solution = status == null ? null : status.solution,
+                ownerPid = status == null ? 0 : status.ownerPid,
+                ownerStartTicks = status == null ? 0L : status.ownerStartTicks,
+                ownerAlive = status != null && status.ownerAlive,
+                ownerMonitorMode = status == null ? null : status.ownerMonitorMode,
                 workspaceMode = status == null ? "unity-snapshot" : status.workspaceMode,
                 snapshotExists = status != null && status.snapshotExists,
                 snapshotVersion = status == null ? 0 : status.snapshotVersion,

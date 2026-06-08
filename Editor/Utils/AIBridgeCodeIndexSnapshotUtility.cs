@@ -95,6 +95,16 @@ namespace AIBridge.Editor
                                 + " --priority " + (request.Manual ? "normal" : "low")
                                 + " --workers " + Math.Max(1, request.WorkerCount).ToString(CultureInfo.InvariantCulture)
                                 + " --project-root " + QuoteCliArgument(request.ProjectRoot);
+                if (request.OwnerPid > 0)
+                {
+                    arguments += " --owner-pid " + request.OwnerPid.ToString(CultureInfo.InvariantCulture);
+                }
+
+                if (request.OwnerStartTicks > 0L)
+                {
+                    arguments += " --owner-start-ticks " + request.OwnerStartTicks.ToString(CultureInfo.InvariantCulture);
+                }
+
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = cliPath,
@@ -167,6 +177,8 @@ namespace AIBridge.Editor
             AppendJsonProperty(builder, "manual", request.Manual, true);
             AppendJsonProperty(builder, "reason", request.Reason, true);
             AppendJsonProperty(builder, "workerCount", request.WorkerCount, true);
+            AppendJsonProperty(builder, "ownerPid", request.OwnerPid, true);
+            AppendJsonProperty(builder, "ownerStartTicks", request.OwnerStartTicks, true);
             AppendSnapshotFilterJson(builder, request.FilterConfig);
             builder.Append(",\n");
             builder.Append("  \"assemblies\": [\n");
@@ -371,6 +383,8 @@ namespace AIBridge.Editor
                 Manual = manual,
                 Reason = reason,
                 WorkerCount = GetSnapshotWorkerCount(manual),
+                OwnerPid = Process.GetCurrentProcess().Id,
+                OwnerStartTicks = GetCurrentProcessStartTicks(),
                 Assemblies = CaptureAssemblyInputs(unityVersion)
             };
         }
@@ -419,6 +433,12 @@ namespace AIBridge.Editor
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             try
             {
+                if (!IsOwnerProcessAlive(request))
+                {
+                    message = "snapshot worker owner process is not alive";
+                    return false;
+                }
+
                 var snapshotDirectory = request.SnapshotDirectory;
                 var assembliesDirectory = Path.Combine(snapshotDirectory, AssembliesDirectoryName);
                 var nameIndexDirectory = Path.Combine(snapshotDirectory, IndexDirectoryName, NamesDirectoryName);
@@ -453,6 +473,8 @@ namespace AIBridge.Editor
                     new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, request.WorkerCount) },
                     record =>
                     {
+                        ThrowIfOwnerProcessExited(request);
+
                         RunWithSnapshotThreadPriority(request.Manual, () =>
                         {
                             WriteAssemblySnapshot(Path.Combine(snapshotDirectory, record.SnapshotFile), record);
@@ -535,6 +557,57 @@ namespace AIBridge.Editor
             }
         }
 
+        private static long GetCurrentProcessStartTicks()
+        {
+            try
+            {
+                return Process.GetCurrentProcess().StartTime.ToUniversalTime().Ticks;
+            }
+            catch
+            {
+                return 0L;
+            }
+        }
+
+        private static bool IsOwnerProcessAlive(SnapshotRequest request)
+        {
+            if (request == null || request.OwnerPid <= 0)
+            {
+                return true;
+            }
+
+            try
+            {
+                using (var process = Process.GetProcessById(request.OwnerPid))
+                {
+                    if (process.HasExited)
+                    {
+                        return false;
+                    }
+
+                    if (request.OwnerStartTicks <= 0L)
+                    {
+                        return true;
+                    }
+
+                    var startTicks = process.StartTime.ToUniversalTime().Ticks;
+                    return Math.Abs(startTicks - request.OwnerStartTicks) <= TimeSpan.FromSeconds(2).Ticks;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static void ThrowIfOwnerProcessExited(SnapshotRequest request)
+        {
+            if (!IsOwnerProcessAlive(request))
+            {
+                throw new OperationCanceledException("snapshot worker owner process exited");
+            }
+        }
+
         private static SnapshotCollection CollectAssemblyRecords(
             SnapshotRequest request,
             Dictionary<string, string> fileHashCache,
@@ -546,8 +619,10 @@ namespace AIBridge.Editor
             var byName = new Dictionary<string, AssemblyRecord>(StringComparer.OrdinalIgnoreCase);
             for (var i = 0; i < request.Assemblies.Count; i++)
             {
+                ThrowIfOwnerProcessExited(request);
+
                 var input = request.Assemblies[i];
-                var record = CreateAssemblyRecord(projectRoot, input);
+                var record = CreateAssemblyRecord(request, projectRoot, input);
                 allRecords.Add(record);
                 byName[record.AssemblyName] = record;
             }
@@ -556,6 +631,8 @@ namespace AIBridge.Editor
             var excludedAssemblyIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             for (var i = 0; i < allRecords.Count; i++)
             {
+                ThrowIfOwnerProcessExited(request);
+
                 var record = allRecords[i];
                 string excludeReason;
                 if (TryGetExcludeReason(record, filterConfig, out excludeReason))
@@ -569,13 +646,15 @@ namespace AIBridge.Editor
                 var input = request.Assemblies[i];
                 record.Sources.Clear();
                 record.References.Clear();
-                AddFileStates(projectRoot, input.SourceFiles, record.Sources, fileHashCache, includeHash: true, previousFileStates: previousFileStates);
-                AddFileStates(projectRoot, input.ReferenceFiles, record.References, fileHashCache, includeHash: true, previousFileStates: previousFileStates);
+                AddFileStates(request, projectRoot, input.SourceFiles, record.Sources, fileHashCache, includeHash: true, previousFileStates: previousFileStates);
+                AddFileStates(request, projectRoot, input.ReferenceFiles, record.References, fileHashCache, includeHash: true, previousFileStates: previousFileStates);
                 collection.IncludedRecords.Add(record);
             }
 
             for (var i = 0; i < collection.IncludedRecords.Count; i++)
             {
+                ThrowIfOwnerProcessExited(request);
+
                 var record = collection.IncludedRecords[i];
                 for (var j = 0; j < record.ProjectReferenceAssemblyNames.Count; j++)
                 {
@@ -588,7 +667,7 @@ namespace AIBridge.Editor
                     if (excludedAssemblyIds.Contains(dependency.AssemblyId))
                     {
                         // 被过滤的源码程序集仍以编译输出 DLL 的形式参与语义解析，避免工程源码缺少类型定义。
-                        AddFileStates(projectRoot, new[] { dependency.OutputPath }, record.References, fileHashCache, includeHash: true, previousFileStates: previousFileStates);
+                        AddFileStates(request, projectRoot, new[] { dependency.OutputPath }, record.References, fileHashCache, includeHash: true, previousFileStates: previousFileStates);
                         continue;
                     }
 
@@ -620,7 +699,7 @@ namespace AIBridge.Editor
             return collection;
         }
 
-        private static AssemblyRecord CreateAssemblyRecord(string projectRoot, AssemblyInput input)
+        private static AssemblyRecord CreateAssemblyRecord(SnapshotRequest request, string projectRoot, AssemblyInput input)
         {
             var record = new AssemblyRecord
             {
@@ -638,7 +717,7 @@ namespace AIBridge.Editor
             record.Defines.AddRange(input.Defines);
             record.ProjectReferenceAssemblyNames.AddRange(input.ProjectReferenceAssemblyNames);
             record.CompilerOptions.AddRange(input.CompilerOptions);
-            AddFileStates(projectRoot, input.SourceFiles, record.Sources, null, includeHash: false);
+            AddFileStates(request, projectRoot, input.SourceFiles, record.Sources, null, includeHash: false);
             return record;
         }
 
@@ -800,6 +879,7 @@ namespace AIBridge.Editor
         }
 
         private static void AddFileStates(
+            SnapshotRequest request,
             string projectRoot,
             string[] paths,
             List<FileState> target,
@@ -818,6 +898,11 @@ namespace AIBridge.Editor
 
             for (var i = 0; i < paths.Length; i++)
             {
+                if ((i & 15) == 0)
+                {
+                    ThrowIfOwnerProcessExited(request);
+                }
+
                 var path = paths[i];
                 if (string.IsNullOrWhiteSpace(path))
                 {
@@ -2091,6 +2176,8 @@ namespace AIBridge.Editor
             public bool Manual;
             public string Reason;
             public int WorkerCount;
+            public int OwnerPid;
+            public long OwnerStartTicks;
             public List<AssemblyInput> Assemblies = new List<AssemblyInput>();
         }
 

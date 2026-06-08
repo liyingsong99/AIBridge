@@ -21,11 +21,13 @@ namespace AIBridge.Editor
         private const string LockFileName = "lock.json";
         private const string ConfigFileName = "config.json";
         private const string DaemonProcessFileName = "daemon-process.json";
+        private const string DaemonProcessDirectoryName = "daemon-processes";
         private const string DaemonAssemblyName = "AIBridgeCodeIndex";
         private const string TempDirectoryName = "temp";
         private const string LogsDirectoryName = "logs";
         private const int StartupRetryDelaySeconds = 2;
         private const double PostCompileRefreshDelaySeconds = 1.0;
+        private const double SettingsPanelCleanupIntervalSeconds = 5.0;
         private const string PendingPostCompileRefreshSessionKey = "AIBridge.CodeIndex.PendingPostCompileRefresh";
 
         private static bool _startupPrewarmScheduled;
@@ -41,6 +43,7 @@ namespace AIBridge.Editor
         private static bool _snapshotRefreshRunningStartWarmup;
         private static string _snapshotRefreshRunningReason;
         private static Task<AIBridgeCodeIndexSnapshotUtility.SnapshotResult> _snapshotRefreshTask;
+        private static double _lastSettingsPanelCleanupTime = -SettingsPanelCleanupIntervalSeconds;
 
         static AIBridgeCodeIndexEditorUtility()
         {
@@ -112,6 +115,7 @@ namespace AIBridge.Editor
                 return false;
             }
 
+            CleanupOrphanDaemons(logWhenChanged: manual);
             return ScheduleSnapshotRefresh(manual, startWarmup: true, reason: manual ? "manualWarmup" : "startupPrewarm");
         }
 
@@ -252,8 +256,12 @@ namespace AIBridge.Editor
                 return false;
             }
 
+            var currentProcess = Process.GetCurrentProcess();
+            var ownerStartTicks = GetProcessStartTicks(currentProcess);
             var args = "code_index warmup --no-wait --timeout 1000"
-                       + " --unity-pid " + Process.GetCurrentProcess().Id
+                       + " --unity-pid " + currentProcess.Id
+                       + " --owner-pid " + currentProcess.Id
+                       + " --owner-start-ticks " + ownerStartTicks
                        + " --priority " + (manual ? "normal" : "low")
                        + " --auto-refresh " + ToCliBool(settings.AutoRefreshOnFileChange);
             return StartCli(cliPath, args, waitForExit: false, timeoutMs: 1000);
@@ -273,6 +281,17 @@ namespace AIBridge.Editor
             }
 
             CleanupIndexDirectory(cleanupMode);
+        }
+
+        public static void CleanupOrphanDaemonsFromSettingsPanel()
+        {
+            if (EditorApplication.timeSinceStartup - _lastSettingsPanelCleanupTime < SettingsPanelCleanupIntervalSeconds)
+            {
+                return;
+            }
+
+            _lastSettingsPanelCleanupTime = EditorApplication.timeSinceStartup;
+            CleanupOrphanDaemons(logWhenChanged: true);
         }
 
         public static void WriteCodeIndexConfig()
@@ -316,6 +335,7 @@ namespace AIBridge.Editor
 
         private static void InitializeDelayedCodeIndex()
         {
+            CleanupOrphanDaemons(logWhenChanged: true);
             if (RestorePendingPostCompileRefresh())
             {
                 return;
@@ -688,6 +708,156 @@ namespace AIBridge.Editor
             {
                 return false;
             }
+        }
+
+        private static void CleanupOrphanDaemons(bool logWhenChanged)
+        {
+            var cleaned = 0;
+            foreach (var markerPath in EnumerateDaemonProcessMarkerPaths())
+            {
+                try
+                {
+                    var json = File.Exists(markerPath) ? File.ReadAllText(markerPath, Encoding.UTF8) : null;
+                    if (!MarkerMatchesCurrentProject(json))
+                    {
+                        continue;
+                    }
+
+                    var daemonPid = ReadInt(json, "daemonPid");
+                    if (daemonPid <= 0)
+                    {
+                        DeleteFileIfExists(markerPath);
+                        cleaned++;
+                        continue;
+                    }
+
+                    if (!TryGetCodeIndexProcess(daemonPid, markerPath, out var process))
+                    {
+                        DeleteFileIfExists(markerPath);
+                        cleaned++;
+                        continue;
+                    }
+
+                    using (process)
+                    {
+                        var startedAtUtcTicks = ReadLong(json, "startedAtUtcTicks");
+                        var processStartTicks = GetProcessStartTicks(process);
+                        if (startedAtUtcTicks > 0L
+                            && processStartTicks > 0L
+                            && Math.Abs(processStartTicks - startedAtUtcTicks) > TimeSpan.FromSeconds(2).Ticks)
+                        {
+                            DeleteFileIfExists(markerPath);
+                            cleaned++;
+                            continue;
+                        }
+
+                        var ownerPid = ReadInt(json, "ownerPid");
+                        var ownerStartTicks = ReadLong(json, "ownerStartTicks");
+                        if (ownerPid > 0 && !IsOwnerProcessAlive(ownerPid, ownerStartTicks))
+                        {
+                            try
+                            {
+                                process.Kill();
+                                process.WaitForExit(1000);
+                            }
+                            catch
+                            {
+                            }
+
+                            DeleteFileIfExists(markerPath);
+                            cleaned++;
+                        }
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            if (cleaned > 0 && logWhenChanged)
+            {
+                UnityEngine.Debug.Log("[AIBridge] Code Index cleaned stale daemon markers/processes: " + cleaned);
+            }
+        }
+
+        private static string[] EnumerateDaemonProcessMarkerPaths()
+        {
+            var result = new System.Collections.Generic.List<string>();
+            var markerPath = GetDaemonProcessPath();
+            if (File.Exists(markerPath))
+            {
+                result.Add(markerPath);
+            }
+
+            var markerDirectory = Path.Combine(GetIndexDirectory(), DaemonProcessDirectoryName);
+            if (Directory.Exists(markerDirectory))
+            {
+                result.AddRange(Directory.GetFiles(markerDirectory, "*.json"));
+            }
+
+            return result.ToArray();
+        }
+
+        private static bool MarkerMatchesCurrentProject(string json)
+        {
+            return PathsEqual(ReadString(json, "projectRoot"), GetProjectRoot());
+        }
+
+        private static bool IsOwnerProcessAlive(int ownerPid, long ownerStartTicks)
+        {
+            try
+            {
+                using (var process = Process.GetProcessById(ownerPid))
+                {
+                    if (process.HasExited)
+                    {
+                        return false;
+                    }
+
+                    if (ownerStartTicks <= 0L)
+                    {
+                        return true;
+                    }
+
+                    var currentStartTicks = GetProcessStartTicks(process);
+                    return currentStartTicks > 0L && Math.Abs(currentStartTicks - ownerStartTicks) <= TimeSpan.FromSeconds(2).Ticks;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static long GetProcessStartTicks(Process process)
+        {
+            try
+            {
+                return process == null ? 0L : process.StartTime.ToUniversalTime().Ticks;
+            }
+            catch
+            {
+                return 0L;
+            }
+        }
+
+        private static bool PathsEqual(string left, string right)
+        {
+            if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+            {
+                return false;
+            }
+
+            try
+            {
+                left = Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                right = Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            }
+            catch
+            {
+            }
+
+            return string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
         }
 
         private static void CleanupIndexDirectory(string cleanupMode)

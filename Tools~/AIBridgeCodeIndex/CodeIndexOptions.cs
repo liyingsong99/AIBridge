@@ -10,6 +10,8 @@ namespace AIBridgeCodeIndex
         public string StatusPath { get; set; }
         public string Token { get; set; }
         public int UnityPid { get; set; }
+        public int OwnerPid { get; set; }
+        public long OwnerStartTicks { get; set; }
         public bool AutoRefresh { get; set; }
         public string Worker { get; set; }
         public string InputPath { get; set; }
@@ -52,6 +54,23 @@ namespace AIBridgeCodeIndex
                 int.TryParse(unityPidText, out unityPid);
             }
 
+            var ownerPid = 0;
+            if (values.TryGetValue("owner-pid", out var ownerPidText))
+            {
+                int.TryParse(ownerPidText, out ownerPid);
+            }
+
+            var ownerStartTicks = 0L;
+            if (values.TryGetValue("owner-start-ticks", out var ownerStartTicksText))
+            {
+                long.TryParse(ownerStartTicksText, out ownerStartTicks);
+            }
+
+            if (ownerPid <= 0 && unityPid > 0)
+            {
+                ownerPid = unityPid;
+            }
+
             var autoRefresh = true;
             if (values.TryGetValue("auto-refresh", out var autoRefreshText))
             {
@@ -76,6 +95,8 @@ namespace AIBridgeCodeIndex
                 StatusPath = statusPath,
                 Token = string.IsNullOrWhiteSpace(token) ? Guid.NewGuid().ToString("N") : token,
                 UnityPid = unityPid,
+                OwnerPid = ownerPid,
+                OwnerStartTicks = ownerStartTicks,
                 AutoRefresh = autoRefresh,
                 Worker = worker,
                 InputPath = inputPath,

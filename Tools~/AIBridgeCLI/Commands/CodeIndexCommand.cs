@@ -1163,7 +1163,9 @@ namespace AIBridgeCLI.Commands
                 ["startedAtUtcTicks"] = startedAtUtcTicks,
                 ["launchMode"] = daemon.LaunchMode,
                 ["daemonPath"] = daemon.DisplayPath,
-                ["projectRoot"] = context.ProjectRoot
+                ["projectRoot"] = context.ProjectRoot,
+                ["ownerPid"] = context.OwnerPid,
+                ["ownerStartTicks"] = context.OwnerStartTicks
             };
         }
 
@@ -1415,6 +1417,10 @@ namespace AIBridgeCLI.Commands
                 ["loadedDocuments"] = status.Value<int?>("loadedDocuments") ?? 0,
                 ["endpoint"] = status.Value<string>("endpoint"),
                 ["daemonPid"] = status.Value<int?>("daemonPid") ?? 0,
+                ["ownerPid"] = status.Value<int?>("ownerPid") ?? 0,
+                ["ownerStartTicks"] = status.Value<long?>("ownerStartTicks") ?? 0L,
+                ["ownerAlive"] = status.Value<bool?>("ownerAlive") ?? false,
+                ["ownerMonitorMode"] = status.Value<string>("ownerMonitorMode"),
                 ["statusPath"] = context.StatusPath,
                 ["reachable"] = reachable,
                 ["message"] = status.Value<string>("message"),
@@ -2102,6 +2108,10 @@ namespace AIBridgeCLI.Commands
             remote["endpoint"] = status.Value<string>("endpoint");
             remote["token"] = status.Value<string>("token");
             remote["daemonPid"] = status.Value<int?>("daemonPid") ?? 0;
+            remote["ownerPid"] = status.Value<int?>("ownerPid") ?? 0;
+            remote["ownerStartTicks"] = status.Value<long?>("ownerStartTicks") ?? 0L;
+            remote["ownerAlive"] = status.Value<bool?>("ownerAlive") ?? false;
+            remote["ownerMonitorMode"] = status.Value<string>("ownerMonitorMode");
         }
 
         private static bool IsReady(JObject status)
@@ -2369,6 +2379,8 @@ namespace AIBridgeCLI.Commands
             public string DaemonLaunchLockPath { get; private set; }
             public bool HasUnityProjectMarkers { get; private set; }
             public int UnityPid { get; private set; }
+            public int OwnerPid { get; private set; }
+            public long OwnerStartTicks { get; private set; }
             public bool Enabled { get; private set; }
             public bool AutoRefresh { get; private set; }
             public string ProcessPriority { get; private set; }
@@ -2382,6 +2394,13 @@ namespace AIBridgeCLI.Commands
                 var indexDirectory = Path.Combine(projectRoot, ".aibridge", IndexDirectoryName);
                 var snapshotDirectory = Path.Combine(indexDirectory, SnapshotDirectoryName);
                 var unityPid = ResolveInt(options, "unity-pid");
+                var ownerPid = ResolveInt(options, "owner-pid");
+                var ownerStartTicks = ResolveLong(options, "owner-start-ticks");
+                if (ownerPid <= 0 && unityPid > 0)
+                {
+                    ownerPid = unityPid;
+                }
+
                 var config = ReadCodeIndexConfig(indexDirectory);
                 return new CodeIndexContext
                 {
@@ -2396,6 +2415,8 @@ namespace AIBridgeCLI.Commands
                     DaemonProcessDirectory = Path.Combine(indexDirectory, DaemonProcessDirectoryName),
                     DaemonLaunchLockPath = Path.Combine(indexDirectory, DaemonLaunchLockFileName),
                     UnityPid = unityPid,
+                    OwnerPid = ownerPid,
+                    OwnerStartTicks = ownerStartTicks,
                     Enabled = GetConfigBool(config, "enableCodeIndex", false),
                     AutoRefresh = ResolveBool(options, "auto-refresh", GetConfigBool(config, "autoRefreshOnFileChange", true)),
                     ProcessPriority = ResolveString(options, "priority", "normal"),
@@ -2442,6 +2463,17 @@ namespace AIBridgeCLI.Commands
                 }
 
                 int.TryParse(value, out var result);
+                return result;
+            }
+
+            private static long ResolveLong(Dictionary<string, string> options, string key)
+            {
+                if (options == null || !options.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+                {
+                    return 0L;
+                }
+
+                long.TryParse(value, out var result);
                 return result;
             }
 
@@ -2644,6 +2676,18 @@ namespace AIBridgeCLI.Commands
                     startInfo.ArgumentList.Add(context.UnityPid.ToString());
                 }
 
+                if (context.OwnerPid > 0)
+                {
+                    startInfo.ArgumentList.Add("--owner-pid");
+                    startInfo.ArgumentList.Add(context.OwnerPid.ToString(CultureInfo.InvariantCulture));
+                }
+
+                if (context.OwnerStartTicks > 0L)
+                {
+                    startInfo.ArgumentList.Add("--owner-start-ticks");
+                    startInfo.ArgumentList.Add(context.OwnerStartTicks.ToString(CultureInfo.InvariantCulture));
+                }
+
                 startInfo.ArgumentList.Add("--auto-refresh");
                 startInfo.ArgumentList.Add(context.AutoRefresh ? "true" : "false");
             }
@@ -2658,6 +2702,18 @@ namespace AIBridgeCLI.Commands
                 startInfo.ArgumentList.Add(context.ProjectRoot);
                 startInfo.ArgumentList.Add("--priority");
                 startInfo.ArgumentList.Add(context.ProcessPriority);
+
+                if (context.OwnerPid > 0)
+                {
+                    startInfo.ArgumentList.Add("--owner-pid");
+                    startInfo.ArgumentList.Add(context.OwnerPid.ToString(CultureInfo.InvariantCulture));
+                }
+
+                if (context.OwnerStartTicks > 0L)
+                {
+                    startInfo.ArgumentList.Add("--owner-start-ticks");
+                    startInfo.ArgumentList.Add(context.OwnerStartTicks.ToString(CultureInfo.InvariantCulture));
+                }
 
                 if (workers > 0)
                 {

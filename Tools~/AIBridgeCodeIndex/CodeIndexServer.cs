@@ -41,7 +41,7 @@ namespace AIBridgeCodeIndex
         private CodeIndexStatus _status;
         private Task _warmupTask;
         private Task _refreshTask;
-        private Task _unityMonitorTask;
+        private Task _ownerMonitorTask;
         private volatile bool _shutdownRequested;
 
         public CodeIndexServer(CodeIndexOptions options)
@@ -73,9 +73,9 @@ namespace AIBridgeCodeIndex
             WriteStatus();
 
             _warmupTask = WarmupAsync();
-            if (_options.UnityPid > 0)
+            if (_options.OwnerPid > 0)
             {
-                _unityMonitorTask = MonitorUnityProcessAsync();
+                _ownerMonitorTask = MonitorOwnerProcessAsync();
             }
 
             while (!_shutdownRequested)
@@ -107,9 +107,9 @@ namespace AIBridgeCodeIndex
                 await Task.WhenAny(_warmupTask, Task.Delay(500));
             }
 
-            if (_unityMonitorTask != null)
+            if (_ownerMonitorTask != null)
             {
-                await Task.WhenAny(_unityMonitorTask, Task.Delay(100));
+                await Task.WhenAny(_ownerMonitorTask, Task.Delay(100));
             }
 
             if (_refreshTask != null)
@@ -935,17 +935,27 @@ namespace AIBridgeCodeIndex
             }
         }
 
-        private async Task MonitorUnityProcessAsync()
+        private async Task MonitorOwnerProcessAsync()
         {
             var missingTicks = 0;
             while (!_shutdownRequested)
             {
-                if (!IsProcessAlive(_options.UnityPid))
+                var ownerState = GetOwnerProcessState();
+                lock (_statusLock)
+                {
+                    if (_status != null)
+                    {
+                        _status.ownerAlive = ownerState.Alive;
+                        _status.ownerMonitorMode = ownerState.MonitorMode;
+                    }
+                }
+
+                if (!ownerState.Alive)
                 {
                     missingTicks++;
                     if (missingTicks >= 3)
                     {
-                        UpdateStatus("stopping", "Unity process exited; stopping code_index daemon.");
+                        UpdateStatus("stopping", "Owner process exited; stopping code_index daemon.");
                         RequestShutdown();
                         return;
                     }
@@ -959,23 +969,57 @@ namespace AIBridgeCodeIndex
             }
         }
 
-        private static bool IsProcessAlive(int processId)
+        private OwnerProcessState GetOwnerProcessState()
         {
-            if (processId <= 0)
+            if (_options.OwnerPid <= 0)
             {
-                return false;
+                return new OwnerProcessState(true, "none");
             }
 
             try
             {
-                using (var process = Process.GetProcessById(processId))
+                using (var process = Process.GetProcessById(_options.OwnerPid))
                 {
-                    return !process.HasExited;
+                    if (process.HasExited)
+                    {
+                        return new OwnerProcessState(false, GetOwnerMonitorMode());
+                    }
+
+                    if (_options.OwnerStartTicks <= 0L)
+                    {
+                        return new OwnerProcessState(true, "pidOnly");
+                    }
+
+                    var startTicks = process.StartTime.ToUniversalTime().Ticks;
+                    var matches = Math.Abs(startTicks - _options.OwnerStartTicks) <= TimeSpan.FromSeconds(2).Ticks;
+                    return new OwnerProcessState(matches, "verified");
                 }
             }
             catch
             {
-                return false;
+                return new OwnerProcessState(false, GetOwnerMonitorMode());
+            }
+        }
+
+        private string GetOwnerMonitorMode()
+        {
+            if (_options.OwnerPid <= 0)
+            {
+                return "none";
+            }
+
+            return _options.OwnerStartTicks > 0L ? "verified" : "pidOnly";
+        }
+
+        private struct OwnerProcessState
+        {
+            public readonly bool Alive;
+            public readonly string MonitorMode;
+
+            public OwnerProcessState(bool alive, string monitorMode)
+            {
+                Alive = alive;
+                MonitorMode = monitorMode;
             }
         }
 
@@ -1003,6 +1047,10 @@ namespace AIBridgeCodeIndex
                 projectRoot = _options.ProjectRoot,
                 projectHash = ComputeProjectHash(_options.ProjectRoot),
                 unityPid = _options.UnityPid,
+                ownerPid = _options.OwnerPid,
+                ownerStartTicks = _options.OwnerStartTicks,
+                ownerAlive = _options.OwnerPid <= 0 || GetOwnerProcessState().Alive,
+                ownerMonitorMode = GetOwnerMonitorMode(),
                 daemonPid = Process.GetCurrentProcess().Id,
                 endpoint = endpoint,
                 token = _options.Token,
@@ -1049,6 +1097,10 @@ namespace AIBridgeCodeIndex
                     projectRoot = _status.projectRoot,
                     projectHash = _status.projectHash,
                     unityPid = _status.unityPid,
+                    ownerPid = _status.ownerPid,
+                    ownerStartTicks = _status.ownerStartTicks,
+                    ownerAlive = _status.ownerAlive,
+                    ownerMonitorMode = _status.ownerMonitorMode,
                     daemonPid = _status.daemonPid,
                     endpoint = _status.endpoint,
                     token = _status.token,

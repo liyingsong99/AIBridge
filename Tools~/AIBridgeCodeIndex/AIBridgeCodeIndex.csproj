@@ -8,6 +8,11 @@
     <LangVersion>9.0</LangVersion>
     <AssemblyName>AIBridgeCodeIndex</AssemblyName>
     <RootNamespace>AIBridgeCodeIndex</RootNamespace>
+    <AssemblyTitle>AIBridge Code Index Daemon</AssemblyTitle>
+    <Product>AIBridge Code Index Daemon</Product>
+    <Description>AIBridge Code Index Daemon</Description>
+    <FileDescription>AIBridge Code Index Daemon</FileDescription>
+    <Company>AIBridge</Company>
 
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
     <OutputPath>..\CLI\$(RuntimeIdentifier)\CodeIndex\</OutputPath>
