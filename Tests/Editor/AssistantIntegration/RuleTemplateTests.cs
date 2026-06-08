@@ -133,8 +133,10 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("asset search/find --format paths", workflowSkill);
             StringAssert.Contains("字面量字符串", workflowSkill);
             StringAssert.Contains("rg -n", workflowSkill);
-            StringAssert.Contains("Harness 能力探测模式", workflowSkill);
+            StringAssert.Contains("Harness Preflight gate", workflowSkill);
             StringAssert.Contains("references/harness-readiness.md", workflowSkill);
+            StringAssert.Contains("不是业务分支内的固定步骤", workflowSkill);
+            StringAssert.Contains("fresh 且不影响当前工具选择时默认不单独输出", workflowSkill);
             StringAssert.Contains("【入口：Preflight / Skill 路由】", workflowSkill);
             StringAssert.Contains("【模式：调试诊断分支】", workflowSkill);
             StringAssert.Contains("需求讨论分支", workflowSkill);
@@ -146,6 +148,8 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("如误入本 Skill，停止展开分支和 Harness 探测", workflowSkill);
             StringAssert.Contains("风险审查/验证结论", workflowSkill);
             StringAssert.Contains("优先使用 RootRule compact 摘要", workflowSkill);
+            StringAssert.Contains("搜索收窄、文件读取、证据定位等执行进度必须和 harness 状态分开写", workflowSkill);
+            StringAssert.Contains("不把 stale snapshot", workflowSkill);
             StringAssert.Contains("Workflow report/manifest 默认作为 artifact ref", workflowSkill);
 
             var preferencesPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "project-workflow-preferences.md");
@@ -159,12 +163,15 @@ namespace AIBridge.Editor.Tests
             var branchSelection = File.ReadAllText(branchSelectionPath);
             StringAssert.Contains("【入口：Preflight / Skill 路由】", branchSelection);
             StringAssert.Contains("【模式：<启用分支之一>】", branchSelection);
+            StringAssert.Contains("Harness 判定是 Preflight gate", branchSelection);
+            StringAssert.Contains("fresh 且不影响工具选择时不单独输出", branchSelection);
             StringAssert.Contains("需求讨论分支", branchSelection);
             StringAssert.DoesNotContain("需求讨论模式", branchSelection);
             StringAssert.DoesNotContain("-> <当前步骤>", branchSelection);
             StringAssert.DoesNotContain("<当前步骤正在收集或产出的内容>", branchSelection);
             Assert.IsFalse(branchSelection.Contains("【任务分流步骤】"));
             Assert.IsFalse(branchSelection.Contains("【分支模式】"));
+            Assert.IsFalse(branchSelection.Contains("【模式：Harness"));
             Assert.IsFalse(branchSelection.Contains("说明：<当前步骤正在收集或产出的内容>"));
         }
 

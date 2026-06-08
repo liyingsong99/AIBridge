@@ -48,10 +48,15 @@ namespace AIBridge.Editor.Tests
             Assert.IsTrue(File.Exists(readinessPath));
 
             var readiness = File.ReadAllText(readinessPath);
+            StringAssert.Contains("Harness Preflight gate", readiness);
+            StringAssert.Contains("fresh 且不影响当前工具选择时默认静默", readiness);
+            StringAssert.Contains("不要把搜索收窄、文件读取、证据定位等执行进度混进 harness 状态句子", readiness);
+            StringAssert.Contains("不要输出未经当前 compact status 支撑的 Code Index、Unity Editor、Runtime 等能力结论", readiness);
             StringAssert.Contains("Fallback 规则", readiness);
             StringAssert.Contains("Resume 规则", readiness);
             StringAssert.Contains("EvidenceRef", readiness);
             StringAssert.Contains("CommandEvidence", readiness);
+            Assert.IsFalse(readiness.Contains("【模式：Harness"));
         }
 
         [Test]

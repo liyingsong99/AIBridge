@@ -1,14 +1,15 @@
-# Harness 能力探测
+# Harness Preflight gate
 
 ## 目标
 
-在进入 AIBridge workflow 前，优先使用 RootRule 中的 compact 能力摘要或 `$CLI harness status` compact 输出，避免每轮 AI 读取完整 snapshot 或重复探测。完整 snapshot 和完整探测只在快照缺失、过期，或任务需要未确认能力时使用。
+在进入 AIBridge workflow 前，把 harness 判定作为 Preflight gate 处理，而不是业务分支内的固定步骤。优先使用 RootRule 中的 compact 能力摘要或 `$CLI harness status` compact 输出，避免每轮 AI 读取完整 snapshot 或重复探测。fresh 且不影响当前工具选择时默认静默；完整 snapshot 和完整探测只在快照缺失、过期，或任务需要未确认能力时使用。
 
 ## 默认入口
 
 1. 先使用 RootRule 的能力摘要；需要确认状态或 freshness 时执行 `$CLI harness status`，使用默认 compact 输出。
-2. 如果状态是 `fresh`，按 compact summary 分流，不读取完整 snapshot，不再重复探测 CLI/Skill/Code Index/workflow。
-3. 如果状态是 `missing`、`stale` 或 `invalid`，再按下方矩阵做最小补测。
+2. 如果状态是 `fresh`，按 compact summary 分流；不读取完整 snapshot，不再重复探测 CLI/Skill/Code Index/workflow，且默认不单独输出 harness 状态。
+3. 如果状态是 `missing`、`stale` 或 `invalid`，再按下方矩阵做最小补测；过期 snapshot 只能作为待确认线索，不能写成当前事实。
+4. 如果 harness 状态改变工具选择，把工具策略单独写出；不要把搜索收窄、文件读取、证据定位等执行进度混进 harness 状态句子。
 
 快照由 Unity Editor/SkillInstaller 自动生成，只包含项目侧可确认能力。sub-agent、shell、sandbox、网络等 harness 原生权限必须视为 `unknown`，除非当前 harness 明确提供。
 
@@ -27,19 +28,16 @@
 
 ## 输出规则
 
-Preflight 阶段必须把 harness 关键状态并入可观测输出；不必向用户输出完整探测表。只有发生缺失、过期、降级、阻塞，或用户要求说明 harness 状态时，才展开为简短状态块：
+Preflight 阶段只在 harness 状态会影响执行、安全边界或用户可见结论时输出；不必向用户输出完整探测表，也不要把 harness 判定写成每个业务分支的固定模式。只有发生缺失、过期、降级、阻塞、用户要求说明，或能力状态改变工具选择时，才在入口块中展开简短状态：
 
 ```text
-【模式：Harness 能力探测】
-Snapshot：fresh（.aibridge/harness/capabilities.json）
-CLI：available
-Skill：available
-Unity：unknown（尚未执行编译）
-Code Index：disabled，使用 rg
-Runtime：not-needed
-Workflow：available；agent/manual step 需要外部 executor
-Fallback：Unity 不可达时仅报告静态验证
+【入口：Preflight / Skill 路由】
+主分支：实施分支
+Harness：snapshot stale；仅确认本任务必需能力
+工具策略：Code Index disabled，使用 rg + 文件阅读
 ```
+
+当 snapshot `fresh` 且不改变工具选择时，入口块只保留分支、Skills 和理由即可，不额外输出泛化的 harness 可用性宣告。不要输出未经当前 compact status 支撑的 Code Index、Unity Editor、Runtime 等能力结论。
 
 需要完整 snapshot JSON 时才运行：
 
@@ -58,12 +56,12 @@ $CLI harness status --include-snapshot true
 
 ## Fallback 规则
 
-- Snapshot fresh：直接按 compact summary 分流，不读取完整 snapshot，不执行完整探测。
-- Snapshot missing/stale/invalid：执行 `$CLI harness status`，必要时读取完整 snapshot；只补测任务必需能力。
+- Snapshot fresh：直接按 compact summary 分流，不读取完整 snapshot，不执行完整探测；除非用户要求或影响工具选择，否则不输出 harness 状态。
+- Snapshot missing/stale/invalid：执行 `$CLI harness status`，必要时读取完整 snapshot；只补测任务必需能力，不把 stale snapshot 内容当作当前事实。
 - Skill 不可读：继续使用 RootRule 的 CLI 路径、通用验证和路由规则；不要假设隐藏 Skill 内容。
 - CLI 不存在：只执行 host 侧命令，如 `rg`、文件读取、`dotnet build`；最终明确 AIBridge/Unity 验证未执行。
 - Unity 命令超时或被 modal dialog 阻塞：先检查 `dialog status` 或使用显式 `--on-dialog` 策略；仍失败时报告 blocked。
-- Code Index disabled/unavailable：不要重试同一语义查询；使用 `rg`、相邻文件和常规源码阅读。
+- Code Index disabled/unavailable：不要重试同一语义查询；使用 `rg`、相邻文件和常规源码阅读；如需说明，单独写成工具策略，不混入 harness 可用性宣告。
 - Runtime target 缺失：不要推断 Player 行为；列出需要用户启动 Player/Play Mode 或提供 target。
 - workflow `agent` / `manual` step：AIBridge CLI 只记录为 `skipped_requires_external_executor`；外部执行完成后用 `workflow import` 导入结构化结果。
 

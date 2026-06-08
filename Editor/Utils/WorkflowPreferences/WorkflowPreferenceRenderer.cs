@@ -95,6 +95,8 @@ namespace AIBridge.Editor
             builder.AppendLine("```");
             builder.AppendLine();
             builder.AppendLine("- Preflight / Skill Routing 是入口步骤，不是业务模式；它只选择主分支并计算 Skill 状态。");
+            builder.AppendLine("- Harness 判定是 Preflight gate，不是业务分支固定步骤；fresh 且不影响工具选择时不单独输出。");
+            builder.AppendLine("- 只有缺失、过期、降级、阻塞、用户要求说明，或能力状态改变工具选择时，才在入口块简短展开 Harness 状态。");
             builder.AppendLine("- 如果需求边界、验收标准或方案方向不清晰，先进入需求讨论分支，确认后再继续正式分支选择。");
             builder.AppendLine("- Mode Enter 只激活当前分支真正需要的 Skill，并读取该分支文档。");
             builder.AppendLine("- Mode Exit 生成 `SkillHandoff`，并释放下一模式不需要的模式专用 Skill。");
