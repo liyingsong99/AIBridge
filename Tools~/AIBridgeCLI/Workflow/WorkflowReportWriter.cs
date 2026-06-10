@@ -10,11 +10,26 @@ namespace AIBridgeCLI.Workflow
     {
         public static string WriteMarkdown(WorkflowRunManifest manifest)
         {
+            var insight = WorkflowRunInsight.Analyze(manifest);
+            manifest.Summary = insight.Summary;
+            manifest.TerminalState = insight.TerminalState;
+            manifest.TerminalReason = insight.TerminalReason;
+
             var sb = new StringBuilder();
             sb.AppendLine("# Workflow Report: " + manifest.RunId);
             sb.AppendLine();
             sb.AppendLine("- Recipe: `" + manifest.RecipeName + "`");
             sb.AppendLine("- Status: `" + manifest.Status + "`");
+            if (!string.IsNullOrWhiteSpace(manifest.TerminalState))
+            {
+                sb.AppendLine("- Terminal state: `" + manifest.TerminalState + "`");
+            }
+
+            if (!string.IsNullOrWhiteSpace(manifest.TerminalReason))
+            {
+                sb.AppendLine("- Terminal reason: " + manifest.TerminalReason);
+            }
+
             sb.AppendLine("- Started: `" + manifest.StartedAtUtc + "`");
             if (!string.IsNullOrWhiteSpace(manifest.EndedAtUtc))
             {
@@ -30,8 +45,20 @@ namespace AIBridgeCLI.Workflow
             sb.AppendLine("|---|---:|");
             sb.AppendLine("| CLI commands | " + manifest.Summary.CliCommandCount + " |");
             sb.AppendLine("| Agent/manual steps | " + manifest.Summary.AgentStepCount + " |");
+            sb.AppendLine("| Iteration count | " + manifest.Summary.IterationCount + " |");
+            sb.AppendLine("| External skipped | " + manifest.Summary.ExternalSkippedCount + " |");
+            sb.AppendLine("| Missing external imports | " + manifest.Summary.MissingExternalImportCount + " |");
             sb.AppendLine("| Artifacts | " + manifest.Summary.ArtifactCount + " |");
             sb.AppendLine("| Failed gates | " + manifest.Summary.FailedGateCount + " |");
+            sb.AppendLine("| Fresh evidence | " + manifest.Summary.FreshEvidenceCount + " |");
+            sb.AppendLine("| Stale evidence | " + manifest.Summary.StaleEvidenceCount + " |");
+            sb.AppendLine("| Missing evidence | " + manifest.Summary.MissingEvidenceCount + " |");
+            sb.AppendLine("| Unknown evidence | " + manifest.Summary.UnknownEvidenceCount + " |");
+            sb.AppendLine("| Imported verdicts | " + manifest.Summary.ImportedVerdictCount + " |");
+            sb.AppendLine("| Confirmed verdicts | " + manifest.Summary.ConfirmedVerdictCount + " |");
+            sb.AppendLine("| Refuted verdicts | " + manifest.Summary.RefutedVerdictCount + " |");
+            sb.AppendLine("| Uncertain verdicts | " + manifest.Summary.UncertainVerdictCount + " |");
+            sb.AppendLine("| Open risks | " + manifest.Summary.OpenRiskCount + " |");
             sb.AppendLine();
 
             WriteSkillScopeSection(sb, manifest);
@@ -48,11 +75,11 @@ namespace AIBridgeCLI.Workflow
             sb.AppendLine();
             sb.AppendLine("## Steps");
             sb.AppendLine();
-            sb.AppendLine("| Step | Kind | Status | Command | Error |");
-            sb.AppendLine("|---|---|---|---|---|");
+            sb.AppendLine("| Step | Kind | Status | Outputs | Missing Outputs | Command | Error |");
+            sb.AppendLine("|---|---|---|---|---|---|---|");
             foreach (var step in manifest.StepStates ?? new List<WorkflowStepState>())
             {
-                sb.AppendLine("| `" + step.StepId + "` | `" + step.Kind + "` | `" + step.Status + "` | " + EscapeTable(step.Command) + " | " + EscapeTable(step.Error) + " |");
+                sb.AppendLine("| `" + step.StepId + "` | `" + step.Kind + "` | `" + step.Status + "` | " + EscapeTable(FormatList(step.Outputs)) + " | " + EscapeTable(FormatList(FindMissingOutputs(step.StepId, insight.ExternalImportGaps))) + " | " + EscapeTable(step.Command) + " | " + EscapeTable(step.Error) + " |");
             }
 
             sb.AppendLine();
@@ -86,6 +113,8 @@ namespace AIBridgeCLI.Workflow
                 sb.AppendLine("| `" + artifact.ArtifactId + "` | `" + kind + "` | `" + artifact.Path + "` | " + EscapeTable(artifact.SourceCommand) + " | " + EscapeTable(artifact.Summary) + " |");
             }
 
+            WriteEvidenceFreshnessSection(sb, insight.EvidenceFreshness);
+            WriteExternalImportGapSection(sb, insight.ExternalImportGaps);
             WriteVerdictSection(sb, manifest);
 
             sb.AppendLine();
@@ -172,6 +201,83 @@ namespace AIBridgeCLI.Workflow
             }
 
             return "`" + string.Join("`, `", skills.ToArray()) + "`";
+        }
+
+        private static string FormatList(List<string> values)
+        {
+            if (values == null || values.Count == 0)
+            {
+                return "";
+            }
+
+            return string.Join(", ", values.ToArray());
+        }
+
+        private static List<string> FindMissingOutputs(string stepId, List<WorkflowExternalImportGap> gaps)
+        {
+            var result = new List<string>();
+            if (string.IsNullOrWhiteSpace(stepId) || gaps == null)
+            {
+                return result;
+            }
+
+            foreach (var gap in gaps)
+            {
+                if (gap != null && string.Equals(gap.StepId, stepId, StringComparison.OrdinalIgnoreCase))
+                {
+                    result.AddRange(gap.MissingOutputs);
+                }
+            }
+
+            return result;
+        }
+
+        private static void WriteEvidenceFreshnessSection(StringBuilder sb, List<WorkflowEvidenceFreshnessEntry> entries)
+        {
+            sb.AppendLine();
+            sb.AppendLine("## Evidence Freshness");
+            sb.AppendLine();
+            if (entries == null || entries.Count == 0)
+            {
+                sb.AppendLine("- No evidence freshness entries.");
+                return;
+            }
+
+            sb.AppendLine("| Type | Ref | Kind | Freshness | Age | Threshold | Reason |");
+            sb.AppendLine("|---|---|---|---|---:|---:|---|");
+            foreach (var entry in entries)
+            {
+                sb.AppendLine("| `" + EscapeTable(entry.RefType) + "` | `" + EscapeTable(entry.RefId) + "` | `" + EscapeTable(entry.Kind ?? entry.Schema) + "` | `" + EscapeTable(entry.Freshness) + "` | " + FormatMinutes(entry.AgeMinutes) + " | " + FormatMinutes(entry.ThresholdMinutes) + " | " + EscapeTable(entry.Reason) + " |");
+            }
+        }
+
+        private static void WriteExternalImportGapSection(StringBuilder sb, List<WorkflowExternalImportGap> gaps)
+        {
+            sb.AppendLine();
+            sb.AppendLine("## External Handoff");
+            sb.AppendLine();
+            if (gaps == null || gaps.Count == 0)
+            {
+                sb.AppendLine("- All required external outputs have been imported.");
+                return;
+            }
+
+            sb.AppendLine("| Step | Phase | Kind | Missing Outputs | Imported Artifacts | Reason |");
+            sb.AppendLine("|---|---|---|---|---|---|");
+            foreach (var gap in gaps)
+            {
+                sb.AppendLine("| `" + EscapeTable(gap.StepId) + "` | `" + EscapeTable(gap.PhaseId) + "` | `" + EscapeTable(gap.Kind) + "` | " + EscapeTable(FormatList(gap.MissingOutputs)) + " | " + EscapeTable(FormatList(gap.ImportedArtifactIds)) + " | " + EscapeTable(gap.Reason) + " |");
+            }
+        }
+
+        private static string FormatMinutes(double? minutes)
+        {
+            if (!minutes.HasValue)
+            {
+                return "";
+            }
+
+            return minutes.Value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "m";
         }
 
         private static void WriteVerdictSection(StringBuilder sb, WorkflowRunManifest manifest)

@@ -58,8 +58,11 @@ namespace AIBridgeCLI.Workflow
             }
 
             manifest.Status = DetermineFinalStatus(manifest);
+            var insight = WorkflowRunInsight.Analyze(manifest);
+            manifest.Summary = insight.Summary;
+            manifest.TerminalState = insight.TerminalState;
+            manifest.TerminalReason = insight.TerminalReason;
             manifest.EndedAtUtc = DateTime.UtcNow.ToString("o");
-            UpdateSummary(manifest);
             store.SaveManifest(manifest);
 
             var report = WorkflowReportWriter.WriteMarkdown(manifest);
@@ -150,7 +153,8 @@ namespace AIBridgeCLI.Workflow
                 Kind = step.Kind,
                 StartedAtUtc = DateTime.UtcNow.ToString("o"),
                 RequiredSkills = CopySkillList(step.RequiredSkills),
-                ReleaseSkillsAfter = CopySkillList(step.ReleaseSkillsAfter)
+                ReleaseSkillsAfter = CopySkillList(step.ReleaseSkillsAfter),
+                Outputs = CopyStringList(step.Outputs)
             };
 
             if (string.Equals(step.Kind, "cli", StringComparison.OrdinalIgnoreCase))
@@ -207,6 +211,11 @@ namespace AIBridgeCLI.Workflow
         private static List<string> CopySkillList(List<string> skills)
         {
             return skills == null ? new List<string>() : new List<string>(skills);
+        }
+
+        private static List<string> CopyStringList(List<string> values)
+        {
+            return values == null ? new List<string>() : new List<string>(values);
         }
 
         private static WorkflowRunManifest CreateManifest(WorkflowRecipeDocument doc, WorkflowRunStore store)
@@ -293,6 +302,12 @@ namespace AIBridgeCLI.Workflow
                 return "failed";
             }
 
+            var externalImportGaps = WorkflowRunInsight.CollectExternalImportGaps(manifest);
+            if (externalImportGaps.Count > 0)
+            {
+                return "partial";
+            }
+
             var skippedExternal = manifest.StepStates.Any(step => step.Status.StartsWith("skipped", StringComparison.OrdinalIgnoreCase));
             var requiredGateSkipped = manifest.GateResults.Any(gate => gate.Required && string.Equals(gate.Status, "skipped", StringComparison.OrdinalIgnoreCase));
             return skippedExternal || requiredGateSkipped ? "partial" : "passed";
@@ -300,12 +315,7 @@ namespace AIBridgeCLI.Workflow
 
         private static void UpdateSummary(WorkflowRunManifest manifest)
         {
-            manifest.Summary.CliCommandCount = manifest.CommandResults.Count;
-            manifest.Summary.AgentStepCount = manifest.StepStates.Count(step =>
-                string.Equals(step.Kind, "agent", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(step.Kind, "manual", StringComparison.OrdinalIgnoreCase));
-            manifest.Summary.ArtifactCount = manifest.ArtifactRefs.Count;
-            manifest.Summary.FailedGateCount = manifest.GateResults.Count(gate => string.Equals(gate.Status, "failed", StringComparison.OrdinalIgnoreCase));
+            WorkflowArtifactSink.UpdateSummary(manifest);
         }
 
         private static void ApplyAutoCleanSummary(WorkflowRunManifest manifest)

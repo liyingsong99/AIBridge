@@ -11,7 +11,7 @@ namespace AIBridgeCLI.Workflow
 
         private static readonly HashSet<string> TopLevelFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "schemaVersion", "name", "title", "description", "version", "inputs", "requiredSkills", "phases", "gates", "artifacts"
+            "schemaVersion", "name", "title", "description", "version", "terminalState", "terminalReason", "retryBudget", "stopWhen", "loopIteration", "inputs", "requiredSkills", "phases", "gates", "artifacts"
         };
 
         private static readonly HashSet<string> PhaseFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase)

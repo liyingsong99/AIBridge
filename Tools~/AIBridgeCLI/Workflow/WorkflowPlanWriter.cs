@@ -1,5 +1,6 @@
 using System.Text;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace AIBridgeCLI.Workflow
 {
@@ -17,6 +18,11 @@ namespace AIBridgeCLI.Workflow
 
             sb.AppendLine("Recipe: `" + WorkflowPathHelper.ToDisplayPath(recipePath) + "`");
             sb.AppendLine("Description: " + recipe.Description);
+            AppendScalarLine(sb, "Terminal state", recipe.TerminalState);
+            AppendScalarLine(sb, "Terminal reason", recipe.TerminalReason);
+            AppendTokenLine(sb, "Retry budget", recipe.RetryBudget);
+            AppendTokenLine(sb, "Stop when", recipe.StopWhen);
+            AppendTokenLine(sb, "Loop iteration", recipe.LoopIteration);
             AppendListLine(sb, "Required skills", recipe.RequiredSkills);
             sb.AppendLine();
             sb.AppendLine("## Phases");
@@ -101,6 +107,11 @@ namespace AIBridgeCLI.Workflow
                 name = recipe.Name,
                 title = recipe.Title,
                 description = recipe.Description,
+                terminalState = recipe.TerminalState,
+                terminalReason = recipe.TerminalReason,
+                retryBudget = recipe.RetryBudget,
+                stopWhen = recipe.StopWhen,
+                loopIteration = recipe.LoopIteration,
                 requiredSkills = recipe.RequiredSkills,
                 phases = recipe.Phases,
                 gates = recipe.Gates,
@@ -116,6 +127,26 @@ namespace AIBridgeCLI.Workflow
             }
 
             sb.AppendLine(label + ": `" + string.Join("`, `", values) + "`");
+        }
+
+        private static void AppendScalarLine(StringBuilder sb, string label, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return;
+            }
+
+            sb.AppendLine(label + ": " + value);
+        }
+
+        private static void AppendTokenLine(StringBuilder sb, string label, JToken token)
+        {
+            if (token == null || token.Type == JTokenType.Null)
+            {
+                return;
+            }
+
+            sb.AppendLine(label + ": " + token.ToString(Formatting.None));
         }
     }
 }

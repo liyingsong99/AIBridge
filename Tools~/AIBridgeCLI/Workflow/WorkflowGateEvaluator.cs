@@ -64,11 +64,23 @@ namespace AIBridgeCLI.Workflow
             string successMessage)
         {
             var evidence = new List<string>();
+            var sawMatchingEvidence = false;
+            var sawFreshEvidence = false;
+            var staleEvidence = new List<string>();
             foreach (var commandResult in manifest.CommandResults)
             {
                 if (StartsWithCommand(commandResult.Command, commandPrefix))
                 {
+                    sawMatchingEvidence = true;
                     evidence.Add(commandResult.CommandId);
+                    var freshness = WorkflowRunInsight.EvaluateCommandFreshness(commandResult);
+                    if (!WorkflowRunInsight.IsFresh(freshness))
+                    {
+                        staleEvidence.Add(commandResult.CommandId);
+                        continue;
+                    }
+
+                    sawFreshEvidence = true;
                     if (commandResult.Success)
                     {
                         return CreateResult(gate, "passed", evidence, successMessage);
@@ -76,9 +88,17 @@ namespace AIBridgeCLI.Workflow
                 }
             }
 
-            return evidence.Count == 0
-                ? CreateResult(gate, "skipped", evidence, "No command result matched `" + commandPrefix + "`.")
-                : CreateResult(gate, "failed", evidence, "No successful `" + commandPrefix + "` command result found.");
+            if (!sawMatchingEvidence)
+            {
+                return CreateResult(gate, "skipped", evidence, "No command result matched `" + commandPrefix + "`.");
+            }
+
+            if (!sawFreshEvidence)
+            {
+                return CreateResult(gate, "blocked", evidence, "Matching command evidence is stale or missing: " + string.Join(", ", staleEvidence.ToArray()) + ".");
+            }
+
+            return CreateResult(gate, "failed", evidence, "No successful `" + commandPrefix + "` command result found.");
         }
 
         private static WorkflowGateResult EvaluateLogErrors(
@@ -92,6 +112,10 @@ namespace AIBridgeCLI.Workflow
             var evidence = new List<string>();
             var totalErrors = 0;
             var evidenceErrors = new List<string>();
+            var sawMatchingEvidence = false;
+            var sawFreshCommandEvidence = false;
+            var sawFreshArtifactEvidence = false;
+            var sawStaleEvidence = false;
             foreach (var commandResult in manifest.CommandResults)
             {
                 if (!StartsWithCommand(commandResult.Command, commandPrefix))
@@ -99,7 +123,16 @@ namespace AIBridgeCLI.Workflow
                     continue;
                 }
 
+                sawMatchingEvidence = true;
                 evidence.Add(commandResult.CommandId);
+                var freshness = WorkflowRunInsight.EvaluateCommandFreshness(commandResult);
+                if (!WorkflowRunInsight.IsFresh(freshness))
+                {
+                    sawStaleEvidence = true;
+                    continue;
+                }
+
+                sawFreshCommandEvidence = true;
                 if (!commandResult.Success)
                 {
                     evidenceErrors.Add("Command failed: " + commandResult.CommandId + ".");
@@ -116,13 +149,23 @@ namespace AIBridgeCLI.Workflow
                 totalErrors += countResult.ErrorCount;
             }
 
-            if (evidence.Count == 0)
+            if (!sawFreshCommandEvidence)
             {
                 foreach (var artifact in manifest.ArtifactRefs)
                 {
                     if (string.Equals(artifact.Kind, artifactKind, StringComparison.OrdinalIgnoreCase))
                     {
                         evidence.Add(artifact.ArtifactId);
+                        var freshness = WorkflowRunInsight.EvaluateArtifactFreshness(artifact);
+                        if (!WorkflowRunInsight.IsFresh(freshness))
+                        {
+                            sawMatchingEvidence = true;
+                            sawStaleEvidence = true;
+                            continue;
+                        }
+
+                        sawMatchingEvidence = true;
+                        sawFreshArtifactEvidence = true;
                         var countResult = CountErrorsInResult(artifact.Path);
                         if (!countResult.Success)
                         {
@@ -135,9 +178,14 @@ namespace AIBridgeCLI.Workflow
                 }
             }
 
-            if (evidence.Count == 0)
+            if (!sawMatchingEvidence)
             {
                 return CreateResult(gate, "skipped", evidence, "No log evidence found.");
+            }
+
+            if (!sawFreshCommandEvidence && !sawFreshArtifactEvidence && sawStaleEvidence)
+            {
+                return CreateResult(gate, "blocked", evidence, "Log evidence is stale or missing.");
             }
 
             if (evidenceErrors.Count > 0)
@@ -153,6 +201,8 @@ namespace AIBridgeCLI.Workflow
         private static WorkflowGateResult EvaluateScreenshotExists(WorkflowGate gate, WorkflowRunManifest manifest)
         {
             var evidence = new List<string>();
+            var sawMatchingEvidence = false;
+            var sawFreshEvidence = false;
             foreach (var artifact in manifest.ArtifactRefs)
             {
                 if (!IsScreenshotKind(artifact.Kind))
@@ -160,22 +210,37 @@ namespace AIBridgeCLI.Workflow
                     continue;
                 }
 
+                sawMatchingEvidence = true;
                 evidence.Add(artifact.ArtifactId);
+                var freshness = WorkflowRunInsight.EvaluateArtifactFreshness(artifact);
+                if (!WorkflowRunInsight.IsFresh(freshness))
+                {
+                    continue;
+                }
+
                 var path = ResolveArtifactPath(artifact.Path);
                 if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
                 {
+                    sawFreshEvidence = true;
                     return CreateResult(gate, "passed", evidence, "Screenshot artifact exists.");
                 }
             }
 
-            return evidence.Count == 0
-                ? CreateResult(gate, "skipped", evidence, "No screenshot artifact found.")
-                : CreateResult(gate, "failed", evidence, "Screenshot artifacts were referenced but files were not found.");
+            if (!sawMatchingEvidence)
+            {
+                return CreateResult(gate, "skipped", evidence, "No screenshot artifact found.");
+            }
+
+            return sawFreshEvidence
+                ? CreateResult(gate, "failed", evidence, "Screenshot artifacts were referenced but files were not found.")
+                : CreateResult(gate, "blocked", evidence, "Screenshot evidence is stale or missing.");
         }
 
         private static WorkflowGateResult EvaluateRuntimeReachable(WorkflowGate gate, WorkflowRunManifest manifest)
         {
             var evidence = new List<string>();
+            var sawMatchingEvidence = false;
+            var sawFreshEvidence = false;
             foreach (var commandResult in manifest.CommandResults)
             {
                 if (StartsWithCommand(commandResult.Command, "runtime status")
@@ -183,7 +248,15 @@ namespace AIBridgeCLI.Workflow
                     || StartsWithCommand(commandResult.Command, "runtime list_targets")
                     || StartsWithCommand(commandResult.Command, "runtime discover"))
                 {
+                    sawMatchingEvidence = true;
                     evidence.Add(commandResult.CommandId);
+                    var freshness = WorkflowRunInsight.EvaluateCommandFreshness(commandResult);
+                    if (!WorkflowRunInsight.IsFresh(freshness))
+                    {
+                        continue;
+                    }
+
+                    sawFreshEvidence = true;
                     if (commandResult.Success)
                     {
                         return CreateResult(gate, "passed", evidence, "Runtime command returned successfully.");
@@ -191,9 +264,14 @@ namespace AIBridgeCLI.Workflow
                 }
             }
 
-            return evidence.Count == 0
-                ? CreateResult(gate, "skipped", evidence, "No runtime reachability evidence found.")
-                : CreateResult(gate, "failed", evidence, "Runtime reachability commands failed.");
+            if (!sawMatchingEvidence)
+            {
+                return CreateResult(gate, "skipped", evidence, "No runtime reachability evidence found.");
+            }
+
+            return sawFreshEvidence
+                ? CreateResult(gate, "failed", evidence, "Runtime reachability commands failed.")
+                : CreateResult(gate, "blocked", evidence, "Runtime reachability evidence is stale or missing.");
         }
 
         private static WorkflowGateResult EvaluateArtifactRequired(WorkflowGate gate, WorkflowRunManifest manifest)
@@ -203,17 +281,35 @@ namespace AIBridgeCLI.Workflow
             var stepId = gate.StepId;
             var min = gate.Min ?? ReadThresholdInt(gate, "min", 1);
             var evidence = new List<string>();
+            var freshCount = 0;
+            var sawMatchingEvidence = false;
             foreach (var artifact in manifest.ArtifactRefs)
             {
                 if (MatchesArtifactFilter(artifact, artifactKind, schema, stepId))
                 {
+                    sawMatchingEvidence = true;
                     evidence.Add(artifact.ArtifactId);
+                    var freshness = WorkflowRunInsight.EvaluateArtifactFreshness(artifact);
+                    if (WorkflowRunInsight.IsFresh(freshness))
+                    {
+                        freshCount++;
+                    }
                 }
             }
 
-            return evidence.Count >= min
+            if (!sawMatchingEvidence)
+            {
+                return CreateResult(gate, "failed", evidence, "Artifact requirement not met: 0 < " + min + ".");
+            }
+
+            if (freshCount == 0)
+            {
+                return CreateResult(gate, "blocked", evidence, "Matching artifact evidence is stale or missing.");
+            }
+
+            return freshCount >= min
                 ? CreateResult(gate, "passed", evidence, "Artifact requirement met.")
-                : CreateResult(gate, "failed", evidence, "Artifact requirement not met: " + evidence.Count + " < " + min + ".");
+                : CreateResult(gate, "failed", evidence, "Artifact requirement not met: " + freshCount + " < " + min + ".");
         }
 
         private static WorkflowGateResult EvaluateExternalVerdict(WorkflowGate gate, WorkflowRunManifest manifest)
@@ -225,6 +321,8 @@ namespace AIBridgeCLI.Workflow
             var sawDisallowed = false;
             var sawUncertain = false;
             var disallowedStatus = "";
+            var sawMatchingEvidence = false;
+            var sawFreshEvidence = false;
 
             foreach (var artifact in manifest.ArtifactRefs)
             {
@@ -233,7 +331,15 @@ namespace AIBridgeCLI.Workflow
                     continue;
                 }
 
+                sawMatchingEvidence = true;
                 evidence.Add(artifact.ArtifactId);
+                var freshness = WorkflowRunInsight.EvaluateArtifactFreshness(artifact);
+                if (!WorkflowRunInsight.IsFresh(freshness))
+                {
+                    continue;
+                }
+
+                sawFreshEvidence = true;
                 foreach (var verdict in ReadArtifactObjects(artifact))
                 {
                     var status = (string)verdict["status"];
@@ -254,9 +360,14 @@ namespace AIBridgeCLI.Workflow
                 }
             }
 
-            if (evidence.Count == 0)
+            if (!sawMatchingEvidence)
             {
                 return CreateResult(gate, "skipped", evidence, "No imported Verdict artifact found.");
+            }
+
+            if (!sawFreshEvidence)
+            {
+                return CreateResult(gate, "blocked", evidence, "Imported Verdict evidence is stale or missing.");
             }
 
             if (sawDisallowed)
@@ -273,17 +384,35 @@ namespace AIBridgeCLI.Workflow
         {
             var min = gate.Min ?? ReadThresholdInt(gate, "min", 1);
             var evidence = new List<string>();
+            var freshCount = 0;
+            var sawMatchingEvidence = false;
             foreach (var artifact in manifest.ArtifactRefs)
             {
                 if (MatchesArtifactFilter(artifact, "patch-proposal", "PatchProposal", gate.StepId))
                 {
+                    sawMatchingEvidence = true;
                     evidence.Add(artifact.ArtifactId);
+                    var freshness = WorkflowRunInsight.EvaluateArtifactFreshness(artifact);
+                    if (WorkflowRunInsight.IsFresh(freshness))
+                    {
+                        freshCount++;
+                    }
                 }
             }
 
-            return evidence.Count >= min
+            if (!sawMatchingEvidence)
+            {
+                return CreateResult(gate, "failed", evidence, "Patch proposal requirement not met: 0 < " + min + ".");
+            }
+
+            if (freshCount == 0)
+            {
+                return CreateResult(gate, "blocked", evidence, "Matching patch proposal evidence is stale or missing.");
+            }
+
+            return freshCount >= min
                 ? CreateResult(gate, "passed", evidence, "Patch proposal requirement met.")
-                : CreateResult(gate, "failed", evidence, "Patch proposal requirement not met: " + evidence.Count + " < " + min + ".");
+                : CreateResult(gate, "failed", evidence, "Patch proposal requirement not met: " + freshCount + " < " + min + ".");
         }
 
         private static WorkflowGateResult CreateResult(WorkflowGate gate, string status, List<string> evidence, string message)

@@ -21,6 +21,21 @@ namespace AIBridgeCLI.Workflow
         [JsonProperty("version")]
         public string Version { get; set; }
 
+        [JsonProperty("terminalState")]
+        public string TerminalState { get; set; }
+
+        [JsonProperty("terminalReason")]
+        public string TerminalReason { get; set; }
+
+        [JsonProperty("retryBudget")]
+        public JToken RetryBudget { get; set; }
+
+        [JsonProperty("stopWhen")]
+        public JToken StopWhen { get; set; }
+
+        [JsonProperty("loopIteration")]
+        public JToken LoopIteration { get; set; }
+
         [JsonProperty("inputs")]
         public JObject Inputs { get; set; } = new JObject();
 
@@ -162,6 +177,21 @@ namespace AIBridgeCLI.Workflow
         [JsonProperty("status")]
         public string Status { get; set; }
 
+        [JsonProperty("terminalState")]
+        public string TerminalState { get; set; }
+
+        [JsonProperty("terminalReason")]
+        public string TerminalReason { get; set; }
+
+        [JsonProperty("retryBudget")]
+        public JToken RetryBudget { get; set; }
+
+        [JsonProperty("stopWhen")]
+        public JToken StopWhen { get; set; }
+
+        [JsonProperty("loopIteration")]
+        public JToken LoopIteration { get; set; }
+
         [JsonProperty("phaseStates")]
         public List<WorkflowPhaseState> PhaseStates { get; set; } = new List<WorkflowPhaseState>();
 
@@ -194,6 +224,42 @@ namespace AIBridgeCLI.Workflow
 
         [JsonProperty("failedGateCount")]
         public int FailedGateCount { get; set; }
+
+        [JsonProperty("iterationCount")]
+        public int IterationCount { get; set; }
+
+        [JsonProperty("externalSkippedCount")]
+        public int ExternalSkippedCount { get; set; }
+
+        [JsonProperty("missingExternalImportCount")]
+        public int MissingExternalImportCount { get; set; }
+
+        [JsonProperty("freshEvidenceCount")]
+        public int FreshEvidenceCount { get; set; }
+
+        [JsonProperty("staleEvidenceCount")]
+        public int StaleEvidenceCount { get; set; }
+
+        [JsonProperty("missingEvidenceCount")]
+        public int MissingEvidenceCount { get; set; }
+
+        [JsonProperty("unknownEvidenceCount")]
+        public int UnknownEvidenceCount { get; set; }
+
+        [JsonProperty("importedVerdictCount")]
+        public int ImportedVerdictCount { get; set; }
+
+        [JsonProperty("confirmedVerdictCount")]
+        public int ConfirmedVerdictCount { get; set; }
+
+        [JsonProperty("refutedVerdictCount")]
+        public int RefutedVerdictCount { get; set; }
+
+        [JsonProperty("uncertainVerdictCount")]
+        public int UncertainVerdictCount { get; set; }
+
+        [JsonProperty("openRiskCount")]
+        public int OpenRiskCount { get; set; }
 
         [JsonProperty("autoCleanCandidateCount")]
         public int AutoCleanCandidateCount { get; set; }
@@ -263,6 +329,9 @@ namespace AIBridgeCLI.Workflow
 
         [JsonProperty("releaseSkillsAfter")]
         public List<string> ReleaseSkillsAfter { get; set; } = new List<string>();
+
+        [JsonProperty("outputs")]
+        public List<string> Outputs { get; set; } = new List<string>();
 
         [JsonProperty("startedAtUtc")]
         public string StartedAtUtc { get; set; }

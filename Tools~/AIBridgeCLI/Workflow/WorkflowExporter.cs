@@ -85,6 +85,8 @@ namespace AIBridgeCLI.Workflow
             sb.AppendLine("- Reference large logs, screenshots, and reports by artifact id or path; do not paste large payloads into the task context.");
             sb.AppendLine("- Before resuming an existing run, inspect `workflow status --run <runId>` and continue from missing gates or skipped external steps.");
             sb.AppendLine("- Do not treat `skipped_requires_external_executor` as completed work; the current harness, main agent, or human operator must execute and import those results.");
+            sb.AppendLine("- `workflow status` and `workflow report` surface `terminalState`, external handoff gaps, and evidence freshness; stale evidence does not satisfy required gates.");
+            sb.AppendLine("- `workflow finish --status passed` is downgraded when required external outputs are missing or evidence freshness is stale.");
             sb.AppendLine();
             WriteSkillScopeSection(sb, recipe);
             sb.AppendLine("## Inputs");

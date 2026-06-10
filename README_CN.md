@@ -7,7 +7,7 @@
 [English](./README.md) | 中文
 
 ![Unity 2019.4+](https://img.shields.io/badge/Unity-2019.4%2B-black?style=flat-square&logo=unity)
-![Package 1.4.16](https://img.shields.io/badge/Package-1.4.16-5b6cff?style=flat-square)
+![Package 1.4.17](https://img.shields.io/badge/Package-1.4.17-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
@@ -201,7 +201,7 @@ $CLI workflow clean --older-than 3d --save-settings true --auto-clean true
 
 `runtime-debug-investigation` 用于排查 Runtime、Player、Play Mode、UI、日志或性能症状。它优先检查证据是否完整，不把 Runtime 错误本身当作 workflow 失败条件；确认根因并需要修复时，再交接到实施工作流。
 
-`workflow begin` 会创建 active run；普通命令可通过 `--workflow-run`、`AIBRIDGE_WORKFLOW_RUN_ID` 或 active run 指针归档证据。`workflow status` 和 `workflow report` 必须显式传 `--run`；需要 active run 时先读取 `.aibridge/workflows/active-run.json` 里的 run id。`workflow run-cli --resume <runId>` 会继续已有 run，但仍必须带 `--recipe` 或 `--file`，让 CLI 加载 recipe 定义。`--inputs` 优先传 JSON 文件路径；PowerShell inline JSON 很容易被 shell quoting 破坏。`workflow import` 保存 `Verdict` 等结构化外部结果，`externalVerdict` gate 只基于导入 artifact 通过。`workflow export` 生成外部工具交接包，它只是导出器，不是内置 LLM runtime。`partial` workflow 状态默认不算 CLI 成功，只有显式传入 `--allow-partial true` 才按成功返回。
+`workflow begin` 会创建 active run；普通命令可通过 `--workflow-run`、`AIBRIDGE_WORKFLOW_RUN_ID` 或 active run 指针归档证据。`workflow status` 和 `workflow report` 必须显式传 `--run`；需要 active run 时先读取 `.aibridge/workflows/active-run.json` 里的 run id。`workflow run-cli --resume <runId>` 会继续已有 run，但仍必须带 `--recipe` 或 `--file`，让 CLI 加载 recipe 定义。`--inputs` 优先传 JSON 文件路径；PowerShell inline JSON 很容易被 shell quoting 破坏。`workflow import` 保存 `Verdict` 等结构化外部结果，`externalVerdict` gate 只基于导入 artifact 通过。`workflow export` 生成外部工具交接包，它只是导出器，不是内置 LLM runtime。`partial` workflow 状态默认不算 CLI 成功，只有显式传入 `--allow-partial true` 才按成功返回。`workflow status`、`workflow run-cli`、`workflow finish` 和 JSON `workflow report` 默认都是 compact；只有需要完整 manifest JSON 时才用 `--detail full`。精简输出保留 `terminalState`、`terminalReason`、`runDirectory`、`manifestPath`、`reportPath`、`artifactIds`、gate 摘要和外部缺口，`stepGaps`、`evidenceFreshness`、`failedCommands` 只在 full detail 中展开。
 
 Workflow 清理默认保守：`clean` 默认只 dry-run。只有保存到 `.aibridge/workflows/settings.json` 后才会启用自动清理；之后 `run-cli` 开始前会按设置清理旧 run，并保留失败/阻塞 run、active run 和最新保留数量。
 

@@ -57,7 +57,7 @@ namespace AIBridgeCLI.Commands
             ["finish"] = new List<ParameterInfo>
             {
                 new ParameterInfo("run", "Workflow run id. Defaults to active run or AIBRIDGE_WORKFLOW_RUN_ID", false),
-                new ParameterInfo("status", "Final status: passed, partial, failed, blocked, canceled", false, "passed"),
+                new ParameterInfo("status", "Final status: passed, success, partial, failed, blocked, canceled, stale, needs-human, external-handoff", false, "passed"),
                 new ParameterInfo("allow-partial", "Treat partial workflow status as CLI success", false, "false"),
                 new ParameterInfo("detail", "Output detail: compact, full", false, "compact")
             },

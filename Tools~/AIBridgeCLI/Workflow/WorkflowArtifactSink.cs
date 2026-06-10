@@ -122,21 +122,7 @@ namespace AIBridgeCLI.Workflow
 
         internal static void UpdateSummary(WorkflowRunManifest manifest)
         {
-            if (manifest == null)
-            {
-                return;
-            }
-
-            manifest.Summary.CliCommandCount = manifest.CommandResults == null ? 0 : manifest.CommandResults.Count;
-            manifest.Summary.AgentStepCount = manifest.StepStates == null
-                ? 0
-                : manifest.StepStates.Count(step =>
-                    string.Equals(step.Kind, "agent", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(step.Kind, "manual", StringComparison.OrdinalIgnoreCase));
-            manifest.Summary.ArtifactCount = manifest.ArtifactRefs == null ? 0 : manifest.ArtifactRefs.Count;
-            manifest.Summary.FailedGateCount = manifest.GateResults == null
-                ? 0
-                : manifest.GateResults.Count(gate => string.Equals(gate.Status, "failed", StringComparison.OrdinalIgnoreCase));
+            WorkflowRunInsight.UpdateSummary(manifest);
         }
 
         private static void AttachCommandResult(string runId, string command, CommandResult result, int exitCode)

@@ -80,6 +80,24 @@ namespace AIBridgeCLI.Workflow
                 return;
             }
 
+            if (string.Equals(schema, "Finding", StringComparison.OrdinalIgnoreCase))
+            {
+                ValidateRequiredFields(schema, payload, new[] { "id", "severity", "claim", "evidence" }, new string[0]);
+                return;
+            }
+
+            if (string.Equals(schema, "PatchProposal", StringComparison.OrdinalIgnoreCase))
+            {
+                ValidateRequiredFields(schema, payload, new[] { "id", "files", "summary", "validation" }, new string[0]);
+                return;
+            }
+
+            if (string.Equals(schema, "ValidationResult", StringComparison.OrdinalIgnoreCase))
+            {
+                ValidateRequiredFields(schema, payload, new[] { "gate", "status", "evidence" }, new string[0]);
+                return;
+            }
+
             if (string.Equals(schema, "EvidenceRef", StringComparison.OrdinalIgnoreCase))
             {
                 ValidateRequiredFields(schema, payload, new[] { "id", "kind", "summary" }, new string[0]);

@@ -1,7 +1,7 @@
 {
   "name": "cn.lys.aibridge",
   "displayName": "AI Bridge",
-  "version": "1.4.16",
+  "version": "1.4.17",
   "unity": "2019.4",
   "description": "AI Unity development harness that integrates workflows, Skills, CLI/Runtime tools, and validation loops for AI coding assistants.",
   "author": {

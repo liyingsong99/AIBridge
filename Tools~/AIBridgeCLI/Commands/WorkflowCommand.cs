@@ -143,7 +143,7 @@ namespace AIBridgeCLI.Commands
             return PrintResult(new CommandResult
             {
                 success = success,
-                error = success ? null : BuildWorkflowStatusError(manifest.Status),
+                error = success ? null : BuildWorkflowStatusError(manifest),
                 data = BuildWorkflowRunData(store, manifest, IsFullDetail(options))
             }, outputMode);
         }
@@ -216,8 +216,11 @@ namespace AIBridgeCLI.Commands
 
             RefreshGates(store, manifest);
             manifest.Status = ResolveFinishStatus(manifest, status);
+            var insight = WorkflowRunInsight.Analyze(manifest);
+            manifest.Summary = insight.Summary;
+            manifest.TerminalState = insight.TerminalState;
+            manifest.TerminalReason = insight.TerminalReason;
             manifest.EndedAtUtc = DateTime.UtcNow.ToString("o");
-            WorkflowArtifactSink.UpdateSummary(manifest);
             store.SaveManifest(manifest);
             WorkflowArtifactSink.RefreshReportArtifact(store, manifest, "workflow finish");
             WorkflowActiveRunStore.Clear(runId);
@@ -226,7 +229,7 @@ namespace AIBridgeCLI.Commands
             return PrintResult(new CommandResult
             {
                 success = success,
-                error = success ? null : BuildWorkflowStatusError(manifest.Status),
+                error = success ? null : BuildWorkflowStatusError(manifest),
                 data = BuildWorkflowRunData(store, manifest, IsFullDetail(options))
             }, outputMode);
         }
@@ -372,29 +375,63 @@ namespace AIBridgeCLI.Commands
             return result.success ? 0 : 1;
         }
 
-        private static object BuildWorkflowRunData(WorkflowRunStore store, WorkflowRunManifest manifest, bool includeManifest)
+        private static object BuildWorkflowRunData(WorkflowRunStore store, WorkflowRunManifest manifest, bool includeFullDetail)
         {
+            var insight = WorkflowRunInsight.Analyze(manifest);
+            manifest.Summary = insight.Summary;
+            manifest.TerminalState = insight.TerminalState;
+            manifest.TerminalReason = insight.TerminalReason;
             var data = new Dictionary<string, object>
             {
                 { "runId", manifest.RunId },
                 { "status", manifest.Status },
+                { "terminalState", manifest.TerminalState },
+                { "terminalReason", manifest.TerminalReason },
                 { "recipeName", manifest.RecipeName },
                 { "runDirectory", WorkflowPathHelper.ToDisplayPath(store.RunDirectory) },
                 { "manifestPath", WorkflowPathHelper.ToDisplayPath(store.ManifestPath) },
                 { "reportPath", File.Exists(store.ReportPath) ? WorkflowPathHelper.ToDisplayPath(store.ReportPath) : null },
+                { "artifactIds", BuildArtifactIds(manifest) },
                 { "summary", manifest.Summary },
                 { "skillScopes", BuildSkillScopeSummary(manifest) },
                 { "gateResults", BuildGateSummary(manifest) },
-                { "stepGaps", BuildStepGapSummary(manifest) },
-                { "failedCommands", BuildFailedCommandSummary(manifest) }
+                { "externalImportGaps", BuildExternalImportGapSummary(manifest) }
             };
 
-            if (includeManifest)
+            if (includeFullDetail)
             {
+                data["stepGaps"] = BuildStepGapSummary(manifest);
+                data["evidenceFreshness"] = BuildEvidenceFreshnessSummary(manifest);
+                data["failedCommands"] = BuildFailedCommandSummary(manifest);
                 data["manifest"] = manifest;
             }
 
             return data;
+        }
+
+        private static List<string> BuildArtifactIds(WorkflowRunManifest manifest)
+        {
+            var result = new List<string>();
+            if (manifest == null || manifest.ArtifactRefs == null)
+            {
+                return result;
+            }
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var artifact in manifest.ArtifactRefs)
+            {
+                if (artifact == null || string.IsNullOrWhiteSpace(artifact.ArtifactId))
+                {
+                    continue;
+                }
+
+                if (seen.Add(artifact.ArtifactId))
+                {
+                    result.Add(artifact.ArtifactId);
+                }
+            }
+
+            return result;
         }
 
         private static List<object> BuildGateSummary(WorkflowRunManifest manifest)
@@ -497,6 +534,16 @@ namespace AIBridgeCLI.Commands
                 return result;
             }
 
+            var externalGaps = WorkflowRunInsight.CollectExternalImportGaps(manifest);
+            var gapByStepId = new Dictionary<string, WorkflowExternalImportGap>(StringComparer.OrdinalIgnoreCase);
+            foreach (var gap in externalGaps)
+            {
+                if (!string.IsNullOrWhiteSpace(gap.StepId) && !gapByStepId.ContainsKey(gap.StepId))
+                {
+                    gapByStepId.Add(gap.StepId, gap);
+                }
+            }
+
             foreach (var step in manifest.StepStates)
             {
                 if (string.Equals(step.Status, "passed", StringComparison.OrdinalIgnoreCase))
@@ -511,6 +558,9 @@ namespace AIBridgeCLI.Commands
                     status = step.Status,
                     command = step.Command,
                     error = step.Error,
+                    outputs = step.Outputs,
+                    missingOutputs = GetStepGapOutputs(gapByStepId, step.StepId),
+                    importedArtifactIds = GetStepGapImportedArtifacts(gapByStepId, step.StepId),
                     requiredSkills = step.RequiredSkills,
                     releaseSkillsAfter = step.ReleaseSkillsAfter,
                     artifactIds = step.ArtifactIds
@@ -518,6 +568,76 @@ namespace AIBridgeCLI.Commands
             }
 
             return result;
+        }
+
+        private static List<object> BuildExternalImportGapSummary(WorkflowRunManifest manifest)
+        {
+            var result = new List<object>();
+            foreach (var gap in WorkflowRunInsight.CollectExternalImportGaps(manifest))
+            {
+                result.Add(new
+                {
+                    stepId = gap.StepId,
+                    phaseId = gap.PhaseId,
+                    kind = gap.Kind,
+                    expectedOutputs = gap.ExpectedOutputs,
+                    missingOutputs = gap.MissingOutputs,
+                    importedArtifactIds = gap.ImportedArtifactIds,
+                    status = gap.Status,
+                    reason = gap.Reason
+                });
+            }
+
+            return result;
+        }
+
+        private static List<object> BuildEvidenceFreshnessSummary(WorkflowRunManifest manifest)
+        {
+            var result = new List<object>();
+            foreach (var entry in WorkflowRunInsight.CollectEvidenceFreshness(manifest))
+            {
+                result.Add(new
+                {
+                    refId = entry.RefId,
+                    refType = entry.RefType,
+                    kind = entry.Kind,
+                    schema = entry.Schema,
+                    stepId = entry.StepId,
+                    source = entry.Source,
+                    freshness = entry.Freshness,
+                    ageMinutes = entry.AgeMinutes,
+                    thresholdMinutes = entry.ThresholdMinutes,
+                    reason = entry.Reason
+                });
+            }
+
+            return result;
+        }
+
+        private static List<string> GetStepGapOutputs(Dictionary<string, WorkflowExternalImportGap> gapByStepId, string stepId)
+        {
+            if (gapByStepId == null || string.IsNullOrWhiteSpace(stepId))
+            {
+                return new List<string>();
+            }
+
+            WorkflowExternalImportGap gap;
+            return gapByStepId.TryGetValue(stepId, out gap) && gap != null
+                ? gap.MissingOutputs
+                : new List<string>();
+        }
+
+        private static List<string> GetStepGapImportedArtifacts(Dictionary<string, WorkflowExternalImportGap> gapByStepId, string stepId)
+        {
+            if (gapByStepId == null || string.IsNullOrWhiteSpace(stepId))
+            {
+                return new List<string>();
+            }
+
+            WorkflowExternalImportGap gap;
+            return gapByStepId.TryGetValue(stepId, out gap) && gap != null
+                ? gap.ImportedArtifactIds
+                : new List<string>();
         }
 
         private static List<object> BuildFailedCommandSummary(WorkflowRunManifest manifest)
@@ -656,10 +776,14 @@ namespace AIBridgeCLI.Commands
             switch (normalized)
             {
                 case "passed":
+                case "success":
                 case "partial":
                 case "failed":
                 case "blocked":
                 case "canceled":
+                case "stale":
+                case "needs-human":
+                case "external-handoff":
                     return normalized;
                 default:
                     throw new ArgumentException("Unsupported workflow finish status: " + status + ".");
@@ -669,7 +793,8 @@ namespace AIBridgeCLI.Commands
         private static string ResolveFinishStatus(WorkflowRunManifest manifest, string requestedStatus)
         {
             if (!string.Equals(requestedStatus, "passed", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(requestedStatus, "partial", StringComparison.OrdinalIgnoreCase))
+                && !string.Equals(requestedStatus, "partial", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(requestedStatus, "success", StringComparison.OrdinalIgnoreCase))
             {
                 return requestedStatus;
             }
@@ -694,10 +819,20 @@ namespace AIBridgeCLI.Commands
                 if (string.Equals(gate.Status, "skipped", StringComparison.OrdinalIgnoreCase))
                 {
                     // required gate 缺少证据时不能被 finish --status passed 覆盖为通过。
-                    return string.Equals(requestedStatus, "passed", StringComparison.OrdinalIgnoreCase)
+                    return (string.Equals(requestedStatus, "passed", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(requestedStatus, "success", StringComparison.OrdinalIgnoreCase))
                         ? "blocked"
                         : "partial";
                 }
+            }
+
+            var externalImportGaps = WorkflowRunInsight.CollectExternalImportGaps(manifest);
+            if (externalImportGaps.Count > 0)
+            {
+                return (string.Equals(requestedStatus, "passed", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(requestedStatus, "success", StringComparison.OrdinalIgnoreCase))
+                    ? "blocked"
+                    : "partial";
             }
 
             return requestedStatus;
@@ -706,12 +841,30 @@ namespace AIBridgeCLI.Commands
         private static bool IsSuccessfulWorkflowStatus(string status, bool allowPartial)
         {
             return string.Equals(status, "passed", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(status, "success", StringComparison.OrdinalIgnoreCase)
                 || (allowPartial && string.Equals(status, "partial", StringComparison.OrdinalIgnoreCase));
         }
 
-        private static string BuildWorkflowStatusError(string status)
+        private static string BuildWorkflowStatusError(WorkflowRunManifest manifest)
         {
-            return "Workflow run ended with status: " + (string.IsNullOrWhiteSpace(status) ? "unknown" : status) + ".";
+            if (manifest == null)
+            {
+                return "Workflow run ended with status: unknown.";
+            }
+
+            var status = string.IsNullOrWhiteSpace(manifest.Status) ? "unknown" : manifest.Status;
+            var message = "Workflow run ended with status: " + status + ".";
+            if (!string.IsNullOrWhiteSpace(manifest.TerminalState))
+            {
+                message += " Terminal state: " + manifest.TerminalState + ".";
+            }
+
+            if (!string.IsNullOrWhiteSpace(manifest.TerminalReason))
+            {
+                message += " Reason: " + manifest.TerminalReason;
+            }
+
+            return message;
         }
 
         private static string GetRequiredOption(Dictionary<string, string> options, string key)

@@ -94,6 +94,12 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("workflow status --run", schema);
             StringAssert.Contains("--detail full", schema);
             StringAssert.Contains("do not read full `manifest.json` or Markdown reports for routine status", schema);
+            StringAssert.Contains("terminalState", schema);
+            StringAssert.Contains("terminalReason", schema);
+            StringAssert.Contains("retryBudget", schema);
+            StringAssert.Contains("stopWhen", schema);
+            StringAssert.Contains("loopIteration", schema);
+            StringAssert.Contains("forward-compatible metadata", schema);
             StringAssert.Contains("Never parallel-write", schema);
             StringAssert.Contains("requiredSkills", schema);
             StringAssert.Contains("releaseSkillsAfter", schema);

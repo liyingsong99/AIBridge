@@ -67,6 +67,13 @@ Optional fields:
 - `inputs`
 - `requiredSkills`
 - `artifacts`
+- `terminalState`
+- `terminalReason`
+- `retryBudget`
+- `stopWhen`
+- `loopIteration`
+
+These fields are forward-compatible metadata. The CLI validates and preserves them, but it does not treat them as a closed runtime contract.
 
 ```json
 {
