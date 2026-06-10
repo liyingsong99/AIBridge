@@ -505,7 +505,7 @@
           </div>
           <h1>AIBridge Workflow 设计与证据校验</h1>
           <p class="lead">
-            这页把 workflow 的入口、业务模式、phase/step、artifact、gate、Verdict 和 Skill 交接放在同一张图里。
+            这页把 workflow 的入口、业务模式、phase/step、loop 控制字段、artifact、gate、Verdict 和 Skill 交接放在同一张图里。
             目标是让查阅者一眼分清：AI 先怎么路由、在哪些地方执行、什么时候交接，以及什么证据才算真正成立。
           </p>
           <div class="chips" aria-label="阅读提示">
@@ -882,9 +882,10 @@
         <div class="compare">
           <article class="card">
             <h3>Recipe 顶层字段</h3>
-            <p class="muted">常见字段如下：</p>
+            <p class="muted">常见字段如下；其中 <code>terminalState</code>、<code>terminalReason</code>、<code>retryBudget</code>、<code>stopWhen</code>、<code>loopIteration</code> 是 loop / run 控制字段。</p>
             <ul>
               <li><code>schemaVersion</code>, <code>name</code>, <code>title</code>, <code>description</code>, <code>version</code></li>
+              <li><code>terminalState</code>, <code>terminalReason</code>, <code>retryBudget</code>, <code>stopWhen</code>, <code>loopIteration</code></li>
               <li><code>inputs</code>, <code>requiredSkills</code>, <code>phases</code>, <code>gates</code>, <code>artifacts</code></li>
             </ul>
           </article>
@@ -895,6 +896,11 @@
               <li>step: <code>cli</code>, <code>agent</code>, <code>manual</code>, <code>barrier</code>, <code>report</code></li>
             </ul>
           </article>
+        </div>
+
+        <div class="note-block">
+          <strong>补充说明：</strong>
+          <code>terminalState</code>、<code>terminalReason</code>、<code>retryBudget</code>、<code>stopWhen</code> 和 <code>loopIteration</code> 会进入 plan 输出；<code>iterationCount</code>、证据 freshness、external import gap 和 verdict 统计则只在 run / report 中回读。
         </div>
 
         <div class="table-wrap">
@@ -1013,6 +1019,14 @@
             <strong>Tools~/AIBridgeCLI/Workflow/WorkflowValidator.cs</strong>
             <span>字段、kind、phase type 和 gate kind 的校验约束。</span>
           </a>
+          <a href="../../Tools~/AIBridgeCLI/Workflow/WorkflowPlanWriter.cs">
+            <strong>Tools~/AIBridgeCLI/Workflow/WorkflowPlanWriter.cs</strong>
+            <span>plan 输出如何承载 terminal / loop 控制字段。</span>
+          </a>
+          <a href="../../Tools~/AIBridgeCLI/Workflow/WorkflowRunInsight.cs">
+            <strong>Tools~/AIBridgeCLI/Workflow/WorkflowRunInsight.cs</strong>
+            <span>run 摘要如何汇总 iteration、freshness 和 external handoff gap。</span>
+          </a>
           <a href="../../Tools~/AIBridgeCLI/Workflow/WorkflowGateEvaluator.cs">
             <strong>Tools~/AIBridgeCLI/Workflow/WorkflowGateEvaluator.cs</strong>
             <span>gate 的实际判定逻辑和 evidence 取法。</span>
@@ -1023,7 +1037,7 @@
           </a>
           <a href="../../Tools~/AIBridgeCLI/Workflow/WorkflowReportWriter.cs">
             <strong>Tools~/AIBridgeCLI/Workflow/WorkflowReportWriter.cs</strong>
-            <span>最终报告如何汇总 gate、artifact 和 verdict。</span>
+            <span>最终报告如何汇总 gate、artifact、loop metrics 和 verdict。</span>
           </a>
           <a href="../../Skill~/aibridge-development-workflow/references/branches/requirements.md">
             <strong>Skill~/aibridge-development-workflow/references/branches/requirements.md</strong>
