@@ -1,5 +1,3 @@
-using System;
-using System.Diagnostics;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
@@ -57,46 +55,6 @@ namespace AIBridge.Editor
         public static void LogError(string message)
         {
             Debug.LogError($"{PREFIX} {message}");
-        }
-
-        public static string FormatStartupTimingMessage(string scope, string step, long elapsedMs)
-        {
-            return "[StartupTiming] scope=" + (scope ?? "unknown")
-                + " step=" + (step ?? "unknown")
-                + " elapsedMs=" + Math.Max(0, elapsedMs);
-        }
-
-        public static void LogStartupTiming(string scope, string step, long elapsedMs)
-        {
-            LogInfo(FormatStartupTimingMessage(scope, step, elapsedMs));
-        }
-
-        public static void LogStartupTiming(string scope, string step, Stopwatch stopwatch)
-        {
-            if (stopwatch == null)
-            {
-                return;
-            }
-
-            LogStartupTiming(scope, step, stopwatch.ElapsedMilliseconds);
-        }
-
-        public static void MeasureStartupTiming(string scope, string step, Action action)
-        {
-            if (action == null)
-            {
-                return;
-            }
-
-            var stopwatch = Stopwatch.StartNew();
-            try
-            {
-                action();
-            }
-            finally
-            {
-                LogStartupTiming(scope, step, stopwatch);
-            }
         }
 
         private static bool ReadDebugEnabled(string key, bool defaultValue)

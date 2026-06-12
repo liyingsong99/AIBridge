@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -115,46 +114,35 @@ namespace AIBridge.Editor
                     return;
                 }
 
-                var totalStopwatch = Stopwatch.StartNew();
                 var projectRoot = GetProjectRoot();
-                try
+
+                CopyCliToCacheIfNeeded(projectRoot);
+
+                if (!EnsureEditorLanguageInitialized())
                 {
-                    AIBridgeLogger.MeasureStartupTiming("SkillInstaller", "CopyCliToCacheIfNeeded", () => CopyCliToCacheIfNeeded(projectRoot));
-
-                    var editorLanguageInitialized = false;
-                    AIBridgeLogger.MeasureStartupTiming("SkillInstaller", "EnsureEditorLanguageInitialized", () => editorLanguageInitialized = EnsureEditorLanguageInitialized());
-                    if (!editorLanguageInitialized)
-                    {
-                        return;
-                    }
-
-                    List<AssistantIntegrationTarget> targets = null;
-                    AIBridgeLogger.MeasureStartupTiming("SkillInstaller", "GetSelectedTargets", () => targets = GetSelectedTargets(projectRoot));
-                    AIBridgeLogger.MeasureStartupTiming("SkillInstaller", "HarnessCapabilitySnapshot.WriteNoThrow.preInstall", () => HarnessCapabilitySnapshot.WriteNoThrow(projectRoot, targets));
-
-                    // 检查是否启用自动安装
-                    if (!AIBridgeProjectSettings.Instance.AutoInstallSkills)
-                    {
-                        return;
-                    }
-
-                    // 清理未勾选目标的注入内容
-                    AIBridgeLogger.MeasureStartupTiming("SkillInstaller", "CleanupUnselectedTargets", () => CleanupUnselectedTargets(projectRoot, targets));
-
-                    if (targets.Count == 0)
-                    {
-                        return;
-                    }
-
-                    List<AssistantIntegrationResult> results = null;
-                    AIBridgeLogger.MeasureStartupTiming("SkillInstaller", "InstallAssistantIntegrations", () => results = InstallAssistantIntegrations(projectRoot, targets));
-                    AIBridgeLogger.MeasureStartupTiming("SkillInstaller", "SkillPluginAdapter.GenerateForTargets", () => SkillPluginAdapter.GenerateForTargets(projectRoot, targets));
-                    AIBridgeLogger.MeasureStartupTiming("SkillInstaller", "LogResults", () => LogResults(results));
+                    return;
                 }
-                finally
+
+                var targets = GetSelectedTargets(projectRoot);
+                HarnessCapabilitySnapshot.WriteNoThrow(projectRoot, targets);
+
+                // 检查是否启用自动安装
+                if (!AIBridgeProjectSettings.Instance.AutoInstallSkills)
                 {
-                    AIBridgeLogger.LogStartupTiming("SkillInstaller", "InstallSkillIfNeeded.total", totalStopwatch);
+                    return;
                 }
+
+                // 清理未勾选目标的注入内容
+                CleanupUnselectedTargets(projectRoot, targets);
+
+                if (targets.Count == 0)
+                {
+                    return;
+                }
+
+                var results = InstallAssistantIntegrations(projectRoot, targets);
+                SkillPluginAdapter.GenerateForTargets(projectRoot, targets);
+                LogResults(results);
             }
             catch (Exception ex)
             {

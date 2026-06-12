@@ -43,7 +43,6 @@ namespace AIBridge.Editor
         private static bool _snapshotRefreshRunningStartWarmup;
         private static string _snapshotRefreshRunningReason;
         private static Task<AIBridgeCodeIndexSnapshotUtility.SnapshotResult> _snapshotRefreshTask;
-        private static double _snapshotRefreshStartedAt = -1;
         private static double _lastSettingsPanelCleanupTime = -SettingsPanelCleanupIntervalSeconds;
 
         static AIBridgeCodeIndexEditorUtility()
@@ -127,34 +126,25 @@ namespace AIBridge.Editor
 
         private static bool BeginSnapshotRefresh(bool manual, bool startWarmup, string reason)
         {
-            var mainThreadStopwatch = Stopwatch.StartNew();
             var settings = AIBridgeProjectSettings.Instance.CodeIndex;
             if (!settings.EnableCodeIndex || (!manual && startWarmup && !settings.PrewarmOnUnityStartup))
             {
                 return false;
             }
 
+            WriteCodeIndexConfig();
             try
             {
-                AIBridgeLogger.MeasureStartupTiming("CodeIndex", "WriteCodeIndexConfig.beginSnapshot", WriteCodeIndexConfig);
-                try
-                {
-                    _snapshotRefreshTask = AIBridgeCodeIndexSnapshotUtility.GenerateSnapshotAsync(manual, reason);
-                    _snapshotRefreshStartedAt = EditorApplication.timeSinceStartup;
-                }
-                catch (Exception ex)
-                {
-                    if (manual)
-                    {
-                        AIBridgeLogger.LogWarning("[CodeIndex] Failed to start Unity compilation snapshot refresh: " + ex.Message);
-                    }
-
-                    return false;
-                }
+                _snapshotRefreshTask = AIBridgeCodeIndexSnapshotUtility.GenerateSnapshotAsync(manual, reason);
             }
-            finally
+            catch (Exception ex)
             {
-                AIBridgeLogger.LogStartupTiming("CodeIndex", "BeginSnapshotRefresh.mainThread reason=" + (reason ?? "unknown"), mainThreadStopwatch);
+                if (manual)
+                {
+                    AIBridgeLogger.LogWarning("[CodeIndex] Failed to start Unity compilation snapshot refresh: " + ex.Message);
+                }
+
+                return false;
             }
 
             _snapshotRefreshRunning = true;
@@ -199,12 +189,6 @@ namespace AIBridge.Editor
             _snapshotRefreshRunningStartWarmup = false;
             _snapshotRefreshRunningReason = null;
             _snapshotRefreshTask = null;
-            if (_snapshotRefreshStartedAt >= 0)
-            {
-                var elapsedMs = (long)Math.Round(Math.Max(0, EditorApplication.timeSinceStartup - _snapshotRefreshStartedAt) * 1000.0);
-                AIBridgeLogger.LogStartupTiming("CodeIndex", "SnapshotRefreshAsync reason=" + (reason ?? "unknown"), elapsedMs);
-                _snapshotRefreshStartedAt = -1;
-            }
 
             CompleteSnapshotRefresh(result, manual, startWarmup, reason);
 
@@ -260,36 +244,27 @@ namespace AIBridge.Editor
 
         private static bool StartWarmupDaemonNoWait(bool manual)
         {
-            var totalStopwatch = Stopwatch.StartNew();
-            try
+            var settings = AIBridgeProjectSettings.Instance.CodeIndex;
+            var cliPath = ResolveCliPath();
+            if (string.IsNullOrEmpty(cliPath))
             {
-                var settings = AIBridgeProjectSettings.Instance.CodeIndex;
-                string cliPath = null;
-                AIBridgeLogger.MeasureStartupTiming("CodeIndex", "ResolveCliPath.warmup", () => cliPath = ResolveCliPath());
-                if (string.IsNullOrEmpty(cliPath))
+                if (manual)
                 {
-                    if (manual)
-                    {
-                        AIBridgeLogger.LogWarning("[CodeIndex] AIBridgeCLI was not found for warmup.");
-                    }
-
-                    return false;
+                    AIBridgeLogger.LogWarning("[CodeIndex] AIBridgeCLI was not found for warmup.");
                 }
 
-                var currentProcess = Process.GetCurrentProcess();
-                var ownerStartTicks = GetProcessStartTicks(currentProcess);
-                var args = "code_index warmup --no-wait --timeout 1000"
-                           + " --unity-pid " + currentProcess.Id
-                           + " --owner-pid " + currentProcess.Id
-                           + " --owner-start-ticks " + ownerStartTicks
-                           + " --priority " + (manual ? "normal" : "low")
-                           + " --auto-refresh " + ToCliBool(settings.AutoRefreshOnFileChange);
-                return StartCli(cliPath, args, waitForExit: false, timeoutMs: 1000);
+                return false;
             }
-            finally
-            {
-                AIBridgeLogger.LogStartupTiming("CodeIndex", "StartWarmupDaemonNoWait.total manual=" + manual, totalStopwatch);
-            }
+
+            var currentProcess = Process.GetCurrentProcess();
+            var ownerStartTicks = GetProcessStartTicks(currentProcess);
+            var args = "code_index warmup --no-wait --timeout 1000"
+                       + " --unity-pid " + currentProcess.Id
+                       + " --owner-pid " + currentProcess.Id
+                       + " --owner-start-ticks " + ownerStartTicks
+                       + " --priority " + (manual ? "normal" : "low")
+                       + " --auto-refresh " + ToCliBool(settings.AutoRefreshOnFileChange);
+            return StartCli(cliPath, args, waitForExit: false, timeoutMs: 1000);
         }
 
         public static void ShutdownDaemon(string cleanupMode, int timeoutMs)
@@ -360,23 +335,13 @@ namespace AIBridge.Editor
 
         private static void InitializeDelayedCodeIndex()
         {
-            var totalStopwatch = Stopwatch.StartNew();
-            try
+            CleanupOrphanDaemons(logWhenChanged: true);
+            if (RestorePendingPostCompileRefresh())
             {
-                AIBridgeLogger.MeasureStartupTiming("CodeIndex", "CleanupOrphanDaemons.startup", () => CleanupOrphanDaemons(logWhenChanged: true));
-                var restored = false;
-                AIBridgeLogger.MeasureStartupTiming("CodeIndex", "RestorePendingPostCompileRefresh", () => restored = RestorePendingPostCompileRefresh());
-                if (restored)
-                {
-                    return;
-                }
+                return;
+            }
 
-                AIBridgeLogger.MeasureStartupTiming("CodeIndex", "ScheduleStartupPrewarm", ScheduleStartupPrewarm);
-            }
-            finally
-            {
-                AIBridgeLogger.LogStartupTiming("CodeIndex", "InitializeDelayedCodeIndex.total", totalStopwatch);
-            }
+            ScheduleStartupPrewarm();
         }
 
         private static void ScheduleStartupPrewarm()
@@ -387,7 +352,7 @@ namespace AIBridge.Editor
             }
 
             var settings = AIBridgeProjectSettings.Instance.CodeIndex;
-            AIBridgeLogger.MeasureStartupTiming("CodeIndex", "WriteCodeIndexConfig.startup", WriteCodeIndexConfig);
+            WriteCodeIndexConfig();
             if (!settings.EnableCodeIndex || !settings.PrewarmOnUnityStartup)
             {
                 return;
@@ -476,7 +441,7 @@ namespace AIBridge.Editor
                 return false;
             }
 
-            AIBridgeLogger.MeasureStartupTiming("CodeIndex", "WriteCodeIndexConfig.scheduleRefresh", WriteCodeIndexConfig);
+            WriteCodeIndexConfig();
             _snapshotRefreshPending = true;
             _snapshotRefreshManual = _snapshotRefreshManual || manual;
             _snapshotRefreshStartWarmup = _snapshotRefreshStartWarmup || startWarmup;
@@ -587,7 +552,6 @@ namespace AIBridge.Editor
 
         private static bool StartCli(string cliPath, string arguments, bool waitForExit, int timeoutMs)
         {
-            var stopwatch = Stopwatch.StartNew();
             try
             {
                 var startInfo = new ProcessStartInfo
@@ -620,10 +584,6 @@ namespace AIBridge.Editor
             {
                 AIBridgeLogger.LogWarning("[CodeIndex] Failed to start CLI: " + ex.Message);
                 return false;
-            }
-            finally
-            {
-                AIBridgeLogger.LogStartupTiming("CodeIndex", "StartCli waitForExit=" + waitForExit, stopwatch);
             }
         }
 

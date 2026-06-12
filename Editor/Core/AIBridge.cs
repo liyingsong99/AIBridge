@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO;
 using AIBridge.Runtime;
 using UnityEditor;
@@ -62,43 +61,32 @@ namespace AIBridge.Editor
         /// </summary>
         private static void Initialize()
         {
-            var totalStopwatch = Stopwatch.StartNew();
-            try
-            {
-                AIBridgeLogger.MeasureStartupTiming("AIBridge", "ReadSettings", () =>
-                {
-                    _enabledOption = new EditorOption<bool>("AIBridge_Enabled", true, ReadEnabled, WriteEnabled);
-                    _enabled = _enabledOption.Value;
+            _enabledOption = new EditorOption<bool>("AIBridge_Enabled", true, ReadEnabled, WriteEnabled);
+            _enabled = _enabledOption.Value;
 
-                    // Get the exchange directory in the Unity project root (.aibridge)
-                    BridgeDirectory = GetExchangeDirectory();
-                });
+            // Get the exchange directory in the Unity project root (.aibridge)
+            BridgeDirectory = GetExchangeDirectory();
 
-                // Initialize components
-                AIBridgeLogger.MeasureStartupTiming("AIBridge", "CommandRegistry.Initialize", CommandRegistry.Initialize);
-                AIBridgeLogger.MeasureStartupTiming("AIBridge", "CommandWatcher.Create", () => _watcher = new CommandWatcher(BridgeDirectory));
-                AIBridgeLogger.MeasureStartupTiming("AIBridge", "LegacyCacheDirectoryCleaner.CleanupIfNeeded", () => LegacyCacheDirectoryCleaner.CleanupIfNeeded(GetProjectRoot(), BridgeDirectory));
-                AIBridgeLogger.MeasureStartupTiming("AIBridge", "CodeCacheCleaner.CleanupIfNeeded", () => CodeCacheCleaner.CleanupIfNeeded(BridgeDirectory));
-                AIBridgeLogger.MeasureStartupTiming("AIBridge", "EditorInstanceTracker.Initialize", () => EditorInstanceTracker.Initialize(BridgeDirectory));
+            // Initialize components
+            CommandRegistry.Initialize();
+            _watcher = new CommandWatcher(BridgeDirectory);
+            LegacyCacheDirectoryCleaner.CleanupIfNeeded(GetProjectRoot(), BridgeDirectory);
+            CodeCacheCleaner.CleanupIfNeeded(BridgeDirectory);
+            EditorInstanceTracker.Initialize(BridgeDirectory);
 
-                // Subscribe to editor update
-                EditorApplication.update -= OnEditorUpdate;
-                EditorApplication.update += OnEditorUpdate;
+            // Subscribe to editor update
+            EditorApplication.update -= OnEditorUpdate;
+            EditorApplication.update += OnEditorUpdate;
 
-                EditorApplication.quitting -= OnEditorQuitting;
-                EditorApplication.quitting += OnEditorQuitting;
+            EditorApplication.quitting -= OnEditorQuitting;
+            EditorApplication.quitting += OnEditorQuitting;
 
-                // Handle play mode changes
-                EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
-                EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+            // Handle play mode changes
+            EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+            EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
 
-                AIBridgeLogger.LogInfo($"AI Bridge initialized. Directory: {BridgeDirectory}");
-                AIBridgeLogger.LogInfo($"Registered commands: {string.Join(", ", CommandRegistry.GetRegisteredTypes())}");
-            }
-            finally
-            {
-                AIBridgeLogger.LogStartupTiming("AIBridge", "Initialize.total", totalStopwatch);
-            }
+            AIBridgeLogger.LogInfo($"AI Bridge initialized. Directory: {BridgeDirectory}");
+            AIBridgeLogger.LogInfo($"Registered commands: {string.Join(", ", CommandRegistry.GetRegisteredTypes())}");
         }
 
         /// <summary>

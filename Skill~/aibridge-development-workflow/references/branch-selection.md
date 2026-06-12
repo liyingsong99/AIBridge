@@ -24,6 +24,7 @@ Preflight / Skill Routing
 - 需求讨论分支是 Preflight 的前置分支，不替代实施、调试、审查、验证或编排分支。
 - 若用户要求，或者项目中有相应的功能文档归类，确认后的方案必须先写入 `.aibridge/plan` 工作底稿，再按需同步到正式文档位置。
 - 方案文档默认优先写 Markdown 工作底稿；当方案包含流程图、决策树、对比表，或更适合开发者浏览时，再在每个落点目录内同步生成 HTML 展示页。Markdown 和 HTML 应保持同目录、同 basename。
+- 需求讨论分支默认按思维树展开方案；实施分支和验证分支默认按决策树收敛执行与验收。
 - Mode Enter 激活当前模式真正需要的 Skill，并读取必要 reference。
 - Mode Execute 执行当前模式的业务步骤。
 - Mode Exit 生成 `SkillHandoff`，并释放下一模式不需要的模式专用 Skill。
@@ -31,7 +32,7 @@ Preflight / Skill Routing
 
 ## 需求讨论分支
 
-当需求目标、边界、验收标准或方案方向尚未锁定时，先进入需求讨论分支，再重新执行 Preflight / Skill Routing。
+当需求目标、边界、验收标准或方案方向尚未锁定时，先进入需求讨论分支，再重新执行 Preflight / Skill Routing。该分支默认以思维树方式发散候选方案，再收敛到可确认结论。
 
 ```text
 【模式：需求讨论分支】
