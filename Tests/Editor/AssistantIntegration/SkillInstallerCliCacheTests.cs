@@ -135,6 +135,26 @@ namespace AIBridge.Editor.Tests
             }
         }
 
+        [Test]
+        public void StartupTimingMessageIncludesScopeStepAndElapsedMilliseconds()
+        {
+            var message = AIBridgeLogger.FormatStartupTimingMessage("SkillInstaller", "CopyCliToCacheIfNeeded", 42);
+
+            StringAssert.Contains("[StartupTiming]", message);
+            StringAssert.Contains("scope=SkillInstaller", message);
+            StringAssert.Contains("step=CopyCliToCacheIfNeeded", message);
+            StringAssert.Contains("elapsedMs=42", message);
+        }
+
+        [Test]
+        public void AutomaticInstallSkipsPlayModeAndPlayModeTransitions()
+        {
+            Assert.IsTrue(SkillInstaller.ShouldRunAutomaticInstall(false, false, false));
+            Assert.IsFalse(SkillInstaller.ShouldRunAutomaticInstall(true, false, false));
+            Assert.IsFalse(SkillInstaller.ShouldRunAutomaticInstall(false, true, false));
+            Assert.IsFalse(SkillInstaller.ShouldRunAutomaticInstall(false, false, true));
+        }
+
         private static void WriteCompleteCodeIndexDirectory(string codeIndexDir, string marker)
         {
             Directory.CreateDirectory(codeIndexDir);
