@@ -180,7 +180,6 @@ namespace AIBridge.Runtime.Internal
             var context = new CleanupContext(bridgeDirectory, DefaultRetentionDays, nowUtc);
             CleanScreenshotDirectory(context, Path.Combine(context.BridgeDirectory, "screenshots"), true);
             context.Result.FinishedAtUtc = nowUtc.ToString("o", CultureInfo.InvariantCulture);
-            SaveState(context);
             return context.Result;
         }
 

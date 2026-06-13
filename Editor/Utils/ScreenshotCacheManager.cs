@@ -11,7 +11,9 @@ namespace AIBridge.Editor
     /// </summary>
     public static class ScreenshotCacheManager
     {
+        private static readonly TimeSpan CleanupPollInterval = TimeSpan.FromHours(1);
         private static readonly string[] ScreenshotExtensions = { ".png", ".jpg", ".jpeg", ".gif" };
+        private static DateTime _lastCleanupCheckUtc = DateTime.MinValue;
         private static string _screenshotsDir;
 
         /// <summary>
@@ -37,8 +39,14 @@ namespace AIBridge.Editor
         {
             try
             {
+                var nowUtc = DateTime.UtcNow;
+                if (nowUtc - _lastCleanupCheckUtc < CleanupPollInterval)
+                {
+                    return;
+                }
+
+                _lastCleanupCheckUtc = nowUtc;
                 var settings = AIBridgeProjectSettings.Instance;
-                settings.WriteCacheCleanupSettingsMirror();
                 var result = AIBridgeCacheCleanup.CleanupIfDue(AIBridge.BridgeDirectory, settings.ToCacheCleanupSettings());
                 if (!result.Skipped && (result.DeletedFiles > 0 || result.DeletedDirectories > 0 || result.ErrorCount > 0))
                 {

@@ -41,8 +41,9 @@ namespace AIBridgeCLI.Core
         public static string TryGetUnityProjectRoot()
         {
             var projectRoot = Environment.GetEnvironmentVariable("UNITY_PROJECT_ROOT");
-            if (IsUnityProjectRoot(projectRoot))
+            if (!string.IsNullOrWhiteSpace(projectRoot))
             {
+                // UNITY_PROJECT_ROOT 是显式覆盖，允许临时目录用于 CLI-only smoke test。
                 return Path.GetFullPath(projectRoot);
             }
 

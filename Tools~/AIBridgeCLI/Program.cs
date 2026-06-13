@@ -286,6 +286,11 @@ namespace AIBridgeCLI
                 }
 
                 var bridgeDirectory = Path.Combine(projectRoot, ".aibridge");
+                if (!Directory.Exists(bridgeDirectory))
+                {
+                    return;
+                }
+
                 var settings = AIBridgeCacheCleanup.LoadSettings(bridgeDirectory);
                 AIBridgeCacheCleanup.CleanupIfDue(bridgeDirectory, settings);
             }

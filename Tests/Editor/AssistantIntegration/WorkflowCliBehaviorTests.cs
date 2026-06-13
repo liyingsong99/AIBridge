@@ -208,6 +208,38 @@ namespace AIBridge.Editor.Tests
             }
         }
 
+        [Test]
+        public void BatchFromTextHonorsUnityProjectRootWithoutUnityMarkers()
+        {
+            var packageRoot = GetPackageRoot();
+            var cliPath = ResolveCliPath(packageRoot);
+            if (string.IsNullOrEmpty(cliPath) || !File.Exists(cliPath))
+            {
+                Assert.Ignore("AIBridgeCLI executable was not found for this platform.");
+            }
+
+            var projectRoot = Path.Combine(Path.GetTempPath(), "AIBridgeBatchCliTest_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(projectRoot);
+            try
+            {
+                var run = RunCli(
+                    cliPath,
+                    projectRoot,
+                    "batch from_text --text " + QuoteCliValue("# noop") + " --name no_markers_test --no-wait --quiet");
+                var scriptPath = Path.Combine(projectRoot, ".aibridge", "scripts", "no_markers_test.txt");
+
+                Assert.AreEqual(0, run.ExitCode, run.Stderr + run.Stdout);
+                Assert.IsTrue(File.Exists(scriptPath), scriptPath);
+            }
+            finally
+            {
+                if (Directory.Exists(projectRoot))
+                {
+                    Directory.Delete(projectRoot, true);
+                }
+            }
+        }
+
         private static void AssertRequiredGateStatus(WorkflowGateResultView[] gateResults, string gateId, string expectedStatus)
         {
             Assert.IsNotNull(gateResults, "Gate results are missing.");

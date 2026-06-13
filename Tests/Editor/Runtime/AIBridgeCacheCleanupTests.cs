@@ -155,6 +155,18 @@ namespace AIBridge.Editor.Tests
             Assert.That(File.Exists(cliTool), Is.True);
         }
 
+        [Test]
+        public void ClearScreenshotCache_DoesNotUpdateAutoCleanupState()
+        {
+            var oldPng = WriteFile("screenshots/old.png", _nowUtc.AddDays(-31));
+            var statePath = ResolvePath(AIBridgeCacheCleanup.StateFileName);
+
+            AIBridgeCacheCleanup.ClearScreenshotCache(_bridgeDirectory);
+
+            Assert.That(File.Exists(oldPng), Is.False);
+            Assert.That(File.Exists(statePath), Is.False);
+        }
+
         private AIBridgeCacheCleanupResult Cleanup()
         {
             return AIBridgeCacheCleanup.CleanupExpired(
