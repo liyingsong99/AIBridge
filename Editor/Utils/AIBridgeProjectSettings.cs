@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using AIBridge.Runtime.Internal;
 using UnityEditorInternal;
 using UnityEngine;
 
@@ -120,7 +121,14 @@ namespace AIBridge.Editor
             public List<AssistantWorkflowPromptEntry> AssistantPromptPrefixes = new List<AssistantWorkflowPromptEntry>();
         }
 
-        public const int CurrentDataVersion = 18;
+        [Serializable]
+        internal sealed class CacheCleanupSettingsData
+        {
+            public bool EnableAutoCleanup = DefaultCacheCleanupEnabled;
+            public int RetentionDays = DefaultCacheCleanupRetentionDays;
+        }
+
+        public const int CurrentDataVersion = 19;
         public const string DefaultEditorLanguage = "English";
         public const string LegacySharedSkillRootDirectory = ".skills";
         public const string DefaultSkillRootDirectory = "";
@@ -169,6 +177,8 @@ namespace AIBridge.Editor
         public const bool DefaultWorkflowPreferRuntimeEvidence = false;
         public const bool DefaultWorkflowPreferCodeIndexGuidance = true;
         public const string DefaultWorkflowSharedPromptPrefix = "";
+        public const bool DefaultCacheCleanupEnabled = true;
+        public const int DefaultCacheCleanupRetentionDays = AIBridgeCacheCleanup.DefaultRetentionDays;
         public static readonly string[] SupportedCodeIndexCleanupModes = { "processOnly", "processAndTemp", "fullCleanup" };
         public static readonly string[] SupportedLogRetrievalTypes = { "all", "Log", "Warning", "Error" };
         public static readonly string[] SupportedWorkflowValidationLevels = { "compileAndLogs", "compileOnly", "compileLogsAndRuntime" };
@@ -192,6 +202,7 @@ namespace AIBridge.Editor
         [SerializeField] private RuntimeBridgeSettingsData runtimeBridge = new RuntimeBridgeSettingsData();
         [SerializeField] private CodeIndexSettingsData codeIndex = new CodeIndexSettingsData();
         [SerializeField] private WorkflowUiSettingsData workflowUi = new WorkflowUiSettingsData();
+        [SerializeField] private CacheCleanupSettingsData cacheCleanup = new CacheCleanupSettingsData();
 
         public static AIBridgeProjectSettings Instance
         {
@@ -499,6 +510,30 @@ namespace AIBridge.Editor
 
                 return workflowUi;
             }
+        }
+
+        public CacheCleanupSettingsData CacheCleanup
+        {
+            get
+            {
+                if (cacheCleanup == null)
+                {
+                    cacheCleanup = new CacheCleanupSettingsData();
+                }
+
+                cacheCleanup.RetentionDays = AIBridgeCacheCleanup.ClampRetentionDays(cacheCleanup.RetentionDays);
+                return cacheCleanup;
+            }
+        }
+
+        public AIBridgeCacheCleanupSettings ToCacheCleanupSettings()
+        {
+            var settings = CacheCleanup;
+            return new AIBridgeCacheCleanupSettings
+            {
+                EnableAutoCleanup = settings.EnableAutoCleanup,
+                RetentionDays = settings.RetentionDays
+            };
         }
 
         public static string NormalizeCodeIndexCleanupMode(string cleanupMode)
@@ -827,6 +862,28 @@ namespace AIBridge.Editor
                 new UnityEngine.Object[] { this },
                 SettingsFilePath,
                 true);
+
+            WriteCacheCleanupSettingsMirror();
+        }
+
+        public void WriteCacheCleanupSettingsMirror()
+        {
+            try
+            {
+                var projectRoot = Path.GetDirectoryName(Application.dataPath);
+                if (string.IsNullOrEmpty(projectRoot))
+                {
+                    return;
+                }
+
+                AIBridgeCacheCleanup.SaveSettings(
+                    Path.Combine(projectRoot, ".aibridge"),
+                    ToCacheCleanupSettings());
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[AIBridge] Failed to write cache cleanup settings mirror: " + ex.Message);
+            }
         }
 
         private void MigrateDataIfNeeded()
@@ -856,6 +913,11 @@ namespace AIBridge.Editor
             if (workflowUi == null)
             {
                 workflowUi = new WorkflowUiSettingsData();
+            }
+
+            if (cacheCleanup == null)
+            {
+                cacheCleanup = new CacheCleanupSettingsData();
             }
 
             if (dataVersion < 10)
@@ -918,6 +980,12 @@ namespace AIBridge.Editor
                 workflowUi.SharedPromptPrefix = DefaultWorkflowSharedPromptPrefix;
             }
 
+            if (dataVersion < 19)
+            {
+                cacheCleanup.EnableAutoCleanup = DefaultCacheCleanupEnabled;
+                cacheCleanup.RetentionDays = DefaultCacheCleanupRetentionDays;
+            }
+
             workflowUi.DefaultValidationLevel = NormalizeWorkflowValidationLevel(workflowUi.DefaultValidationLevel);
             if (workflowUi.SharedPromptPrefix == null)
             {
@@ -928,6 +996,8 @@ namespace AIBridge.Editor
             {
                 workflowUi.AssistantPromptPrefixes = new List<AssistantWorkflowPromptEntry>();
             }
+
+            cacheCleanup.RetentionDays = AIBridgeCacheCleanup.ClampRetentionDays(cacheCleanup.RetentionDays);
 
             if (dataVersion != CurrentDataVersion)
             {

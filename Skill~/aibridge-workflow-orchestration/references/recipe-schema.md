@@ -48,7 +48,7 @@ For resumed work, run `workflow status --run <runId>` before adding new evidence
 
 `export` compiles a recipe into an external task package or script (`codex-task-pack`, `generic-cli`, `claude-workflow`). Exporters do not run external agents and do not provide an LLM runtime.
 
-`clean` is safe by default (`dry-run=true`). Persisted auto-clean settings live in `.aibridge/workflows/settings.json`; when `autoCleanEnabled=true`, `workflow run-cli` opportunistically removes old runs before starting a new run while respecting `keepFailed`, `keepLatest`, and `maxDeletePerRun`.
+`workflow clean` is an explicit maintenance command and is safe by default (`dry-run=true`). Do not suggest it for routine context or disk upkeep; ordinary expired run directories are handled by the AIBridge cache cleanup settings, while `workflow clean` remains available when the user explicitly asks to inspect or manually maintain workflow artifacts.
 
 ## Recipe Shape
 

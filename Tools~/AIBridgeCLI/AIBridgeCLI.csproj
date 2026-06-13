@@ -26,4 +26,9 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\..\Runtime\Internal\Json\AIBridgeJson.cs" Link="Shared\AIBridgeJson.cs" />
+    <Compile Include="..\..\Runtime\Internal\AIBridgeCacheCleanup.cs" Link="Shared\AIBridgeCacheCleanup.cs" />
+  </ItemGroup>
+
 </Project>

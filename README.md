@@ -7,7 +7,7 @@
 English | [中文](./README_CN.md)
 
 ![Unity 2019.4+](https://img.shields.io/badge/Unity-2019.4%2B-black?style=flat-square&logo=unity)
-![Package 1.4.18](https://img.shields.io/badge/Package-1.4.18-5b6cff?style=flat-square)
+![Package 1.4.20](https://img.shields.io/badge/Package-1.4.20-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
@@ -67,6 +67,7 @@ Use for: broad read-only review, multi-target Runtime validation, bug-hunter loo
 - **Workflow recipes and run artifacts**: `workflow` CLI commands can list, validate, plan, initialize, and run deterministic CLI steps from built-in Unity workflow recipes, then write a project-local run manifest, command results, artifacts, gates, and Markdown report under `.aibridge/workflows/runs/`.
 - **Roslyn temporary C# execution**: controlled `code execute` runs `.aibridge/code/*.cs` or `.csx` temporary scripts inside Unity Editor for complex one-off asset generation, structured analysis, diagnostics, and Runtime/Public API calls. It is enabled by default in Settings and can be disabled there for untrusted projects or callers.
 - **Visual and log validation**: capture Game/Scene view screenshots or GIFs, read Console logs, run Unity compilation, and invoke tests so agents can close the loop on changes.
+- **Automatic cache cleanup**: AIBridge Settings includes a Cache tab that automatically removes expired `.aibridge` caches. Cleanup is enabled by default, keeps recently used artifacts, and limits retention to 1-30 days with a default of 30 days.
 
 ## Place In The Unity AI Harness Ecosystem
 
@@ -203,7 +204,7 @@ Built-in recipes include `unity-change-implementation`, `unity-sharded-review`, 
 
 `workflow begin` creates an active run; ordinary commands can attach evidence with `--workflow-run`, `AIBRIDGE_WORKFLOW_RUN_ID`, or the active run pointer. `workflow status` and `workflow report` always require explicit `--run`; read `.aibridge/workflows/active-run.json` first when you need the active run id. `workflow run-cli --resume <runId>` resumes an existing run but still requires `--recipe` or `--file` so the CLI can load the recipe definition. Prefer a JSON file path for `--inputs`; inline JSON is fragile in PowerShell. `workflow import` stores structured external results such as `Verdict`, and `externalVerdict` gates only pass from imported artifacts. `workflow export` writes handoff packages for external tools; it is an exporter, not an embedded LLM runtime. `partial` workflow status is not treated as CLI success unless `--allow-partial true` is passed explicitly. `workflow status`, `workflow run-cli`, `workflow finish`, and JSON `workflow report` are compact by default; use `--detail full` only when you need the full manifest JSON. Compact output keeps `terminalState`, `terminalReason`, `runDirectory`, `manifestPath`, `reportPath`, `artifactIds`, gate summaries, and external gaps, while `stepGaps`, `evidenceFreshness`, and `failedCommands` stay full-detail only.
 
-Workflow cleanup is conservative by default: `clean` starts in dry-run mode. Auto cleanup is enabled only when saved in `.aibridge/workflows/settings.json`; `run-cli` then removes old runs before starting while preserving failed/blocked runs, the active run, and the newest retained runs according to settings.
+Workflow cleanup is explicit maintenance: `workflow clean` starts in dry-run mode and should be used when you intentionally inspect or prune workflow artifacts. Routine expired run directories are handled by the AIBridge Settings > Cache cleanup policy; the active run is preserved, while old failed/blocked runs are not permanently exempt once they exceed the retention window.
 
 Use `dialog status` when Unity commands time out and the Editor may be blocked by a modal save/confirm dialog. When no dialog is detected, compact JSON omits `blockedByDialog` and `dialogs`; missing fields mean no dialog. macOS dialog inspection/clicking requires Accessibility permission. Unity commands can opt into explicit timeout handling, for example `--on-dialog cancel` or `--on-dialog discard`.
 

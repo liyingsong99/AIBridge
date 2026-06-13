@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using AIBridge.Runtime.Internal;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -39,7 +40,13 @@ namespace AIBridgeCLI.Workflow
                 throw new ArgumentException("Missing run id.");
             }
 
-            return new WorkflowRunStore(runId);
+            var store = new WorkflowRunStore(runId);
+            if (Directory.Exists(store.RunDirectory))
+            {
+                AIBridgeCacheCleanup.TouchLastUsed(store.RunDirectory);
+            }
+
+            return store;
         }
 
         public void EnsureDirectories()
@@ -50,6 +57,7 @@ namespace AIBridgeCLI.Workflow
             Directory.CreateDirectory(ArtifactsDirectory);
             Directory.CreateDirectory(CommandResultsDirectory);
             Directory.CreateDirectory(GatesDirectory);
+            AIBridgeCacheCleanup.TouchLastUsed(RunDirectory);
         }
 
         public void SaveInputs(JObject inputs)

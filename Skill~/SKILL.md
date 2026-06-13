@@ -48,6 +48,7 @@ Default `harness status` output is compact. Use `--detail full` or `--include-sn
 - `input` requires Play Mode and an active EventSystem; pair it with `gameview`, `screenshot`, and `get_logs` for UI interaction checks.
 - `runtime` talks to `AIBridgeRuntime` in a Player or Play Mode target. Run quick `runtime list_targets` first, use `runtime list_targets --probe true` only when local port scanning is needed, then target `latest` or a specific target id. For UI work, start with `runtime.ui.snapshot`; button entries include screen coordinates and screen rects for direct clicks, and `runtime.input.key` covers semantic submit/cancel/tab/move input.
 - Code Index is optional. For C# semantic lookup use `aibridge-code-index` only when installed and enabled; use `rg`, file reads, and regular AIBridge commands for literal, non-C#, asset, scene, prefab, or unavailable Code Index searches.
+- AIBridge automatically cleans expired `.aibridge` cache according to Settings. Do not proactively enumerate or delete `.aibridge` files for routine disk maintenance; only run maintenance commands or guide the user to Settings when the user explicitly asks for cleanup, investigation, or manual maintenance.
 
 ## Related Skills
 

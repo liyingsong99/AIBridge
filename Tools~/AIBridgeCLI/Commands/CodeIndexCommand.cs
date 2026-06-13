@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
+using AIBridge.Runtime.Internal;
 using AIBridgeCLI.Core;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -70,6 +71,7 @@ namespace AIBridgeCLI.Commands
         {
             var normalizedAction = NormalizeAction(action);
             var context = CodeIndexContext.Resolve(options);
+            TouchCodeIndexLastUsed(context);
             if (!context.Enabled)
             {
                 return await ExecuteDisabledAsync(normalizedAction, context, timeout);
@@ -99,6 +101,20 @@ namespace AIBridgeCLI.Commands
                     return await BatchAsync(context, options, timeout);
                 default:
                     return BuildFailure(context, "Unsupported code_index action: " + action);
+            }
+        }
+
+        private static void TouchCodeIndexLastUsed(CodeIndexContext context)
+        {
+            try
+            {
+                if (context != null && Directory.Exists(context.IndexDirectory))
+                {
+                    AIBridgeCacheCleanup.TouchLastUsed(context.IndexDirectory);
+                }
+            }
+            catch
+            {
             }
         }
 

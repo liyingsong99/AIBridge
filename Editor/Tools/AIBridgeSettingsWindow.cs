@@ -21,6 +21,7 @@ namespace AIBridge.Editor
             Scripts,          // 脚本执行
             RuntimeBridge,    // Runtime Bridge
             CodeIndex,        // Code Index
+            CacheCleanup,
             Actions           // 操作
         }
 
@@ -119,6 +120,9 @@ namespace AIBridge.Editor
                 case TabType.CodeIndex:
                     DrawCodeIndexSettingsTab();
                     break;
+                case TabType.CacheCleanup:
+                    DrawCacheCleanupSettingsTab();
+                    break;
                 case TabType.Actions:
                     DrawActions();
                     break;
@@ -138,6 +142,7 @@ namespace AIBridge.Editor
                 AIBridgeEditorText.T("Scripts", "脚本执行"),
                 AIBridgeEditorText.T("Runtime", "Runtime"),
                 AIBridgeEditorText.T("Code Index", "代码索引"),
+                AIBridgeEditorText.T("Cache", "缓存清理"),
                 AIBridgeEditorText.T("Actions", "操作")
             };
             _currentTab = (TabType)GUILayout.Toolbar((int)_currentTab, tabNames);

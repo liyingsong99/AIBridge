@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using AIBridge.Runtime.Internal;
 using UnityEditor;
 using UnityEngine;
 using AIBridge.Editor.ScriptExecution;
@@ -377,27 +378,22 @@ namespace AIBridge.Editor
 
         private void ClearScreenshotCache()
         {
-            var screenshotsDir = ScreenshotHelper.ScreenshotsDir;
-            if (Directory.Exists(screenshotsDir))
+            try
             {
-                var files = Directory.GetFiles(screenshotsDir);
-                int count = 0;
-                foreach (var file in files)
-                {
-                    if (Path.GetFileName(file) != ".gitignore")
-                    {
-                        try
-                        {
-                            File.Delete(file);
-                            count++;
-                        }
-                        catch
-                        {
-                            // Ignore deletion errors
-                        }
-                    }
-                }
-                Debug.Log($"[AIBridge] Cleared {count} files from screenshot cache.");
+                var result = AIBridgeCacheCleanup.ClearScreenshotCache(AIBridge.BridgeDirectory);
+                Debug.Log(AIBridgeEditorText.T(
+                    "[AIBridge] Cleared screenshot cache. Deleted files: "
+                    + result.DeletedFiles
+                    + ", errors: "
+                    + result.ErrorCount,
+                    "[AIBridge] 已清理截图缓存。删除文件数: "
+                    + result.DeletedFiles
+                    + "，错误数: "
+                    + result.ErrorCount));
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[AIBridge] Failed to clear screenshot cache: " + ex.Message);
             }
         }
 
