@@ -45,6 +45,26 @@
 11. 编译器输出按 UTF-8 读取；中文诊断仍可能受 Roslyn/系统输出影响，优先查看结果里的结构化 `diagnostics`。
 12. 用户脚本末尾已有顶层 `return` 或 `throw` 时，包装器不会追加 fallback return，避免 `CS0162` 噪声。
 
+## `.csx` 语法边界
+
+AIBridge 会把 `.csx` 文件体包装进生成类的 `Execute` 方法内执行，因此脚本顶层代码按“方法体”编写，不按普通 `.cs` 类型体编写。
+
+1. 顶层稳定参数用 `const` 或局部 `var` / 显式类型变量；不要套用通用 `.cs` 规则写 `static readonly`。
+2. 顶层不能声明字段、属性、方法、类型成员修饰符或 `static readonly`；这类代码需要改成局部函数、局部变量，或写入正式 `.cs` 文件后 `compile unity`。
+3. 需要跨多个 helper 共享状态时，优先把状态作为局部变量传参；只在确实需要类型、字段或复杂成员结构时改用正式 `.cs` 脚本。
+4. 顶层 `using` 必须放在文件开头；正文里直接使用默认导入的 `System`、`System.Collections.Generic`、`UnityEngine`、`UnityEditor` 和 `AIBridge.Editor`。
+5. 遇到 `Object`、`Random` 等 Unity/.NET 同名类型时使用完整限定名，例如 `UnityEngine.Object.DestroyImmediate(root)`。
+
+```csharp
+const string OutputRoot = "Assets/AIBridgeGenerated/MyTask";
+var createdAssets = new List<string>();
+
+void AddAsset(string path)
+{
+    createdAssets.Add(path);
+}
+```
+
 ## 推荐脚本模板
 
 ```csharp

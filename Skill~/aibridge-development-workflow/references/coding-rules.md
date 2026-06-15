@@ -38,6 +38,7 @@ target?.SetActive(true);
 
 - 业务配置、资源路径、命令路径、魔法数字不得散落硬编码。
 - 稳定常量应定义为 `const` 或 `static readonly`。
+- `.csx` 顶层脚本例外：按方法体编写，稳定参数用 `const` 或局部变量，不能声明 `static readonly` 字段；详见 `editor-generation.md`。
 - UI 文案、日志文本、测试样例可按上下文保留字面量。
 - 不要为了消除一个局部字面量而制造过度抽象。
 
