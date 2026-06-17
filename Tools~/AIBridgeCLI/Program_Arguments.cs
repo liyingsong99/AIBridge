@@ -77,6 +77,13 @@ namespace AIBridgeCLI
                             continue;
                         }
 
+                        if (IsTextIndexSearchQueryShortcut(result))
+                        {
+                            result.ExtraArgs.Add(arg);
+                            i++;
+                            continue;
+                        }
+
                         // For multi command, collect extra args
                         if (result.CommandType.Equals("multi", StringComparison.OrdinalIgnoreCase))
                         {
@@ -102,6 +109,18 @@ namespace AIBridgeCLI
                 && result.CommandType.Equals("runtime", StringComparison.OrdinalIgnoreCase)
                 && result.Action.Equals("logs", StringComparison.OrdinalIgnoreCase)
                 && arg.Equals("clear", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsTextIndexSearchQueryShortcut(ParsedArgs result)
+        {
+            if (result == null || result.CommandType == null || result.Action == null)
+            {
+                return false;
+            }
+
+            return result.CommandType.Equals("text_index", StringComparison.OrdinalIgnoreCase)
+                   && result.Action.Equals("search", StringComparison.OrdinalIgnoreCase)
+                   && result.ExtraArgs.Count == 0;
         }
 
         static string BuildWorkflowSourceCommand(ParsedArgs parsed)

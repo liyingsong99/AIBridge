@@ -322,8 +322,8 @@ $request | & "./.aibridge/cli/AIBridgeCLI.exe" exec run --stdin
 ```bash
 $CLI text_index status
 $CLI text_index build
-$CLI text_index search --query PaymentService --glob "*.cs" --max-results 50
-$CLI text_index search --query "MissingReference|NullReference" --regex true --path Assets
+$CLI text_index search PaymentService --glob "*.cs" --max-results 50
+$CLI text_index search "MissingReference|NullReference" --regex true --path Assets
 $CLI text_index reset
 ```
 

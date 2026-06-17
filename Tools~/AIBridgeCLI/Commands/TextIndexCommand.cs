@@ -43,7 +43,7 @@ namespace AIBridgeCLI.Commands
             ContractResolver = new CamelCasePropertyNamesContractResolver()
         };
 
-        public static int Execute(string action, Dictionary<string, string> options, OutputMode outputMode)
+        public static int Execute(string action, Dictionary<string, string> options, List<string> extraArgs, OutputMode outputMode)
         {
             var stopwatch = Stopwatch.StartNew();
             JObject result;
@@ -62,7 +62,7 @@ namespace AIBridgeCLI.Commands
                         result = Build(context);
                         break;
                     case "search":
-                        result = Search(context, options);
+                        result = Search(context, options, extraArgs);
                         break;
                     case "reset":
                         result = Reset(context);
@@ -262,12 +262,17 @@ namespace AIBridgeCLI.Commands
             };
         }
 
-        private static JObject Search(TextIndexContext context, Dictionary<string, string> options)
+        private static JObject Search(TextIndexContext context, Dictionary<string, string> options, List<string> extraArgs)
         {
-            var query = ResolveString(options, "query", null);
+            if (options.ContainsKey("query"))
+            {
+                return BuildFailure(context, "Unsupported parameter: --query. Usage: text_index search \"literal text\"", "unsupported_query_option");
+            }
+
+            var query = extraArgs != null && extraArgs.Count > 0 ? extraArgs[0] : null;
             if (string.IsNullOrEmpty(query))
             {
-                return BuildFailure(context, "Missing required parameter: --query", "missing_query");
+                return BuildFailure(context, "Missing search text. Usage: text_index search \"literal text\"", "missing_query");
             }
 
             var regex = ResolveBool(options, "regex", false);

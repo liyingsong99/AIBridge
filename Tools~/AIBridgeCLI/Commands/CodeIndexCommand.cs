@@ -1784,10 +1784,9 @@ namespace AIBridgeCLI.Commands
                 };
                 startInfo.ArgumentList.Add("text_index");
                 startInfo.ArgumentList.Add("search");
+                startInfo.ArgumentList.Add(query);
                 startInfo.ArgumentList.Add("--project-root");
                 startInfo.ArgumentList.Add(projectRoot);
-                startInfo.ArgumentList.Add("--query");
-                startInfo.ArgumentList.Add(query);
                 startInfo.ArgumentList.Add("--glob");
                 startInfo.ArgumentList.Add("*.cs");
                 startInfo.ArgumentList.Add("--max-results");
