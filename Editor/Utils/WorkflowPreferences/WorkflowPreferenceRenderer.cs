@@ -20,7 +20,7 @@ namespace AIBridge.Editor
         {
             new BranchInfo(ImplementationId, "实施分支", "创建、修改、修复、重构、生成、迁移、提交", "改动当前工作树并验证", "references/branches/implementation.md", "aibridge、aibridge-code-index、aibridge-prefab-patch、unity-yaml-editing、aibridge-batch-script"),
             new BranchInfo(DebugId, "调试诊断分支", "排查、诊断、复现、为什么、追踪、日志、Runtime、Player、Play Mode、性能、UI 异常", "收集证据并给出根因判断", "references/branches/debug.md", "aibridge、aibridge-code-index、aibridge-workflow-orchestration、aibridge-batch-script"),
-            new BranchInfo(ReviewId, "审查分支", "review、audit、检查风险、设计评审、只读分析", "输出 confirmed findings 和剩余风险", "references/branches/review.md", "aibridge-code-index、rg、按需 aibridge-workflow-orchestration"),
+            new BranchInfo(ReviewId, "审查分支", "review、audit、检查风险、设计评审、只读分析", "输出 confirmed findings 和剩余风险", "references/branches/review.md", "aibridge-code-index、text_index、rg fallback、按需 aibridge-workflow-orchestration"),
             new BranchInfo(ValidationId, "验证分支", "编译、日志、截图、测试、Runtime/UI 验证、回归确认", "给出可重复验证结果", "references/branches/validation.md", "aibridge、现有 workflow recipe"),
             new BranchInfo(OrchestrationId, "编排分支", "workflow recipe、多 Agent、并行 sweep、对抗验证、结构化 artifact", "设计或执行结构化 workflow", "references/branches/orchestration.md", "aibridge-workflow-orchestration")
         };
@@ -52,7 +52,7 @@ namespace AIBridge.Editor
             builder.AppendLine();
             builder.AppendLine("- 默认验证级别：" + GetValidationLevelText(workflowUi.DefaultValidationLevel) + " (`" + AIBridgeProjectSettings.NormalizeWorkflowValidationLevel(workflowUi.DefaultValidationLevel) + "`)");
             builder.AppendLine("- Runtime 证据偏好：" + (workflowUi.PreferRuntimeEvidence ? "优先收集可用 Runtime 证据" : "仅在任务明确需要时收集 Runtime 证据"));
-            builder.AppendLine("- Code Index 偏好：" + (workflowUi.PreferCodeIndexGuidance ? "Code Index 可用时优先用于 C# 语义查询" : "默认使用 rg/文件读取，只有明确需要语义关系时才使用 Code Index"));
+            builder.AppendLine("- Code Index 偏好：" + (workflowUi.PreferCodeIndexGuidance ? "Code Index 可用时优先用于 C# 语义查询" : "默认使用 text_index/文件读取，text_index 不可用时才用 rg；只有明确需要语义关系时才使用 Code Index"));
             builder.AppendLine();
 
             builder.AppendLine("## 附加提示词");

@@ -163,6 +163,7 @@ namespace AIBridge.Editor.Tests
             var branchSelection = File.ReadAllText(branchSelectionPath);
             StringAssert.Contains("【入口：Preflight / Skill 路由】", branchSelection);
             StringAssert.Contains("【模式：<启用分支之一>】", branchSelection);
+            StringAssert.Contains("aibridge-code-index、text_index、rg fallback", branchSelection);
             StringAssert.Contains("Harness 判定是 Preflight gate", branchSelection);
             StringAssert.Contains("fresh 且不影响工具选择时不单独输出", branchSelection);
             StringAssert.Contains("需求讨论分支", branchSelection);
@@ -173,6 +174,10 @@ namespace AIBridge.Editor.Tests
             Assert.IsFalse(branchSelection.Contains("【分支模式】"));
             Assert.IsFalse(branchSelection.Contains("【模式：Harness"));
             Assert.IsFalse(branchSelection.Contains("说明：<当前步骤正在收集或产出的内容>"));
+
+            var reviewBranchPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "branches", "review.md");
+            var reviewBranch = File.ReadAllText(reviewBranchPath);
+            StringAssert.Contains("普通代码内容或非语义文本搜索优先使用 `$CLI text_index search`", reviewBranch);
         }
 
         [Test]
