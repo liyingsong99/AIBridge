@@ -1040,12 +1040,14 @@ namespace AIBridge.Runtime
             var unityObject = value as UnityEngine.Object;
             if (unityObject != null)
             {
-                return new
+                var result = new Dictionary<string, object>
                 {
-                    type = unityObject.GetType().FullName,
-                    name = unityObject.name,
-                    instanceId = unityObject.GetInstanceID()
+                    ["type"] = unityObject.GetType().FullName,
+                    ["name"] = unityObject.name
                 };
+
+                AIBridgeObjectIdentity.AddSerializedId(result, unityObject);
+                return result;
             }
 
             if (!TryAddVisited(value, visited))
@@ -1400,6 +1402,17 @@ namespace AIBridge.Runtime
             }
 
             return Convert.ToString(value, CultureInfo.InvariantCulture);
+        }
+
+        private static object ReadSerializedObjectIdParam(AIBridgeRuntimeCommand cmd, string primaryKey, string legacyKey)
+        {
+            object value;
+            if (!string.IsNullOrEmpty(primaryKey) && TryGetCommandParam(cmd, primaryKey, out value) && value != null)
+            {
+                return value;
+            }
+
+            return !string.IsNullOrEmpty(legacyKey) && TryGetCommandParam(cmd, legacyKey, out value) ? value : null;
         }
 
         private static long? ReadSinceTimestampParam(AIBridgeRuntimeCommand cmd)

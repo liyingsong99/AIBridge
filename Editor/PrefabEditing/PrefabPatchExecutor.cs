@@ -508,12 +508,7 @@ namespace AIBridge.Editor
 
             if (value is double || value is long || value is int)
             {
-                var id = Convert.ToInt32(value, CultureInfo.InvariantCulture);
-#if UNITY_6000_3_OR_NEWER
-                return ValidateReferenceType(EditorUtility.EntityIdToObject(id), prop);
-#else
-                return ValidateReferenceType(EditorUtility.InstanceIDToObject(id), prop);
-#endif
+                return ValidateReferenceType(AIBridgeEditorObjectIdentity.ResolveObject(value), prop);
             }
 
             var text = value.ToString();

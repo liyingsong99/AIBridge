@@ -449,7 +449,7 @@ namespace AIBridge.Editor
             {
                 name = objectReference.name,
                 type = objectReference.GetType().Name,
-                instanceId = objectReference.GetInstanceID(),
+                instanceId = AIBridgeEditorObjectIdentity.GetSerializedId(objectReference),
                 assetPath = AssetDatabase.GetAssetPath(objectReference)
             };
         }

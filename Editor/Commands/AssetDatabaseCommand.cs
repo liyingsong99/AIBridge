@@ -329,7 +329,7 @@ $CLI asset read_text --assetPath ""Assets/Scripts/Player.cs"" --startLine 1 --ma
                 name = asset.name,
                 path = assetPath,
                 type = asset.GetType().Name,
-                instanceId = asset.GetInstanceID()
+                instanceId = AIBridgeEditorObjectIdentity.GetSerializedId(asset)
             });
         }
 

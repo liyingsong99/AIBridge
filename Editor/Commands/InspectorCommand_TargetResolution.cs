@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using AIBridge.Internal.Json;
+using AIBridge.Runtime;
 using UnityEditor;
 using UnityEngine;
 
@@ -63,13 +64,13 @@ namespace AIBridge.Editor
                 return true;
             }
 
-            var componentInstanceId = request.GetParam("componentInstanceId", 0);
-            if (componentInstanceId != 0)
+            var componentInstanceId = AIBridgeEditorObjectIdentity.GetRequestObjectId(request, "componentInstanceId");
+            if (AIBridgeObjectIdentity.HasSerializedId(componentInstanceId))
             {
                 var component = GetObjectByInstanceId(componentInstanceId) as Component;
                 if (component == null)
                 {
-                    error = $"Component not found by instanceId: {componentInstanceId}";
+                    error = $"Component not found by entityId/instanceId: {componentInstanceId}";
                     return false;
                 }
 
@@ -198,8 +199,8 @@ namespace AIBridge.Editor
                 return null;
             }
 
-            var componentInstanceId = request.GetParam("componentInstanceId", 0);
-            if (componentInstanceId != 0 && context.IsSceneObject)
+            var componentInstanceId = AIBridgeEditorObjectIdentity.GetRequestObjectId(request, "componentInstanceId");
+            if (AIBridgeObjectIdentity.HasSerializedId(componentInstanceId) && context.IsSceneObject)
             {
                 var componentById = GetObjectByInstanceId(componentInstanceId) as Component;
                 if (componentById != null && componentById.gameObject == go)
@@ -240,11 +241,11 @@ namespace AIBridge.Editor
         private GameObject GetSceneGameObject(CommandRequest request)
         {
             var path = request.GetParam<string>("path", null);
-            var instanceId = request.GetParam("instanceId", 0);
+            var serializedId = AIBridgeEditorObjectIdentity.GetRequestObjectId(request, "instanceId");
 
-            if (instanceId != 0)
+            if (AIBridgeObjectIdentity.HasSerializedId(serializedId))
             {
-                return GetObjectByInstanceId(instanceId) as GameObject;
+                return AIBridgeEditorObjectIdentity.ResolveGameObject(serializedId);
             }
 
             if (!string.IsNullOrEmpty(path))
@@ -255,13 +256,9 @@ namespace AIBridge.Editor
             return Selection.activeGameObject;
         }
 
-        private static UnityEngine.Object GetObjectByInstanceId(int instanceId)
+        private static UnityEngine.Object GetObjectByInstanceId(object instanceId)
         {
-#if UNITY_6000_3_OR_NEWER
-            return EditorUtility.EntityIdToObject(instanceId);
-#else
-            return EditorUtility.InstanceIDToObject(instanceId);
-#endif
+            return AIBridgeEditorObjectIdentity.ResolveObject(instanceId);
         }
 
         private static bool IsUnityAssetPath(string assetPath)

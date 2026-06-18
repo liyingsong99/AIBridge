@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AIBridge.Runtime;
 using UnityEditor;
 using UnityEngine;
 
@@ -99,7 +100,7 @@ $CLI gameobject get_info --path ""Player""
             {
                 name = go.name,
                 path = GetGameObjectPath(go),
-                instanceId = go.GetInstanceID()
+                instanceId = AIBridgeEditorObjectIdentity.GetSerializedId(go)
             });
         }
 
@@ -261,7 +262,7 @@ $CLI gameobject get_info --path ""Player""
                 originalName = go.name,
                 duplicateName = duplicate.name,
                 duplicatePath = GetGameObjectPath(duplicate),
-                duplicateInstanceId = duplicate.GetInstanceID()
+                duplicateInstanceId = AIBridgeEditorObjectIdentity.GetSerializedId(duplicate)
             });
         }
 
@@ -293,7 +294,7 @@ $CLI gameobject get_info --path ""Player""
             {
                 name = go.name,
                 path = GetGameObjectPath(go),
-                instanceId = go.GetInstanceID(),
+                instanceId = AIBridgeEditorObjectIdentity.GetSerializedId(go),
                 tag = go.tag,
                 layer = LayerMask.LayerToName(go.layer),
                 layerIndex = go.layer,
@@ -310,15 +311,10 @@ $CLI gameobject get_info --path ""Player""
         private GameObject GetTargetGameObject(CommandRequest request)
         {
             var path = request.GetParam<string>("path", null);
-            var instanceId = request.GetParam("instanceId", 0);
-
-            if (instanceId != 0)
+            var serializedId = AIBridgeEditorObjectIdentity.GetRequestObjectId(request, "instanceId");
+            if (AIBridgeEditorObjectIdentity.HasRequestObjectId(request, "instanceId"))
             {
-#if UNITY_6000_3_OR_NEWER
-                return EditorUtility.EntityIdToObject(instanceId) as GameObject;
-#else
-                return EditorUtility.InstanceIDToObject(instanceId) as GameObject;
-#endif
+                return AIBridgeEditorObjectIdentity.ResolveGameObject(serializedId);
             }
 
             if (!string.IsNullOrEmpty(path))
@@ -349,7 +345,7 @@ $CLI gameobject get_info --path ""Player""
             {
                 name = go.name,
                 path = GetGameObjectPath(go),
-                instanceId = go.GetInstanceID(),
+                instanceId = AIBridgeEditorObjectIdentity.GetSerializedId(go),
                 activeSelf = go.activeSelf
             };
         }
@@ -359,7 +355,7 @@ $CLI gameobject get_info --path ""Player""
         {
             public string name;
             public string path;
-            public int instanceId;
+            public object instanceId;
             public bool activeSelf;
         }
     }
