@@ -1,4 +1,5 @@
 using System;
+using AIBridge.Runtime;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -187,18 +188,14 @@ $CLI transform set_sibling_index --path ""Child"" --index 0 [--first true] [--la
             }
 
             var parentPath = request.GetParam<string>("parentPath", null);
-            var parentInstanceId = request.GetParam("parentInstanceId", 0);
+            var parentSerializedId = AIBridgeEditorObjectIdentity.GetRequestObjectId(request, "parentInstanceId");
             var worldPositionStays = request.GetParam("worldPositionStays", true);
 
             Transform newParent = null;
 
-            if (parentInstanceId != 0)
+            if (AIBridgeObjectIdentity.HasSerializedId(parentSerializedId))
             {
-#if UNITY_6000_3_OR_NEWER
-                var parentGo = EditorUtility.EntityIdToObject(parentInstanceId) as GameObject;
-#else
-                var parentGo = EditorUtility.InstanceIDToObject(parentInstanceId) as GameObject;
-#endif
+                var parentGo = AIBridgeEditorObjectIdentity.ResolveGameObject(parentSerializedId);
                 newParent = parentGo != null ? parentGo.transform : null;
             }
             else if (!string.IsNullOrEmpty(parentPath))
@@ -230,17 +227,17 @@ $CLI transform set_sibling_index --path ""Child"" --index 0 [--first true] [--la
 
             // 优先支持对象目标，避免传入 targetPath/targetInstanceId 时误判为缺少坐标。
             var targetPath = request.GetParam<string>("targetPath", null);
-            var targetInstanceId = request.GetParam("targetInstanceId", 0);
-            if (!string.IsNullOrEmpty(targetPath) || targetInstanceId != 0)
+            var targetSerializedId = AIBridgeEditorObjectIdentity.GetRequestObjectId(request, "targetInstanceId");
+            if (!string.IsNullOrEmpty(targetPath) || AIBridgeObjectIdentity.HasSerializedId(targetSerializedId))
             {
-                var targetTransform = FindTransform(targetPath, targetInstanceId);
+                var targetTransform = FindTransform(targetPath, targetSerializedId);
                 if (targetTransform == null)
                 {
                     return CommandResult.Failure(request.id, "Target Transform not found");
                 }
 
                 targetPosition = targetTransform.position;
-                targetMode = targetInstanceId != 0 ? "instanceId" : "path";
+                targetMode = AIBridgeObjectIdentity.HasSerializedId(targetSerializedId) ? "instanceId" : "path";
             }
             else
             {
@@ -354,25 +351,21 @@ $CLI transform set_sibling_index --path ""Child"" --index 0 [--first true] [--la
         private Transform GetTargetTransform(CommandRequest request)
         {
             var path = request.GetParam<string>("path", null);
-            var instanceId = request.GetParam("instanceId", 0);
+            var serializedId = AIBridgeEditorObjectIdentity.GetRequestObjectId(request, "instanceId");
 
-            if (!string.IsNullOrEmpty(path) || instanceId != 0)
+            if (!string.IsNullOrEmpty(path) || AIBridgeObjectIdentity.HasSerializedId(serializedId))
             {
-                return FindTransform(path, instanceId);
+                return FindTransform(path, serializedId);
             }
 
             return Selection.activeTransform;
         }
 
-        private Transform FindTransform(string path, int instanceId)
+        private Transform FindTransform(string path, object serializedId)
         {
-            if (instanceId != 0)
+            if (AIBridgeObjectIdentity.HasSerializedId(serializedId))
             {
-#if UNITY_6000_3_OR_NEWER
-                var go = EditorUtility.EntityIdToObject(instanceId) as GameObject;
-#else
-                var go = EditorUtility.InstanceIDToObject(instanceId) as GameObject;
-#endif
+                var go = AIBridgeEditorObjectIdentity.ResolveGameObject(serializedId);
                 return go != null ? go.transform : null;
             }
 

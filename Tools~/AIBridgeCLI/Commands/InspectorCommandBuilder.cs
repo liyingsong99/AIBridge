@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using AIBridgeCLI.Core;
 
 namespace AIBridgeCLI.Commands
 {
@@ -20,59 +21,69 @@ namespace AIBridgeCLI.Commands
             ["get_components"] = new List<ParameterInfo>
             {
                 new ParameterInfo("path", "Path to the GameObject", false),
-                new ParameterInfo("instanceId", "Instance ID of the GameObject", false),
+                new ParameterInfo("entityId", "Entity ID of the GameObject on Unity 6000.4+", false),
+                new ParameterInfo("instanceId", "Entity ID on Unity 6000.4+ or legacy instance ID on older Unity", false),
                 new ParameterInfo("assetPath", "Prefab asset path", false),
                 new ParameterInfo("objectPath", "Child object path inside prefab asset", false)
             },
             ["get_properties"] = new List<ParameterInfo>
             {
                 new ParameterInfo("path", "Path to the GameObject", false),
-                new ParameterInfo("instanceId", "Instance ID of the GameObject", false),
+                new ParameterInfo("entityId", "Entity ID of the GameObject on Unity 6000.4+", false),
+                new ParameterInfo("instanceId", "Entity ID on Unity 6000.4+ or legacy instance ID on older Unity", false),
                 new ParameterInfo("assetPath", "Prefab or asset path", false),
                 new ParameterInfo("objectPath", "Child object path inside prefab asset", false),
                 new ParameterInfo("componentName", "Name of the component", false),
                 new ParameterInfo("componentIndex", "Index of the component", false),
-                new ParameterInfo("componentInstanceId", "Instance ID of the component", false),
+                new ParameterInfo("componentEntityId", "Entity ID of the component on Unity 6000.4+", false),
+                new ParameterInfo("componentInstanceId", "Entity ID of the component on Unity 6000.4+ or legacy instance ID on older Unity", false),
                 new ParameterInfo("includeChildren", "Include nested visible properties", false, "false")
             },
             ["get_property"] = new List<ParameterInfo>
             {
                 new ParameterInfo("path", "Path to the GameObject", false),
-                new ParameterInfo("instanceId", "Instance ID of the GameObject", false),
+                new ParameterInfo("entityId", "Entity ID of the GameObject on Unity 6000.4+", false),
+                new ParameterInfo("instanceId", "Entity ID on Unity 6000.4+ or legacy instance ID on older Unity", false),
                 new ParameterInfo("assetPath", "Prefab or asset path", false),
                 new ParameterInfo("objectPath", "Child object path inside prefab asset", false),
                 new ParameterInfo("componentName", "Name of the component", false),
                 new ParameterInfo("componentIndex", "Index of the component", false),
-                new ParameterInfo("componentInstanceId", "Instance ID of the component", false),
+                new ParameterInfo("componentEntityId", "Entity ID of the component on Unity 6000.4+", false),
+                new ParameterInfo("componentInstanceId", "Entity ID of the component on Unity 6000.4+ or legacy instance ID on older Unity", false),
                 new ParameterInfo("propertyName", "SerializedProperty path to read", true)
             },
             ["find_property"] = new List<ParameterInfo>
             {
                 new ParameterInfo("path", "Path to the GameObject", false),
-                new ParameterInfo("instanceId", "Instance ID of the GameObject", false),
+                new ParameterInfo("entityId", "Entity ID of the GameObject on Unity 6000.4+", false),
+                new ParameterInfo("instanceId", "Entity ID on Unity 6000.4+ or legacy instance ID on older Unity", false),
                 new ParameterInfo("assetPath", "Prefab or asset path", false),
                 new ParameterInfo("objectPath", "Child object path inside prefab asset", false),
                 new ParameterInfo("componentName", "Name of the component", false),
                 new ParameterInfo("componentIndex", "Index of the component", false),
-                new ParameterInfo("componentInstanceId", "Instance ID of the component", false),
+                new ParameterInfo("componentEntityId", "Entity ID of the component on Unity 6000.4+", false),
+                new ParameterInfo("componentInstanceId", "Entity ID of the component on Unity 6000.4+ or legacy instance ID on older Unity", false),
                 new ParameterInfo("keyword", "Keyword to match property name/path/display name", true)
             },
             ["set_property"] = new List<ParameterInfo>
             {
                 new ParameterInfo("path", "Path to the GameObject", false),
-                new ParameterInfo("instanceId", "Instance ID of the GameObject", false),
+                new ParameterInfo("entityId", "Entity ID of the GameObject on Unity 6000.4+", false),
+                new ParameterInfo("instanceId", "Entity ID on Unity 6000.4+ or legacy instance ID on older Unity", false),
                 new ParameterInfo("assetPath", "Prefab or asset path", false),
                 new ParameterInfo("objectPath", "Child object path inside prefab asset", false),
                 new ParameterInfo("componentName", "Name of the component", false),
                 new ParameterInfo("componentIndex", "Index of the component", false),
-                new ParameterInfo("componentInstanceId", "Instance ID of the component", false),
+                new ParameterInfo("componentEntityId", "Entity ID of the component on Unity 6000.4+", false),
+                new ParameterInfo("componentInstanceId", "Entity ID of the component on Unity 6000.4+ or legacy instance ID on older Unity", false),
                 new ParameterInfo("propertyName", "SerializedProperty path to set", true),
                 new ParameterInfo("value", "Value to set", true)
             },
             ["set_properties"] = new List<ParameterInfo>
             {
                 new ParameterInfo("path", "Path to the GameObject", false),
-                new ParameterInfo("instanceId", "Instance ID of the GameObject", false),
+                new ParameterInfo("entityId", "Entity ID of the GameObject on Unity 6000.4+", false),
+                new ParameterInfo("instanceId", "Entity ID on Unity 6000.4+ or legacy instance ID on older Unity", false),
                 new ParameterInfo("assetPath", "Prefab or asset path", false),
                 new ParameterInfo("objectPath", "Child object path inside prefab asset", false),
                 new ParameterInfo("componentName", "Name of the component", false),
@@ -83,7 +94,8 @@ namespace AIBridgeCLI.Commands
             ["add_component"] = new List<ParameterInfo>
             {
                 new ParameterInfo("path", "Path to the GameObject", false),
-                new ParameterInfo("instanceId", "Instance ID of the GameObject", false),
+                new ParameterInfo("entityId", "Entity ID of the GameObject on Unity 6000.4+", false),
+                new ParameterInfo("instanceId", "Entity ID on Unity 6000.4+ or legacy instance ID on older Unity", false),
                 new ParameterInfo("assetPath", "Prefab asset path", false),
                 new ParameterInfo("objectPath", "Child object path inside prefab asset", false),
                 new ParameterInfo("typeName", "Type name of the component (e.g., BoxCollider, Rigidbody)", true)
@@ -96,8 +108,27 @@ namespace AIBridgeCLI.Commands
                 new ParameterInfo("objectPath", "Child object path inside prefab asset", false),
                 new ParameterInfo("componentName", "Name of the component", false),
                 new ParameterInfo("componentIndex", "Index of the component", false),
-                new ParameterInfo("componentInstanceId", "Instance ID of the component", false)
+                new ParameterInfo("componentEntityId", "Entity ID of the component on Unity 6000.4+", false),
+                new ParameterInfo("componentInstanceId", "Entity ID of the component on Unity 6000.4+ or legacy instance ID on older Unity", false)
             }
         };
+
+        public override CommandRequest Build(string action, Dictionary<string, string> options)
+        {
+            var request = base.Build(action, options);
+            CopyParam(request.@params, "entityId", "instanceId");
+            CopyParam(request.@params, "componentEntityId", "componentInstanceId");
+            return request;
+        }
+
+        private static void CopyParam(Dictionary<string, object> @params, string sourceKey, string targetKey)
+        {
+            if (@params == null || !@params.ContainsKey(sourceKey) || @params.ContainsKey(targetKey))
+            {
+                return;
+            }
+
+            @params[targetKey] = @params[sourceKey];
+        }
     }
 }

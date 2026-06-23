@@ -273,11 +273,10 @@ namespace AIBridge.Runtime
         {
             var canvas = entry.Canvas;
             var worldCamera = canvas != null && canvas.worldCamera != null ? canvas.worldCamera.gameObject : null;
-            return new Dictionary<string, object>
+            var result = new Dictionary<string, object>
             {
                 ["name"] = canvas != null ? canvas.name : null,
                 ["path"] = entry.Path,
-                ["instanceId"] = canvas != null ? canvas.gameObject.GetInstanceID() : 0,
                 ["enabled"] = canvas != null && canvas.enabled,
                 ["activeInHierarchy"] = canvas != null && canvas.gameObject.activeInHierarchy,
                 ["isRootCanvas"] = canvas != null && canvas.isRootCanvas,
@@ -293,17 +292,19 @@ namespace AIBridge.Runtime
                 ["buttonCount"] = entry.ButtonCount,
                 ["hasGraphicRaycaster"] = canvas != null && canvas.GetComponent<GraphicRaycaster>() != null
             };
+
+            AIBridgeObjectIdentity.AddSerializedId(result, canvas != null ? canvas.gameObject : null);
+            return result;
         }
 
         private Dictionary<string, object> BuildButtonSnapshot(UiButtonSnapshotEntry entry)
         {
             var button = entry.Button;
-            return new Dictionary<string, object>
+            var result = new Dictionary<string, object>
             {
                 ["name"] = button != null ? button.name : null,
                 ["label"] = entry.Label,
                 ["path"] = entry.Path,
-                ["instanceId"] = button != null ? button.gameObject.GetInstanceID() : 0,
                 ["activeInHierarchy"] = button != null && button.gameObject.activeInHierarchy,
                 ["enabled"] = button != null && button.enabled,
                 ["interactable"] = button != null && button.IsInteractable(),
@@ -321,6 +322,9 @@ namespace AIBridge.Runtime
                 ["canvasSortingOrder"] = entry.CanvasSortingOrder,
                 ["canvasRenderMode"] = entry.CanvasRenderMode
             };
+
+            AIBridgeObjectIdentity.AddSerializedId(result, button != null ? button.gameObject : null);
+            return result;
         }
 
         private Dictionary<string, object> BuildRaycastSnapshot(RaycastResult hit, int index)
@@ -596,15 +600,17 @@ namespace AIBridge.Runtime
                 return null;
             }
 
-            return new Dictionary<string, object>
+            var result = new Dictionary<string, object>
             {
                 ["name"] = go.name,
                 ["path"] = GetGameObjectPath(go),
-                ["instanceId"] = go.GetInstanceID(),
                 ["activeInHierarchy"] = go.activeInHierarchy,
                 ["layer"] = go.layer,
                 ["tag"] = go.tag
             };
+
+            AIBridgeObjectIdentity.AddSerializedId(result, go);
+            return result;
         }
 
         private static string GetGameObjectPath(GameObject go)
@@ -673,10 +679,10 @@ namespace AIBridge.Runtime
                 return GameObject.Find(path);
             }
 
-            var instanceId = ReadNullableIntParam(cmd, "instanceId");
-            if (instanceId.HasValue)
+            var serializedId = ReadSerializedObjectIdParam(cmd, "entityId", "instanceId");
+            if (AIBridgeObjectIdentity.HasSerializedId(serializedId))
             {
-                return FindGameObjectByInstanceId(instanceId.Value);
+                return FindGameObjectBySerializedId(serializedId);
             }
 
             return null;
@@ -1293,7 +1299,7 @@ namespace AIBridge.Runtime
             return null;
         }
 
-        private static GameObject FindGameObjectByInstanceId(int instanceId)
+        private static GameObject FindGameObjectBySerializedId(object serializedId)
         {
             var gameObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
             if (gameObjects == null)
@@ -1304,7 +1310,7 @@ namespace AIBridge.Runtime
             for (var i = 0; i < gameObjects.Length; i++)
             {
                 var candidate = gameObjects[i];
-                if (candidate != null && candidate.GetInstanceID() == instanceId)
+                if (AIBridgeObjectIdentity.MatchesSerializedId(candidate, serializedId))
                 {
                     return candidate;
                 }

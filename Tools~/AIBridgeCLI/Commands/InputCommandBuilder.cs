@@ -23,7 +23,8 @@ namespace AIBridgeCLI.Commands
             ["click"] = new List<ParameterInfo>
             {
                 new ParameterInfo("path", "Path to the GameObject in hierarchy", false),
-                new ParameterInfo("instanceId", "Instance ID of the GameObject", false)
+                new ParameterInfo("entityId", "Entity ID of the GameObject on Unity 6000.4+", false),
+                new ParameterInfo("instanceId", "Entity ID on Unity 6000.4+ or legacy instance ID on older Unity", false)
             },
             ["click_at"] = new List<ParameterInfo>
             {
@@ -38,9 +39,11 @@ namespace AIBridgeCLI.Commands
             ["drag"] = new List<ParameterInfo>
             {
                 new ParameterInfo("path", "Source GameObject path", false),
-                new ParameterInfo("instanceId", "Source GameObject instance ID", false),
+                new ParameterInfo("entityId", "Source GameObject entity ID on Unity 6000.4+", false),
+                new ParameterInfo("instanceId", "Source entity ID on Unity 6000.4+ or legacy instance ID on older Unity", false),
                 new ParameterInfo("toPath", "Destination GameObject path", false),
-                new ParameterInfo("toInstanceId", "Destination GameObject instance ID", false),
+                new ParameterInfo("toEntityId", "Destination GameObject entity ID on Unity 6000.4+", false),
+                new ParameterInfo("toInstanceId", "Destination entity ID on Unity 6000.4+ or legacy instance ID on older Unity", false),
                 new ParameterInfo("toX", "Destination screen X coordinate", false),
                 new ParameterInfo("toY", "Destination screen Y coordinate", false),
                 new ParameterInfo("frames", "Drag duration in editor update frames (3-60)", false, "12")
@@ -48,7 +51,8 @@ namespace AIBridgeCLI.Commands
             ["long_press"] = new List<ParameterInfo>
             {
                 new ParameterInfo("path", "Path to the GameObject in hierarchy", false),
-                new ParameterInfo("instanceId", "Instance ID of the GameObject", false),
+                new ParameterInfo("entityId", "Entity ID of the GameObject on Unity 6000.4+", false),
+                new ParameterInfo("instanceId", "Entity ID on Unity 6000.4+ or legacy instance ID on older Unity", false),
                 new ParameterInfo("duration-ms", "Hold duration in milliseconds", false, "1000")
             }
         };
@@ -158,9 +162,12 @@ namespace AIBridgeCLI.Commands
         {
             RenameParam(@params, "duration-ms", "durationMs");
             RenameParam(@params, "to-path", "toPath");
+            RenameParam(@params, "to-entity-id", "toEntityId");
             RenameParam(@params, "to-instance-id", "toInstanceId");
             RenameParam(@params, "to-x", "toX");
             RenameParam(@params, "to-y", "toY");
+            CopyParam(@params, "entityId", "instanceId");
+            CopyParam(@params, "toEntityId", "toInstanceId");
         }
 
         private static void RenameParam(Dictionary<string, object> @params, string sourceKey, string targetKey)
@@ -172,6 +179,16 @@ namespace AIBridgeCLI.Commands
 
             @params[targetKey] = @params[sourceKey];
             @params.Remove(sourceKey);
+        }
+
+        private static void CopyParam(Dictionary<string, object> @params, string sourceKey, string targetKey)
+        {
+            if (@params == null || !@params.ContainsKey(sourceKey) || @params.ContainsKey(targetKey))
+            {
+                return;
+            }
+
+            @params[targetKey] = @params[sourceKey];
         }
     }
 }

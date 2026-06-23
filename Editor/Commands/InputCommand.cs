@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using AIBridge.Internal.Json;
+using AIBridge.Runtime;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -340,15 +341,11 @@ Recommended flow: `editor play` -> `scene get_hierarchy` -> `input click` -> `ge
             error = null;
 
             var path = request.GetParam<string>(pathParam, null);
-            var instanceId = request.GetParam(instanceIdParam, 0);
+            var serializedId = AIBridgeEditorObjectIdentity.GetRequestObjectId(request, instanceIdParam);
 
-            if (instanceId != 0)
+            if (AIBridgeObjectIdentity.HasSerializedId(serializedId))
             {
-#if UNITY_6000_3_OR_NEWER
-                var obj = EditorUtility.EntityIdToObject(instanceId);
-#else
-                var obj = EditorUtility.InstanceIDToObject(instanceId);
-#endif
+                var obj = AIBridgeEditorObjectIdentity.ResolveObject(serializedId);
                 target = ObjectToGameObject(obj);
             }
             else if (!string.IsNullOrEmpty(path))
@@ -786,7 +783,7 @@ Recommended flow: `editor play` -> `scene get_hierarchy` -> `input click` -> `ge
             {
                 name = go.name,
                 path = GetGameObjectPath(go),
-                instanceId = go.GetInstanceID()
+                instanceId = AIBridgeEditorObjectIdentity.GetSerializedId(go)
             };
         }
 

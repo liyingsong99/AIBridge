@@ -121,7 +121,7 @@ Avoid inline complex `--json` in PowerShell; build a JSON variable for `--values
                         index = i,
                         typeName = comp.GetType().Name,
                         fullTypeName = comp.GetType().FullName,
-                        instanceId = comp.GetInstanceID()
+                        instanceId = AIBridgeEditorObjectIdentity.GetSerializedId(comp)
                     };
 
                     if (comp is Behaviour behaviour)
@@ -479,7 +479,7 @@ Avoid inline complex `--json` in PowerShell; build a JSON variable for `--values
                     assetPath = context.AssetPath,
                     objectPath = context.ObjectPath,
                     addedComponent = newComponent.GetType().Name,
-                    instanceId = newComponent.GetInstanceID()
+                    instanceId = AIBridgeEditorObjectIdentity.GetSerializedId(newComponent)
                 });
             }
             finally
@@ -572,7 +572,7 @@ Avoid inline complex `--json` in PowerShell; build a JSON variable for `--values
             public int index;
             public string typeName;
             public string fullTypeName;
-            public int instanceId;
+            public object instanceId;
             public bool enabled = true;
         }
 

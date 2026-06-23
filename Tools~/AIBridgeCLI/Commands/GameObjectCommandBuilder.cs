@@ -26,7 +26,8 @@ namespace AIBridgeCLI.Commands
             ["destroy"] = new List<ParameterInfo>
             {
                 new ParameterInfo("path", "Path to the GameObject in hierarchy", false),
-                new ParameterInfo("instanceId", "Instance ID of the GameObject", false)
+                new ParameterInfo("entityId", "Entity ID of the GameObject on Unity 6000.4+", false),
+                new ParameterInfo("instanceId", "Entity ID on Unity 6000.4+ or legacy instance ID on older Unity", false)
             },
             ["find"] = new List<ParameterInfo>
             {
@@ -38,25 +39,29 @@ namespace AIBridgeCLI.Commands
             ["set_active"] = new List<ParameterInfo>
             {
                 new ParameterInfo("path", "Path to the GameObject", false),
-                new ParameterInfo("instanceId", "Instance ID of the GameObject", false),
+                new ParameterInfo("entityId", "Entity ID of the GameObject on Unity 6000.4+", false),
+                new ParameterInfo("instanceId", "Entity ID on Unity 6000.4+ or legacy instance ID on older Unity", false),
                 new ParameterInfo("active", "Set active state", false),
                 new ParameterInfo("toggle", "Toggle active state", false)
             },
             ["rename"] = new List<ParameterInfo>
             {
                 new ParameterInfo("path", "Path to the GameObject", false),
-                new ParameterInfo("instanceId", "Instance ID of the GameObject", false),
+                new ParameterInfo("entityId", "Entity ID of the GameObject on Unity 6000.4+", false),
+                new ParameterInfo("instanceId", "Entity ID on Unity 6000.4+ or legacy instance ID on older Unity", false),
                 new ParameterInfo("newName", "New name for the GameObject", true)
             },
             ["duplicate"] = new List<ParameterInfo>
             {
                 new ParameterInfo("path", "Path to the GameObject to duplicate", false),
-                new ParameterInfo("instanceId", "Instance ID of the GameObject", false)
+                new ParameterInfo("entityId", "Entity ID of the GameObject on Unity 6000.4+", false),
+                new ParameterInfo("instanceId", "Entity ID on Unity 6000.4+ or legacy instance ID on older Unity", false)
             },
             ["get_info"] = new List<ParameterInfo>
             {
                 new ParameterInfo("path", "Path to the GameObject", false),
-                new ParameterInfo("instanceId", "Instance ID of the GameObject", false)
+                new ParameterInfo("entityId", "Entity ID of the GameObject on Unity 6000.4+", false),
+                new ParameterInfo("instanceId", "Entity ID on Unity 6000.4+ or legacy instance ID on older Unity", false)
             }
         };
     }

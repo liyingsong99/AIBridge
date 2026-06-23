@@ -14,6 +14,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using AIBridge.Internal.Json;
+using AIBridge.Runtime;
 using UnityEditor;
 using UnityEngine;
 
@@ -2005,12 +2006,14 @@ $CLI code cancel
             var unityObject = value as UnityEngine.Object;
             if (unityObject != null)
             {
-                return new
+                var result = new Dictionary<string, object>
                 {
-                    type = unityObject.GetType().FullName,
-                    name = unityObject.name,
-                    instanceId = unityObject.GetInstanceID()
+                    ["type"] = unityObject.GetType().FullName,
+                    ["name"] = unityObject.name
                 };
+
+                AIBridgeObjectIdentity.AddSerializedId(result, unityObject);
+                return result;
             }
 
             var generationResult = value as AIBridgeGenerationResult;

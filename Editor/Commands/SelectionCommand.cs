@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AIBridge.Runtime;
 using UnityEditor;
 using UnityEngine;
 
@@ -70,7 +71,7 @@ $CLI selection remove --path ""Enemy1""
                     layer = LayerMask.LayerToName(go.layer),
                     activeSelf = go.activeSelf,
                     activeInHierarchy = go.activeInHierarchy,
-                    instanceId = go.GetInstanceID()
+                    instanceId = AIBridgeEditorObjectIdentity.GetSerializedId(go)
                 };
 
                 if (includeComponents)
@@ -104,7 +105,7 @@ $CLI selection remove --path ""Enemy1""
                         name = obj.name,
                         path = path,
                         type = obj.GetType().Name,
-                        instanceId = obj.GetInstanceID()
+                        instanceId = AIBridgeEditorObjectIdentity.GetSerializedId(obj)
                     });
                 }
             }
@@ -113,8 +114,8 @@ $CLI selection remove --path ""Enemy1""
             {
                 gameObjects = gameObjects,
                 assets = assets,
-                activeObject = Selection.activeObject?.name,
-                activeObjectInstanceId = Selection.activeObject?.GetInstanceID(),
+                activeObject = Selection.activeObject != null ? Selection.activeObject.name : null,
+                activeObjectInstanceId = Selection.activeObject != null ? AIBridgeEditorObjectIdentity.GetSerializedId(Selection.activeObject) : null,
                 count = gameObjects.Count + assets.Count
             });
         }
@@ -123,20 +124,16 @@ $CLI selection remove --path ""Enemy1""
         {
             var path = request.GetParam<string>("path", null);
             var assetPath = request.GetParam<string>("assetPath", null);
-            var instanceId = request.GetParam("instanceId", 0);
-            var instanceIds = request.GetParam<string>("instanceIds", null);
+            var serializedId = AIBridgeEditorObjectIdentity.GetRequestObjectId(request, "instanceId");
+            var instanceIds = AIBridgeEditorObjectIdentity.GetRequestObjectIds(request, "instanceIds");
 
             UnityEngine.Object selectedObject = null;
             var selectedObjects = new List<UnityEngine.Object>();
 
             // By instance ID
-            if (instanceId != 0)
+            if (AIBridgeObjectIdentity.HasSerializedId(serializedId))
             {
-#if UNITY_6000_3_OR_NEWER
-                selectedObject = EditorUtility.EntityIdToObject(instanceId);
-#else
-                selectedObject = EditorUtility.InstanceIDToObject(instanceId);
-#endif
+                selectedObject = AIBridgeEditorObjectIdentity.ResolveObject(serializedId);
                 if (selectedObject != null)
                 {
                     selectedObjects.Add(selectedObject);
@@ -148,13 +145,10 @@ $CLI selection remove --path ""Enemy1""
                 var ids = instanceIds.Split(',');
                 foreach (var idStr in ids)
                 {
-                    if (int.TryParse(idStr.Trim(), out var id))
+                    var id = idStr.Trim();
+                    if (AIBridgeObjectIdentity.HasSerializedId(id))
                     {
-#if UNITY_6000_3_OR_NEWER
-                        var obj = EditorUtility.EntityIdToObject(id);
-#else
-                        var obj = EditorUtility.InstanceIDToObject(id);
-#endif
+                        var obj = AIBridgeEditorObjectIdentity.ResolveObject(id);
                         if (obj != null)
                         {
                             selectedObjects.Add(obj);
@@ -184,7 +178,7 @@ $CLI selection remove --path ""Enemy1""
 
             if (selectedObjects.Count == 0)
             {
-                return CommandResult.Failure(request.id, "No objects found to select. Provide 'path', 'assetPath', 'instanceId', or 'instanceIds'");
+                return CommandResult.Failure(request.id, "No objects found to select. Provide 'path', 'assetPath', 'entityId/instanceId', or 'entityIds/instanceIds'");
             }
 
             Selection.objects = selectedObjects.ToArray();
@@ -194,7 +188,7 @@ $CLI selection remove --path ""Enemy1""
             {
                 action = "set",
                 selectedCount = selectedObjects.Count,
-                activeObject = Selection.activeObject?.name
+                activeObject = Selection.activeObject != null ? Selection.activeObject.name : null
             });
         }
 
@@ -214,17 +208,13 @@ $CLI selection remove --path ""Enemy1""
         {
             var path = request.GetParam<string>("path", null);
             var assetPath = request.GetParam<string>("assetPath", null);
-            var instanceId = request.GetParam("instanceId", 0);
+            var serializedId = AIBridgeEditorObjectIdentity.GetRequestObjectId(request, "instanceId");
 
             UnityEngine.Object objectToAdd = null;
 
-            if (instanceId != 0)
+            if (AIBridgeObjectIdentity.HasSerializedId(serializedId))
             {
-#if UNITY_6000_3_OR_NEWER
-                objectToAdd = EditorUtility.EntityIdToObject(instanceId);
-#else
-                objectToAdd = EditorUtility.InstanceIDToObject(instanceId);
-#endif
+                objectToAdd = AIBridgeEditorObjectIdentity.ResolveObject(serializedId);
             }
             else if (!string.IsNullOrEmpty(path))
             {
@@ -259,17 +249,13 @@ $CLI selection remove --path ""Enemy1""
         {
             var path = request.GetParam<string>("path", null);
             var assetPath = request.GetParam<string>("assetPath", null);
-            var instanceId = request.GetParam("instanceId", 0);
+            var serializedId = AIBridgeEditorObjectIdentity.GetRequestObjectId(request, "instanceId");
 
             UnityEngine.Object objectToRemove = null;
 
-            if (instanceId != 0)
+            if (AIBridgeObjectIdentity.HasSerializedId(serializedId))
             {
-#if UNITY_6000_3_OR_NEWER
-                objectToRemove = EditorUtility.EntityIdToObject(instanceId);
-#else
-                objectToRemove = EditorUtility.InstanceIDToObject(instanceId);
-#endif
+                objectToRemove = AIBridgeEditorObjectIdentity.ResolveObject(serializedId);
             }
             else if (!string.IsNullOrEmpty(path))
             {
@@ -323,7 +309,7 @@ $CLI selection remove --path ""Enemy1""
             public string layer;
             public bool activeSelf;
             public bool activeInHierarchy;
-            public int instanceId;
+            public object instanceId;
             public List<string> components;
         }
 
@@ -333,7 +319,7 @@ $CLI selection remove --path ""Enemy1""
             public string name;
             public string path;
             public string type;
-            public int instanceId;
+            public object instanceId;
         }
     }
 }
