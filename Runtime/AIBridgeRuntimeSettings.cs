@@ -5,6 +5,8 @@ namespace AIBridge.Runtime
     [Serializable]
     public class AIBridgeRuntimeSettings
     {
+        public const float DefaultHeartbeatIntervalSeconds = 2f;
+
         public bool enableRuntimeBridge = true;
         public bool allowInReleaseBuild = false;
         public string exchangeDirectory;
@@ -12,7 +14,7 @@ namespace AIBridge.Runtime
         public string authToken;
         public string[] allowedActions = new string[0];
         public bool enableRuntimeCodeExecution = true;
-        public float heartbeatIntervalSeconds = 1f;
+        public float heartbeatIntervalSeconds = DefaultHeartbeatIntervalSeconds;
         public int logBufferSize = 500;
         public int maxResultBytes = 1048576;
         public bool keepRunningInBackground = true;

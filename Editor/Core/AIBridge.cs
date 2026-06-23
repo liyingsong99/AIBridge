@@ -216,7 +216,7 @@ namespace AIBridge.Editor
         /// </summary>
         public static void ProcessCommandsNow()
         {
-            _watcher.ScanForCommands();
+            _watcher.ScanForCommands(force: true);
             while (_watcher.ProcessOneCommand())
             {
                 // Process all pending commands

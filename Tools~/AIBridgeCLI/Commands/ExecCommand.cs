@@ -64,6 +64,17 @@ namespace AIBridgeCLI.Commands
                 PrintResult(result, outputMode);
                 return result.success ? 0 : 1;
             }
+            catch (JsonReaderException ex)
+            {
+                var error = new ExecRunResult
+                {
+                    success = false,
+                    error = "Invalid exec JSON request: " + ex.Message + Environment.NewLine + GetExecJsonUsageHint(),
+                    exitCode = -1
+                };
+                PrintResult(error, outputMode);
+                return 1;
+            }
             catch (Exception ex)
             {
                 var error = new ExecRunResult
@@ -114,6 +125,14 @@ namespace AIBridgeCLI.Commands
             }
 
             return inlineJson;
+        }
+
+        private static string GetExecJsonUsageHint()
+        {
+            return "exec run --stdin expects a JSON object piped to stdin, not a raw shell command. "
+                + "Example JSON: { \"command\": \"rg\", \"args\": [\"-n\"], \"queries\": [\"TODO\"], \"paths\": [\"Packages\"] }. "
+                + "PowerShell: $request | & ./.aibridge/cli/AIBridgeCLI.exe exec run --stdin. "
+                + "Do not write: AIBridgeCLI exec run --stdin rg -n TODO Packages.";
         }
 
         private static bool TryGetOption(Dictionary<string, string> options, string key, out string value)
@@ -204,7 +223,7 @@ namespace AIBridgeCLI.Commands
                 var command = ResolveCommand(request.command);
                 if (string.IsNullOrWhiteSpace(command))
                 {
-                    throw new ArgumentException("Exec request requires command.");
+                    throw new ArgumentException("Exec request requires command." + Environment.NewLine + GetExecJsonUsageHint());
                 }
 
                 var isRg = IsRgCommand(command, request.command);

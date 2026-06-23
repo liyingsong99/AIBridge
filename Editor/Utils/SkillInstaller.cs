@@ -1363,8 +1363,8 @@ namespace AIBridge.Editor
                 { "HOST_EXEC_TITLE", AIBridgeEditorText.For(language, "Host Exec", "Host Exec") },
                 { "HOST_EXEC_RULE", AIBridgeEditorText.For(
                     language,
-                    "When AIBridge CLI is available, prefer `$CLI exec run --stdin` for external host tools such as `rg`, `git`, `dotnet`, `python`, `node`, `sg`, or `grep`, including quick search/display tasks; use `$CLI exec batch --stdin` for multiple jobs. Direct host shell is only for trivial one-off commands, explicit user preference, or when AIBridge CLI is unavailable.",
-                    "当 AIBridge CLI 可用时，调用 `rg`、`git`、`dotnet`、`python`、`node`、`sg`、`grep` 等外部 host 工具优先用 `$CLI exec run --stdin`，快速查找/显示任务也适用；多任务使用 `$CLI exec batch --stdin`。直接 host shell 仅用于极简单的一次性命令、用户明确要求或 AIBridge CLI 不可用时。") },
+                    "When AIBridge CLI is available, prefer `$CLI exec run --stdin` for external host tools such as `rg`, `git`, `dotnet`, `python`, `node`, `sg`, or `grep`, including quick search/display tasks; pass a JSON request through stdin or `--request-file`, and never append a raw shell command after `--stdin`. Use `$CLI exec batch --stdin` for multiple jobs. Direct host shell is only for trivial one-off commands, explicit user preference, or when AIBridge CLI is unavailable.",
+                    "当 AIBridge CLI 可用时，调用 `rg`、`git`、`dotnet`、`python`、`node`、`sg`、`grep` 等外部 host 工具优先用 `$CLI exec run --stdin`，快速查找/显示任务也适用；必须通过 stdin 或 `--request-file` 传入 JSON 请求，禁止把裸 shell 命令追加在 `--stdin` 后面。多任务使用 `$CLI exec batch --stdin`。直接 host shell 仅用于极简单的一次性命令、用户明确要求或 AIBridge CLI 不可用时。") },
                 { "PROJECT_VERSION_TITLE", AIBridgeEditorText.For(language, "Project Version", "项目版本") },
                 { "UNITY_VERSION", unityVersion },
                 { "CSHARP_LANGUAGE_VERSION", csharpLanguageVersion },

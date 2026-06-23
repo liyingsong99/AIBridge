@@ -149,7 +149,7 @@ namespace AIBridge.Editor
         public const string DefaultRuntimeBridgeExchangeDirectory = "";
         public const string DefaultRuntimeBridgeTargetId = "";
         public const bool DefaultRuntimeBridgeCodeExecutionEnabled = true;
-        public const float DefaultRuntimeBridgeHeartbeatIntervalSeconds = 1f;
+        public const float DefaultRuntimeBridgeHeartbeatIntervalSeconds = global::AIBridge.Runtime.AIBridgeRuntimeSettings.DefaultHeartbeatIntervalSeconds;
         public const int DefaultRuntimeBridgeLogBufferSize = 500;
         public const int DefaultRuntimeBridgeMaxResultBytes = 1048576;
         public const bool DefaultRuntimeBridgeKeepRunningInBackground = true;

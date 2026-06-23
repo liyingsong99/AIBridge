@@ -91,7 +91,7 @@ namespace AIBridgeCLI
                         }
                         else
                         {
-                            throw new ArgumentException($"Unexpected argument: {arg}");
+                            throw new ArgumentException(BuildUnexpectedArgumentMessage(result, arg));
                         }
                     }
                     i++;
@@ -99,6 +99,33 @@ namespace AIBridgeCLI
             }
 
             return result;
+        }
+
+        private static string BuildUnexpectedArgumentMessage(ParsedArgs result, string arg)
+        {
+            if (IsExecStdinTrailingArgument(result))
+            {
+                var action = string.IsNullOrWhiteSpace(result.Action) ? "run" : result.Action;
+                return "Unexpected argument after exec " + action + " --stdin: " + arg + Environment.NewLine
+                    + "exec run/batch --stdin reads a JSON request from standard input; it does not accept a raw shell command after --stdin." + Environment.NewLine
+                    + "Pipe JSON into the CLI instead. PowerShell example:" + Environment.NewLine
+                    + "@'" + Environment.NewLine
+                    + "{ \"command\": \"rg\", \"args\": [\"-n\"], \"queries\": [\"TODO\"], \"paths\": [\"Packages\"] }" + Environment.NewLine
+                    + "'@ | & ./.aibridge/cli/AIBridgeCLI.exe exec run --stdin";
+            }
+
+            return $"Unexpected argument: {arg}";
+        }
+
+        private static bool IsExecStdinTrailingArgument(ParsedArgs result)
+        {
+            return result != null
+                && result.CommandType != null
+                && result.Action != null
+                && result.CommandType.Equals("exec", StringComparison.OrdinalIgnoreCase)
+                && (result.Action.Equals("run", StringComparison.OrdinalIgnoreCase)
+                    || result.Action.Equals("batch", StringComparison.OrdinalIgnoreCase))
+                && result.Options.ContainsKey("stdin");
         }
 
         private static bool IsRuntimeLogsClearShortcut(ParsedArgs result, string arg)

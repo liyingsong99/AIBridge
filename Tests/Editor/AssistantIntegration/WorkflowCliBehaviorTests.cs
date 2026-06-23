@@ -240,6 +240,35 @@ namespace AIBridge.Editor.Tests
             }
         }
 
+        [Test]
+        public void ExecRunStdinRejectsTrailingRawCommandWithAgentHint()
+        {
+            var packageRoot = GetPackageRoot();
+            var cliPath = ResolveCliPath(packageRoot);
+            if (string.IsNullOrEmpty(cliPath) || !File.Exists(cliPath))
+            {
+                Assert.Ignore("AIBridgeCLI executable was not found for this platform.");
+            }
+
+            var projectRoot = CreateTemporaryUnityProject();
+            try
+            {
+                var run = RunCli(cliPath, projectRoot, "exec run --stdin rg -n TODO Packages");
+                var output = run.Stdout + run.Stderr;
+
+                Assert.AreNotEqual(0, run.ExitCode, output);
+                StringAssert.Contains("exec run/batch --stdin reads a JSON request from standard input", output);
+                StringAssert.Contains("Pipe JSON into the CLI instead", output);
+            }
+            finally
+            {
+                if (Directory.Exists(projectRoot))
+                {
+                    Directory.Delete(projectRoot, true);
+                }
+            }
+        }
+
         private static void AssertRequiredGateStatus(WorkflowGateResultView[] gateResults, string gateId, string expectedStatus)
         {
             Assert.IsNotNull(gateResults, "Gate results are missing.");

@@ -63,6 +63,7 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("$CLI exec run --stdin", rootRule);
             StringAssert.Contains("$CLI exec batch --stdin", rootRule);
             StringAssert.Contains("including quick search/display tasks", rootRule);
+            StringAssert.Contains("never append a raw shell command after `--stdin`", rootRule);
             StringAssert.DoesNotContain("In AIBridge workflow tasks", rootRule);
             StringAssert.Contains("without loading `aibridge-development-workflow`", rootRule);
             StringAssert.Contains("simple search/display", rootRule);
@@ -104,6 +105,7 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("外部 host 工具", rootRule);
             StringAssert.Contains("$CLI exec run --stdin", rootRule);
             StringAssert.Contains("快速查找/显示任务也适用", rootRule);
+            StringAssert.Contains("禁止把裸 shell 命令追加在 `--stdin` 后面", rootRule);
             Assert.Less(
                 rootRule.IndexOf("**路由原则**", StringComparison.Ordinal),
                 rootRule.IndexOf("**项目版本**", StringComparison.Ordinal));

@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using AIBridge.Internal.Json;
 using UnityEditor;
 
@@ -11,14 +12,21 @@ namespace AIBridge.Editor
     /// </summary>
     public class CommandWatcher
     {
+        private static readonly TimeSpan CommandDirectoryRescanInterval = TimeSpan.FromSeconds(5);
         /// <summary>
         /// Timeout for stale command/result files (10 minutes)
         /// </summary>
         private static readonly TimeSpan StaleFileTimeout = TimeSpan.FromMinutes(10);
+        private static readonly TimeSpan CleanupPollInterval = TimeSpan.FromMinutes(1);
 
         private readonly string _commandsDir;
         private readonly string _resultsDir;
         private readonly CommandQueue _queue;
+        private FileSystemWatcher _commandWatcher;
+        private bool _watcherUnavailable;
+        private int _commandsDirty = 1;
+        private DateTime _lastCommandScanUtc = DateTime.MinValue;
+        private DateTime _lastCleanupUtc = DateTime.MinValue;
 
         public CommandWatcher(string baseDir)
         {
@@ -27,6 +35,7 @@ namespace AIBridge.Editor
             _queue = new CommandQueue();
 
             EnsureDirectoriesExist();
+            StartCommandWatcherIfNeeded();
         }
 
         /// <summary>
@@ -34,8 +43,29 @@ namespace AIBridge.Editor
         /// </summary>
         public void ScanForCommands()
         {
+            ScanForCommands(false);
+        }
+
+        /// <summary>
+        /// Scan for new command files and enqueue them
+        /// </summary>
+        public void ScanForCommands(bool force)
+        {
+            StartCommandWatcherIfNeeded();
+
+            var nowUtc = DateTime.UtcNow;
+            if (!force && !ShouldScanCommandDirectory(nowUtc))
+            {
+                CleanupPeriodicWorkIfDue(nowUtc);
+                return;
+            }
+
+            Interlocked.Exchange(ref _commandsDirty, 0);
+            _lastCommandScanUtc = nowUtc;
+
             if (!Directory.Exists(_commandsDir))
             {
+                CleanupPeriodicWorkIfDue(nowUtc);
                 return;
             }
 
@@ -112,14 +142,75 @@ namespace AIBridge.Editor
                 }
             }
 
-            // Periodically trim processed IDs
+            CleanupPeriodicWorkIfDue(nowUtc);
+        }
+
+        private bool ShouldScanCommandDirectory(DateTime nowUtc)
+        {
+            if (_commandWatcher == null || _watcherUnavailable)
+            {
+                return true;
+            }
+
+            if (Interlocked.CompareExchange(ref _commandsDirty, 0, 0) != 0)
+            {
+                return true;
+            }
+
+            return nowUtc - _lastCommandScanUtc >= CommandDirectoryRescanInterval;
+        }
+
+        private void CleanupPeriodicWorkIfDue(DateTime nowUtc)
+        {
+            if (nowUtc - _lastCleanupUtc < CleanupPollInterval)
+            {
+                return;
+            }
+
+            _lastCleanupUtc = nowUtc;
+
+            // 这类清理不需要跟命令扫描同频，降频后可以保留及时性同时减少目录枚举开销。
             _queue.TrimProcessedIds();
-
-            // Cleanup stale result files and error files
             CleanupStaleFiles();
-
-            // Cleanup old screenshots (1 day retention)
             ScreenshotCacheManager.CleanupOldScreenshots();
+        }
+
+        private void StartCommandWatcherIfNeeded()
+        {
+            if (_watcherUnavailable || _commandWatcher != null || !Directory.Exists(_commandsDir))
+            {
+                return;
+            }
+
+            try
+            {
+                var watcher = new FileSystemWatcher(_commandsDir, "*.json")
+                {
+                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.CreationTime | NotifyFilters.LastWrite | NotifyFilters.Size,
+                    IncludeSubdirectories = false
+                };
+
+                watcher.Created += OnCommandDirectoryChanged;
+                watcher.Changed += OnCommandDirectoryChanged;
+                watcher.Renamed += OnCommandDirectoryRenamed;
+                watcher.EnableRaisingEvents = true;
+                _commandWatcher = watcher;
+            }
+            catch (Exception ex)
+            {
+                _watcherUnavailable = true;
+                AIBridgeLogger.LogWarning("FileSystemWatcher is unavailable for command polling, falling back to timed directory scans: " + ex.Message);
+            }
+        }
+
+        private void OnCommandDirectoryChanged(object sender, FileSystemEventArgs e)
+        {
+            Interlocked.Exchange(ref _commandsDirty, 1);
+        }
+
+        private void OnCommandDirectoryRenamed(object sender, RenamedEventArgs e)
+        {
+            Interlocked.Exchange(ref _commandsDirty, 1);
         }
 
         /// <summary>

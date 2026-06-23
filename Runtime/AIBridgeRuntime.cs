@@ -70,9 +70,9 @@ namespace AIBridge.Runtime
         public AIBridgeRuntimeSettings runtimeSettings = new AIBridgeRuntimeSettings();
 
         /// <summary>
-        /// Polling interval in seconds.
+        /// Polling interval in seconds for legacy file transport command pickup.
         /// </summary>
-        [Tooltip("How often to check for new commands (in seconds)")]
+        [Tooltip("How often to check for file-transport commands when HTTP transport is not running (in seconds)")]
         public float pollIntervalSeconds = 0.1f;
 
         /// <summary>
@@ -101,6 +101,7 @@ namespace AIBridge.Runtime
         private string _cachedDeviceName;
         private bool _cachedIsEditor;
         private bool _cachedIsDebugBuild;
+        private int _cachedProcessId;
 
         private readonly Queue<AIBridgeRuntimeCommand> _commandQueue = new Queue<AIBridgeRuntimeCommand>();
         private readonly List<IAIBridgeHandler> _handlers = new List<IAIBridgeHandler>();
@@ -109,6 +110,8 @@ namespace AIBridge.Runtime
         private readonly object _pendingHttpResultsSyncRoot = new object();
         private readonly Dictionary<string, AIBridgeRuntimeCommandResult> _pendingHttpResults = new Dictionary<string, AIBridgeRuntimeCommandResult>();
         private readonly HashSet<string> _httpCommandIds = new HashSet<string>();
+        private readonly Dictionary<string, object> _heartbeatData = new Dictionary<string, object>(32);
+        private readonly Dictionary<string, object> _heartbeatCapabilitiesData = new Dictionary<string, object>(16);
         private HttpRuntimeTransportServer _httpTransportServer;
         private LanRuntimeDiscoveryServer _lanDiscoveryServer;
 
@@ -185,7 +188,7 @@ namespace AIBridge.Runtime
             WriteHeartbeatIfDue();
 
             var now = Time.realtimeSinceStartup;
-            if (now - _lastPollTime >= pollIntervalSeconds)
+            if (ShouldScanForFileCommands(now))
             {
                 _lastPollTime = now;
                 ScanForCommands();
@@ -277,6 +280,7 @@ namespace AIBridge.Runtime
 
             _targetId = ResolveTargetId();
             CacheMainThreadRuntimeInfo();
+            _cachedProcessId = TryGetProcessId();
             _runtimeRootPath = ResolveRuntimeRootPath();
             _targetPath = Path.Combine(_runtimeRootPath, TargetsDirectoryName, _targetId);
             _commandsPath = Path.Combine(_targetPath, CommandsDirectoryName);
@@ -304,6 +308,23 @@ namespace AIBridge.Runtime
             LogDebug($"Initialized - Target: {_targetId}");
             LogDebug($"Initialized - Commands: {_commandsPath}");
             LogDebug($"Initialized - Results: {_resultsPath}");
+        }
+
+        private bool ShouldScanForFileCommands(float now)
+        {
+            if (_httpTransportServer != null && _httpTransportServer.IsRunning)
+            {
+                return false;
+            }
+
+            var interval = Mathf.Max(0.1f, pollIntervalSeconds);
+            if (now - _lastPollTime < interval)
+            {
+                return false;
+            }
+
+            // HTTP transport 会直接入队命令；只有 HTTP 不可用时才保留旧 file transport 轮询。
+            return !string.IsNullOrEmpty(_commandsPath) && Directory.Exists(_commandsPath);
         }
 
         private void ScanForCommands()
@@ -1643,7 +1664,9 @@ namespace AIBridge.Runtime
 
         private void WriteHeartbeatIfDue()
         {
-            var interval = runtimeSettings == null ? 1f : Mathf.Max(0.1f, runtimeSettings.heartbeatIntervalSeconds);
+            var interval = runtimeSettings == null
+                ? AIBridgeRuntimeSettings.DefaultHeartbeatIntervalSeconds
+                : Mathf.Max(0.1f, runtimeSettings.heartbeatIntervalSeconds);
             if (Time.realtimeSinceStartup - _lastHeartbeatTime < interval)
             {
                 return;
@@ -1655,43 +1678,25 @@ namespace AIBridge.Runtime
         private void WriteHeartbeat()
         {
             _lastHeartbeatTime = Time.realtimeSinceStartup;
-            var heartbeat = new Dictionary<string, object>
-            {
-                ["targetId"] = _targetId,
-                ["protocolVersion"] = 2,
-                ["transport"] = "file",
-                ["capabilities"] = BuildCapabilitiesData(),
-                ["bindUrl"] = BuildLocalHttpUrl(),
-                ["reachableUrl"] = BuildLocalHttpUrl(),
-                ["httpUrl"] = BuildLocalHttpUrl(),
-                ["httpPort"] = GetActualHttpPort(),
-                ["httpBindAddress"] = runtimeSettings == null ? null : runtimeSettings.httpBindAddress,
-                ["lanDiscoveryUdpPort"] = GetActualLanDiscoveryPort(),
-                ["runtimeVersion"] = RuntimeVersion,
-                ["productName"] = Application.productName,
-                ["applicationVersion"] = Application.version,
-                ["unityVersion"] = Application.unityVersion,
-                ["platform"] = Application.platform.ToString(),
-                ["deviceName"] = SystemInfo.deviceName,
-                ["isEditor"] = Application.isEditor,
-                ["isDebugBuild"] = Debug.isDebugBuild,
-                ["runInBackground"] = Application.runInBackground,
-                ["keepRunningInBackground"] = runtimeSettings != null && runtimeSettings.keepRunningInBackground,
-                ["activeScene"] = SceneManager.GetActiveScene().name,
-                ["uptimeSeconds"] = (DateTime.UtcNow - _startedAtUtc).TotalSeconds,
-                ["lastHeartbeatUtc"] = DateTime.UtcNow.ToString("o"),
-                ["processId"] = TryGetProcessId(),
-                ["runtimeRoot"] = _runtimeRootPath,
-                ["targetPath"] = _targetPath,
-                ["commandsPath"] = _commandsPath,
-                ["resultsPath"] = _resultsPath,
-                ["screenshotsPath"] = _screenshotsPath
-            };
-            AddRuntimeReadinessData(heartbeat);
+            var heartbeat = GetHeartbeatData();
+            var heartbeatJson = AIBridgeJson.Serialize(heartbeat, pretty: false);
 
             try
             {
-                WriteTextAtomic(_heartbeatPath, AIBridgeJson.Serialize(heartbeat, pretty: true));
+                WriteTextAtomic(_heartbeatPath, heartbeatJson, false);
+            }
+            catch (DirectoryNotFoundException)
+            {
+                // 心跳是高频主路径，正常情况下目录已在初始化时创建；仅在外部清理后才补建一次。
+                try
+                {
+                    EnsureHeartbeatDirectory();
+                    WriteTextAtomic(_heartbeatPath, heartbeatJson, false);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[AIBridgeRuntime] Failed to write heartbeat: {ex.Message}");
+                }
             }
             catch (Exception ex)
             {
@@ -1826,38 +1831,31 @@ namespace AIBridge.Runtime
             return ticks <= 0L ? null : new DateTime(ticks, DateTimeKind.Utc).ToString("o");
         }
 
-        private Dictionary<string, object> BuildRuntimeReadinessData()
-        {
-            string reason;
-            long ageMs;
-            var ready = IsCommandPumpReady(out reason, out ageMs);
-            var runtimeState = ready ? "running" : (_runtimeServicesStopping ? "stopping" : "not_ready");
-            return new Dictionary<string, object>
-            {
-                ["ready"] = ready,
-                ["runtimeState"] = runtimeState,
-                ["commandPumpReady"] = ready,
-                ["commandPumpReason"] = ready ? null : reason,
-                ["commandPumpStaleThresholdMs"] = CommandPumpStaleMilliseconds,
-                ["lastMainThreadTickUtc"] = GetLastMainThreadTickUtc(),
-                ["lastMainThreadTickAgeMs"] = ageMs == long.MaxValue ? (object)null : ageMs,
-                ["processingCommands"] = Interlocked.CompareExchange(ref _processingCommands, 0, 0),
-                ["stopReason"] = _runtimeStopReason
-            };
-        }
-
-        private void AddRuntimeReadinessData(Dictionary<string, object> data)
+        private void FillRuntimeReadinessData(Dictionary<string, object> data)
         {
             if (data == null)
             {
                 return;
             }
 
-            var readiness = BuildRuntimeReadinessData();
-            foreach (var pair in readiness)
-            {
-                data[pair.Key] = pair.Value;
-            }
+            string reason;
+            long ageMs;
+            var ready = IsCommandPumpReady(out reason, out ageMs);
+            var runtimeState = ready ? "running" : (_runtimeServicesStopping ? "stopping" : "not_ready");
+            data["ready"] = ready;
+            data["runtimeState"] = runtimeState;
+            data["commandPumpReady"] = ready;
+            data["commandPumpReason"] = ready ? null : reason;
+            data["commandPumpStaleThresholdMs"] = CommandPumpStaleMilliseconds;
+            data["lastMainThreadTickUtc"] = GetLastMainThreadTickUtc();
+            data["lastMainThreadTickAgeMs"] = ageMs == long.MaxValue ? (object)null : ageMs;
+            data["processingCommands"] = Interlocked.CompareExchange(ref _processingCommands, 0, 0);
+            data["stopReason"] = _runtimeStopReason;
+        }
+
+        private void AddRuntimeReadinessData(Dictionary<string, object> data)
+        {
+            FillRuntimeReadinessData(data);
         }
 
         private void FailPendingHttpCommands(string error)
@@ -2326,6 +2324,18 @@ namespace AIBridge.Runtime
 
         internal Dictionary<string, object> BuildCapabilitiesData()
         {
+            var capabilities = new Dictionary<string, object>(16);
+            FillCapabilitiesData(capabilities);
+            return capabilities;
+        }
+
+        private void FillCapabilitiesData(Dictionary<string, object> data)
+        {
+            if (data == null)
+            {
+                return;
+            }
+
             string runtimeCodeUnavailableReason;
             var runtimeCodeAvailable = IsRuntimeCodeExecutionAvailable(out runtimeCodeUnavailableReason);
             if (runtimeCodeAvailable && (runtimeSettings == null || !runtimeSettings.enableRuntimeCodeExecution))
@@ -2334,24 +2344,83 @@ namespace AIBridge.Runtime
                 runtimeCodeUnavailableReason = "Runtime code execution is disabled in AIBridgeRuntimeSettings.";
             }
 
-            return new Dictionary<string, object>
+            data["perf"] = true;
+            data["diagnose"] = true;
+            data["screenshotPull"] = true;
+            data["logsClear"] = true;
+            data["runtimeCodeExecute"] = runtimeCodeAvailable;
+            data["runtimeCodeExecuteReason"] = runtimeCodeAvailable ? null : runtimeCodeUnavailableReason;
+            data["uiSnapshot"] = true;
+            data["uiRaycast"] = true;
+            data["uiFind"] = true;
+            data["uiClick"] = true;
+            data["uiKey"] = true;
+            data["file"] = true;
+            data["http"] = _httpTransportServer != null && _httpTransportServer.IsRunning;
+            data["lanDiscovery"] = _lanDiscoveryServer != null && _lanDiscoveryServer.IsRunning;
+            data["ws"] = false;
+        }
+
+        private Dictionary<string, object> GetHeartbeatData()
+        {
+            EnsureHeartbeatDataInitialized();
+            RefreshHeartbeatData();
+            return _heartbeatData;
+        }
+
+        private void EnsureHeartbeatDataInitialized()
+        {
+            if (_heartbeatData.Count > 0)
             {
-                ["perf"] = true,
-                ["diagnose"] = true,
-                ["screenshotPull"] = true,
-                ["logsClear"] = true,
-                ["runtimeCodeExecute"] = runtimeCodeAvailable,
-                ["runtimeCodeExecuteReason"] = runtimeCodeAvailable ? null : runtimeCodeUnavailableReason,
-                ["uiSnapshot"] = true,
-                ["uiRaycast"] = true,
-                ["uiFind"] = true,
-                ["uiClick"] = true,
-                ["uiKey"] = true,
-                ["file"] = true,
-                ["http"] = _httpTransportServer != null && _httpTransportServer.IsRunning,
-                ["lanDiscovery"] = _lanDiscoveryServer != null && _lanDiscoveryServer.IsRunning,
-                ["ws"] = false
-            };
+                return;
+            }
+
+            _heartbeatData["targetId"] = _targetId;
+            _heartbeatData["protocolVersion"] = 2;
+            _heartbeatData["transport"] = "file";
+            _heartbeatData["capabilities"] = _heartbeatCapabilitiesData;
+            _heartbeatData["runtimeVersion"] = RuntimeVersion;
+            _heartbeatData["productName"] = _cachedProductName;
+            _heartbeatData["applicationVersion"] = _cachedApplicationVersion;
+            _heartbeatData["unityVersion"] = _cachedUnityVersion;
+            _heartbeatData["platform"] = _cachedPlatform;
+            _heartbeatData["deviceName"] = _cachedDeviceName;
+            _heartbeatData["isEditor"] = _cachedIsEditor;
+            _heartbeatData["isDebugBuild"] = _cachedIsDebugBuild;
+            _heartbeatData["runtimeRoot"] = _runtimeRootPath;
+            _heartbeatData["targetPath"] = _targetPath;
+            _heartbeatData["commandsPath"] = _commandsPath;
+            _heartbeatData["resultsPath"] = _resultsPath;
+            _heartbeatData["screenshotsPath"] = _screenshotsPath;
+        }
+
+        private void RefreshHeartbeatData()
+        {
+            var httpUrl = BuildLocalHttpUrl();
+            var nowUtc = DateTime.UtcNow;
+            _heartbeatData["bindUrl"] = httpUrl;
+            _heartbeatData["reachableUrl"] = httpUrl;
+            _heartbeatData["httpUrl"] = httpUrl;
+            _heartbeatData["httpPort"] = GetActualHttpPort();
+            _heartbeatData["httpBindAddress"] = runtimeSettings == null ? null : runtimeSettings.httpBindAddress;
+            _heartbeatData["lanDiscoveryUdpPort"] = GetActualLanDiscoveryPort();
+            _heartbeatData["runInBackground"] = Application.runInBackground;
+            _heartbeatData["keepRunningInBackground"] = runtimeSettings != null && runtimeSettings.keepRunningInBackground;
+            _heartbeatData["activeScene"] = SceneManager.GetActiveScene().name;
+            _heartbeatData["uptimeSeconds"] = (nowUtc - _startedAtUtc).TotalSeconds;
+            _heartbeatData["lastHeartbeatUtc"] = nowUtc.ToString("o");
+            _heartbeatData["processId"] = _cachedProcessId;
+
+            FillCapabilitiesData(_heartbeatCapabilitiesData);
+            FillRuntimeReadinessData(_heartbeatData);
+        }
+
+        private void EnsureHeartbeatDirectory()
+        {
+            if (!string.IsNullOrEmpty(_targetPath))
+            {
+                Directory.CreateDirectory(_targetPath);
+            }
         }
 
         private static string ComputeSha256(byte[] bytes)
@@ -2374,12 +2443,15 @@ namespace AIBridge.Runtime
             }
         }
 
-        private static void WriteTextAtomic(string path, string text)
+        private static void WriteTextAtomic(string path, string text, bool ensureDirectory = true)
         {
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(directory))
+            if (ensureDirectory)
             {
-                Directory.CreateDirectory(directory);
+                var directory = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
             }
 
             // 先写临时文件再替换，避免 CLI 读到半截 JSON。

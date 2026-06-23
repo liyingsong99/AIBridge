@@ -39,6 +39,9 @@ namespace AIBridgeCLI.Commands
             sb.AppendLine("This command does not invoke PowerShell, cmd, or bash. It starts one executable");
             sb.AppendLine("with an argv array and optional stdin, then returns normalized JSON.");
             sb.AppendLine();
+            sb.AppendLine("Agent note: --stdin means the exec request JSON is read from standard input.");
+            sb.AppendLine("Do not append a raw shell command after --stdin; pipe JSON into the CLI instead.");
+            sb.AppendLine();
             sb.AppendLine("Usage:");
             sb.AppendLine("  AIBridgeCLI exec run --stdin");
             sb.AppendLine("  AIBridgeCLI exec run --request-file .aibridge/exec/search.json");
@@ -70,6 +73,7 @@ namespace AIBridgeCLI.Commands
             sb.AppendLine("  continueOnError: bool");
             sb.AppendLine();
             sb.AppendLine("Examples:");
+            sb.AppendLine("  PowerShell: $request | & ./.aibridge/cli/AIBridgeCLI.exe exec run --stdin");
             sb.AppendLine("  { \"command\": \"rg\", \"queries\": [\"ProcessStartInfo\", \"ArgumentList\"], \"globs\": [\"*.cs\"], \"paths\": [\"Packages\"] }");
             sb.AppendLine("  { \"jobs\": [{ \"command\": \"rg\", \"args\": [\"-n\"], \"queries\": [\"TODO\"], \"paths\": [\"Assets\"] }] }");
             return sb.ToString();

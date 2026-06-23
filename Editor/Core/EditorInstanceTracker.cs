@@ -13,6 +13,12 @@ namespace AIBridge.Editor
         private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(2);
 
         private static string _metadataPath;
+        private static string _metadataDirectory;
+        private static bool _metadataDirectoryReady;
+        private static Process _currentProcess;
+        private static int _processId;
+        private static string _projectRoot;
+        private static string _projectName;
         private static DateTime _lastWriteUtc = DateTime.MinValue;
         private static string _lastLoggedError;
 
@@ -23,7 +29,11 @@ namespace AIBridge.Editor
                 return;
             }
 
+            _metadataDirectory = bridgeDirectory;
             _metadataPath = Path.Combine(bridgeDirectory, MetadataFileName);
+            _metadataDirectoryReady = false;
+            _projectRoot = Path.GetDirectoryName(Application.dataPath);
+            _projectName = GetProjectName(_projectRoot);
             WriteMetadata(force: true);
         }
 
@@ -63,44 +73,87 @@ namespace AIBridge.Editor
 
             try
             {
-                var metadataDirectory = Path.GetDirectoryName(_metadataPath);
-                if (!string.IsNullOrEmpty(metadataDirectory) && !Directory.Exists(metadataDirectory))
+                WriteMetadataCore();
+            }
+            catch (DirectoryNotFoundException)
+            {
+                // Editor 心跳也是高频路径；目录正常只在初始化建一次，被外部删除后才恢复。
+                try
                 {
-                    Directory.CreateDirectory(metadataDirectory);
+                    _metadataDirectoryReady = false;
+                    WriteMetadataCore();
                 }
-
-                var process = Process.GetCurrentProcess();
-                process.Refresh();
-
-                var projectRoot = Path.GetDirectoryName(Application.dataPath);
-                var metadata = new EditorInstanceMetadata
+                catch (Exception ex)
                 {
-                    schemaVersion = 1,
-                    processId = process.Id,
-                    projectRoot = projectRoot,
-                    projectName = GetProjectName(projectRoot),
-                    windowTitle = NormalizeWindowTitle(process.MainWindowTitle),
-                    lastUpdatedUtc = DateTime.UtcNow.ToString("O")
-                };
-
-                var json = AIBridgeJson.Serialize(metadata, pretty: true);
-                var tempPath = _metadataPath + ".tmp";
-
-                File.WriteAllText(tempPath, json, new UTF8Encoding(false));
-                File.Copy(tempPath, _metadataPath, true);
-                File.Delete(tempPath);
-
-                _lastWriteUtc = DateTime.UtcNow;
-                _lastLoggedError = null;
-                AIBridgeLogger.LogDebug($"Updated editor instance metadata: {_metadataPath}");
+                    LogWriteError(ex);
+                }
             }
             catch (Exception ex)
             {
-                if (!string.Equals(_lastLoggedError, ex.Message, StringComparison.Ordinal))
-                {
-                    AIBridgeLogger.LogWarning($"Failed to update editor instance metadata: {ex.Message}");
-                    _lastLoggedError = ex.Message;
-                }
+                LogWriteError(ex);
+            }
+        }
+
+        private static void WriteMetadataCore()
+        {
+            EnsureMetadataDirectory();
+
+            var process = GetCurrentProcess();
+            process.Refresh();
+
+            var metadata = new EditorInstanceMetadata
+            {
+                schemaVersion = 1,
+                processId = _processId,
+                projectRoot = _projectRoot,
+                projectName = _projectName,
+                windowTitle = NormalizeWindowTitle(process.MainWindowTitle),
+                lastUpdatedUtc = DateTime.UtcNow.ToString("O")
+            };
+
+            var json = AIBridgeJson.Serialize(metadata, pretty: true);
+            var tempPath = _metadataPath + ".tmp";
+
+            File.WriteAllText(tempPath, json, new UTF8Encoding(false));
+            File.Copy(tempPath, _metadataPath, true);
+            File.Delete(tempPath);
+
+            _lastWriteUtc = DateTime.UtcNow;
+            _lastLoggedError = null;
+            AIBridgeLogger.LogDebug($"Updated editor instance metadata: {_metadataPath}");
+        }
+
+        private static void EnsureMetadataDirectory()
+        {
+            if (_metadataDirectoryReady)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(_metadataDirectory))
+            {
+                Directory.CreateDirectory(_metadataDirectory);
+                _metadataDirectoryReady = true;
+            }
+        }
+
+        private static Process GetCurrentProcess()
+        {
+            if (_currentProcess == null)
+            {
+                _currentProcess = Process.GetCurrentProcess();
+                _processId = _currentProcess.Id;
+            }
+
+            return _currentProcess;
+        }
+
+        private static void LogWriteError(Exception ex)
+        {
+            if (!string.Equals(_lastLoggedError, ex.Message, StringComparison.Ordinal))
+            {
+                AIBridgeLogger.LogWarning($"Failed to update editor instance metadata: {ex.Message}");
+                _lastLoggedError = ex.Message;
             }
         }
 

@@ -29,7 +29,7 @@
 |---|---|---|
 | Unity Editor | `AIBridge/Settings`、`AIBridge/Workflows`、`AIBridge/Players`、`AIBridge/Workflow Graph`、`AIBridge/Screenshot Game View _F12`、`AIBridge/Record GIF _F11` | 覆盖基础设置、工作流配置、Runtime 目标查看、工作流图和截图快捷入口 |
 | CLI | `focus`、`dialog`、`asset`、`batch`、`code`、`code_index`、`compile`、`editor`、`exec`、`gameobject`、`gameview`、`get_logs`、`harness`、`input`、`inspector`、`menu_item`、`multi`、`prefab`、`profiler`、`runtime`、`scene`、`screenshot`、`selection`、`test`、`text_index`、`transform`、`workflow`、`compile dotnet` | 当前 AIBridge CLI 的真实命令面 |
-| Runtime Bridge | `Runtime/AIBridgeRuntime.cs`、`Runtime/Transports/*`、`runtime status/logs/screenshot/perf/handlers/call` | 连接已编译 Player 或 Play Mode 目标，采集证据和调用白名单 handler |
+| Runtime Bridge | `Runtime/AIBridgeRuntime.cs`、`Runtime/Transports/*`、`runtime status/logs/screenshot/perf/handlers/call` | 连接已编译 Player 或 Play Mode 目标，HTTP 为默认控制面，File transport 为 HTTP 未运行时的兼容回退，采集证据和调用白名单 handler |
 | Workflow | `Tools~/AIBridgeCLI/Workflow/*`、`Templates~/Workflows/*.aibridge-workflow.json`、`workflow list/validate/plan/init/begin/status/report/finish/import/export/clean` | 负责 recipes、run manifest、artifact、gate、report 和外部结果导入 |
 | Skills | `Skill~/aibridge-development-workflow`、`Skill~/aibridge-workflow-orchestration`、`Skill~/aibridge-code-index`、`Skill~/aibridge-prefab-patch`、`Skill~/aibridge-batch-script`、`Skill~/unity-yaml-editing` | 分别覆盖 workflow 短入口/分支路由、编排、语义检索、Prefab patch、批处理和 YAML 兜底 |
 | 文档 | `Doc~/README.md`、`Doc~/WorkflowsPanel.md`、`Doc~/WorkflowGraphPanel.md`、`Doc~/workflow-guide/README.md`、`Doc~/workflow-guide/ContextCompression.md`、`Doc~/workflow-guide/AIBridgeLoopsAnalysis.md` | 功能目录、面板定位、workflow 说明、上下文压缩策略和 FSM 分析 |
@@ -139,7 +139,10 @@
 - `compile dotnet` 只是额外检查，不是 Unity 编译替代品。
 - `code_index` 仍是默认关闭的只读语义入口。
 - `workflow run-cli` 不会自动执行 `agent` / `manual`，这些步骤仍需要外部执行器回流。
+- `exec run --stdin` / `exec batch --stdin` 的 stdin 契约是 JSON 请求，不是裸 shell 命令；AI-facing 提示必须明确“先 pipe JSON，再调用 CLI”，避免把 `--stdin` 后面的追加参数误当成 stdin。
 - `aibridge-development-workflow` 使用短入口，Harness 采用 compact gate；完整探测矩阵、fallback、resume 和证据 schema 移入 `harness-readiness-detail.md` 按需加载。
+- Runtime HTTP transport 正常运行时不再轮询 file command 目录；旧 File transport 仅作为 HTTP 未运行时的兼容回退路径。
+- Runtime heartbeat 默认间隔为 2 秒；File heartbeat stale 判定保留 15 秒窗口，不会因默认心跳降频触发误判。
 
 ## 当前已知漂移
 
