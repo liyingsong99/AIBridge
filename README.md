@@ -134,6 +134,16 @@ You can also open the `Workflows > Recommended Library` tab, refresh the default
 
 `Workflows > Workflow Options` stores project-level workflow preferences. Applying these options refreshes generated files under the installed `aibridge-development-workflow` Skill, including `references/project-workflow-preferences.md` and the generated branch selection rules.
 
+## Editor Entry Points
+
+AIBridge installs these user-facing Unity menu entries:
+
+- `AIBridge/Settings`: Basic, GIF, Logs, Directories, Scripts, Runtime, Code Index, Cache, and Actions.
+- `AIBridge/Workflows`: install integrations, choose AI tools, and configure workflow options.
+- `AIBridge/Players`: inspect Runtime targets, discovery cache, status, and cache cleanup.
+- `AIBridge/Workflow Graph`: advanced workflow graph view for routing, recipes, runs, gates, and handoff.
+- `AIBridge/Screenshot Game View _F12` and `AIBridge/Record GIF _F11`: quick visual evidence shortcuts.
+
 ## CLI And Command Reference
 
 The command examples below are collapsed by default. Full command references are also generated into each installed Skill's `references/` directory.
@@ -155,7 +165,7 @@ Most commands use this form:
 $CLI <command> <action> [options]
 ```
 
-CLI-only helpers differ slightly: `focus` has no action, `dialog` uses `status/click/wait`, and `multi` uses `--cmd` or `--stdin`.
+CLI-only helpers differ slightly: `focus` and `menu_item` have no action, `dialog` uses `status/click/wait`, and `multi` uses `--cmd` or `--stdin`.
 
 </details>
 
@@ -179,6 +189,23 @@ $CLI test status
 ```
 
 Use `compile unity` for Unity validation. `compile dotnet` is only an extra solution build check and is not a replacement for Unity compilation.
+
+### Selection, Menu Items, and Profiler
+
+```bash
+$CLI harness status
+$CLI selection get --includeComponents true
+$CLI selection set --path "Player"
+$CLI selection clear
+$CLI menu_item --menuPath "GameObject/Create Empty"
+$CLI profiler start
+$CLI profiler get_status
+$CLI profiler capture_frame
+$CLI profiler save_data --path ".aibridge/profiler/latest.json"
+$CLI profiler stop
+```
+
+Use `harness status` for compact preflight, `selection` to manage the active Unity selection, `menu_item` to invoke Unity menu paths, and `profiler` for editor diagnostics and snapshot capture.
 
 ### Workflow Recipes
 
@@ -443,7 +470,7 @@ After Code Index is enabled, Unity Editor can generate the snapshot and prewarm 
 
 `code execute` runs controlled temporary Editor C# for complex one-off tasks that declarative CLI commands cannot express cleanly, such as generated asset sets, structured diagnostics, reports, Runtime/Public API calls, or multi-step UnityEditor API orchestration. It is not a replacement for `compile unity` or `test run`.
 
-`Enable Code Execution` is enabled by default in `Tools > AIBridge Settings > Basic`; disable it there for untrusted projects or callers. This gate applies to both `code execute` and `code runtime_execute`. File mode is limited to `.aibridge/code/*.cs` or `.aibridge/code/*.csx`, and complex scripts should use file mode. Code execution is single-flight; after a timeout, use `code status` first and only use `code cancel` when you need to release AIBridge's waiting state.
+`Enable Code Execution` is enabled by default in `AIBridge/Settings > Basic`; disable it there for untrusted projects or callers. This gate applies to both `code execute` and `code runtime_execute`. File mode is limited to `.aibridge/code/*.cs` or `.aibridge/code/*.csx`, and complex scripts should use file mode. Code execution is single-flight; after a timeout, use `code status` first and only use `code cancel` when you need to release AIBridge's waiting state.
 
 ```bash
 $CLI code execute --file ".aibridge/code/check.csx" --timeout 5000

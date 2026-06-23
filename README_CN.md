@@ -134,6 +134,16 @@ https://gitee.com/lijoujou99_admin/AIBridge.git
 
 `Workflows > Workflow 选项` 会保存项目级工作流偏好。应用这些选项时，会刷新已安装的 `aibridge-development-workflow` Skill 下的生成文件，包括 `references/project-workflow-preferences.md` 和根据分支开关生成的分支选择规则。
 
+## Editor 菜单入口
+
+AIBridge 会安装这些面向用户的 Unity 菜单入口：
+
+- `AIBridge/Settings`：Basic、GIF、Logs、Directories、Scripts、Runtime、Code Index、Cache、Actions。
+- `AIBridge/Workflows`：安装集成、选择 AI 工具和配置 workflow 选项。
+- `AIBridge/Players`：查看 Runtime target、发现缓存、状态和缓存清理入口。
+- `AIBridge/Workflow Graph`：面向 routing、recipe、run、gate 和 handoff 的高级 workflow 图视图。
+- `AIBridge/Screenshot Game View _F12` 和 `AIBridge/Record GIF _F11`：快速采集视觉证据的快捷入口。
+
 ## CLI 与命令参考
 
 下面的命令示例默认折叠，日常使用时可以按需展开。完整命令说明也会随 Skills 安装生成到对应 `references/` 目录。
@@ -155,7 +165,7 @@ macOS/Linux 可使用随包平台可执行文件，或按项目配置通过 `dot
 $CLI <command> <action> [options]
 ```
 
-少数 CLI-only 或辅助命令格式不同：`focus` 没有 action，`dialog` 使用 `status/click/wait`，`multi` 使用 `--cmd` 或 `--stdin`。
+少数 CLI-only 或辅助命令格式不同：`focus` 和 `menu_item` 没有 action，`dialog` 使用 `status/click/wait`，`multi` 使用 `--cmd` 或 `--stdin`。
 
 </details>
 
@@ -179,6 +189,23 @@ $CLI test status
 ```
 
 Unity 验证必须使用 `compile unity`。`compile dotnet` 只能作为额外的解决方案构建检查，不能替代 Unity 编译。
+
+### Selection、菜单项和 Profiler
+
+```bash
+$CLI harness status
+$CLI selection get --includeComponents true
+$CLI selection set --path "Player"
+$CLI selection clear
+$CLI menu_item --menuPath "GameObject/Create Empty"
+$CLI profiler start
+$CLI profiler get_status
+$CLI profiler capture_frame
+$CLI profiler save_data --path ".aibridge/profiler/latest.json"
+$CLI profiler stop
+```
+
+`harness status` 用于 compact preflight，`selection` 用于管理 Unity 当前选择对象，`menu_item` 用于调用 Unity 菜单路径，`profiler` 用于 Editor 诊断和快照采集。
 
 ### Workflow Recipes
 
@@ -443,7 +470,7 @@ $CLI code_index diagnostics --file Assets/Scripts/Foo.cs
 
 `code execute` 用于受控执行临时 Editor C#。它适合声明式 CLI 命令难以表达的复杂一次性任务，例如生成组合资源、批量诊断、结构化报告、调用项目 Runtime/Public API 或编排多步 UnityEditor API。它不是 `compile unity` 或 `test run` 的替代品。
 
-`Tools > AIBridge Settings > Basic` 中的 `Enable Code Execution` 默认启用；不可信项目或调用方环境中可在设置里关闭。这个总开关同时约束 `code execute` 和 `code runtime_execute`。文件模式只允许 `.aibridge/code/*.cs` 或 `.aibridge/code/*.csx`，复杂脚本优先使用文件模式。代码执行同一时间只允许一个任务；超时后先用 `code status` 查看状态，必要时再用 `code cancel` 释放 AIBridge 等待状态。
+`AIBridge/Settings > Basic` 中的 `Enable Code Execution` 默认启用；不可信项目或调用方环境中可在设置里关闭。这个总开关同时约束 `code execute` 和 `code runtime_execute`。文件模式只允许 `.aibridge/code/*.cs` 或 `.aibridge/code/*.csx`，复杂脚本优先使用文件模式。代码执行同一时间只允许一个任务；超时后先用 `code status` 查看状态，必要时再用 `code cancel` 释放 AIBridge 等待状态。
 
 ```bash
 $CLI code execute --file ".aibridge/code/check.csx" --timeout 5000
