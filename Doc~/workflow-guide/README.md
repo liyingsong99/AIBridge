@@ -16,3 +16,4 @@ flowchart LR
 - HTML 版本包含更完整的流程图、表格、方案写入策略和源码索引。
 - 方案写入默认先落 `.aibridge/plan` 作为工作底稿；当方案需要流程图、对比表或更强的开发者浏览效果时，再同步到正式文档目录并生成 `html`。
 - 设计依据来自 `Templates~/Workflows/*.json`、`Tools~/AIBridgeCLI/Workflow/*.cs` 和 `Doc~/WorkflowsPanel.md`。
+- 上下文压缩、短入口 Skill、compact Harness gate 和 drift canary 规则见 [ContextCompression.md](./ContextCompression.md)。

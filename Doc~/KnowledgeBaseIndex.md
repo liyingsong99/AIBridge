@@ -31,8 +31,8 @@
 | CLI | `focus`、`dialog`、`asset`、`batch`、`code`、`code_index`、`compile`、`editor`、`exec`、`gameobject`、`gameview`、`get_logs`、`harness`、`input`、`inspector`、`menu_item`、`multi`、`prefab`、`profiler`、`runtime`、`scene`、`screenshot`、`selection`、`test`、`text_index`、`transform`、`workflow`、`compile dotnet` | 当前 AIBridge CLI 的真实命令面 |
 | Runtime Bridge | `Runtime/AIBridgeRuntime.cs`、`Runtime/Transports/*`、`runtime status/logs/screenshot/perf/handlers/call` | 连接已编译 Player 或 Play Mode 目标，采集证据和调用白名单 handler |
 | Workflow | `Tools~/AIBridgeCLI/Workflow/*`、`Templates~/Workflows/*.aibridge-workflow.json`、`workflow list/validate/plan/init/begin/status/report/finish/import/export/clean` | 负责 recipes、run manifest、artifact、gate、report 和外部结果导入 |
-| Skills | `Skill~/aibridge-development-workflow`、`Skill~/aibridge-workflow-orchestration`、`Skill~/aibridge-code-index`、`Skill~/aibridge-prefab-patch`、`Skill~/aibridge-batch-script`、`Skill~/unity-yaml-editing` | 分别覆盖 workflow 路由、编排、语义检索、Prefab patch、批处理和 YAML 兜底 |
-| 文档 | `Doc~/README.md`、`Doc~/WorkflowsPanel.md`、`Doc~/WorkflowGraphPanel.md`、`Doc~/workflow-guide/README.md`、`Doc~/workflow-guide/AIBridgeLoopsAnalysis.md` | 功能目录、面板定位、workflow 说明和 FSM 分析 |
+| Skills | `Skill~/aibridge-development-workflow`、`Skill~/aibridge-workflow-orchestration`、`Skill~/aibridge-code-index`、`Skill~/aibridge-prefab-patch`、`Skill~/aibridge-batch-script`、`Skill~/unity-yaml-editing` | 分别覆盖 workflow 短入口/分支路由、编排、语义检索、Prefab patch、批处理和 YAML 兜底 |
+| 文档 | `Doc~/README.md`、`Doc~/WorkflowsPanel.md`、`Doc~/WorkflowGraphPanel.md`、`Doc~/workflow-guide/README.md`、`Doc~/workflow-guide/ContextCompression.md`、`Doc~/workflow-guide/AIBridgeLoopsAnalysis.md` | 功能目录、面板定位、workflow 说明、上下文压缩策略和 FSM 分析 |
 | 模板 | `Templates~/Rules/AIBridge.RootRule.md`、`Templates~/ProjectRules/AGENTS*.md`、`Templates~/Workflows/*.json` | RootRule、项目规则模板和内置 workflow recipes |
 | 生成与缓存 | `.aibridge/harness/capabilities.json`、`.aibridge/workflows/active-run.json`、`.aibridge/workflows/runs/`、`.aibridge/text-index/`、`.aibridge/code-index/snapshot/`、`.aibridge/code/`、`.aibridge/plan/` | 当前项目的能力快照、运行产物、文本索引、代码索引、临时代码和方案底稿 |
 
@@ -137,8 +137,8 @@
 - `compile dotnet` 只是额外检查，不是 Unity 编译替代品。
 - `code_index` 仍是默认关闭的只读语义入口。
 - `workflow run-cli` 不会自动执行 `agent` / `manual`，这些步骤仍需要外部执行器回流。
+- `aibridge-development-workflow` 使用短入口，Harness 采用 compact gate；完整探测矩阵、fallback、resume 和证据 schema 移入 `harness-readiness-detail.md` 按需加载。
 
 ## 当前已知漂移
 
-- `README.md` 和 `README_CN.md` 旧版 recipes 列表少了 `harness-readiness-check`，已在本次同步修正。
-
+- 暂无已确认漂移。若 README、Skill、模板或 CLI 输出出现不一致，先核实当前代码和命令输出，再更新本索引与对应专题文档。
