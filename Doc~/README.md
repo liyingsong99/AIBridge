@@ -43,6 +43,7 @@
 
 ## 当前文档
 
+- `KnowledgeBaseIndex.md`：AIBridge 功能总索引，汇总 CLI、Editor 菜单、Runtime、workflow、Skills、模板、生成产物和文档映射，作为后续迭代的统一校验入口
 - `WorkflowsPanel.md`：`AIBridge/Workflows` 面板的产品定义文档
 - `WorkflowGraphPanel.md`：`AIBridge/Workflow Graph` 高级面板方案，定义用行为树风格图形展示 workflow 分支、recipe、run、gate 和 handoff 的产品边界；同名展示页为 `WorkflowGraphPanel.html`
 - `workflow-guide/README.md`：AIBridge Workflow 设计、需求讨论分支、`.aibridge/plan` 工作底稿、正式文档同步与证据校验总览；`README.md` 负责索引，完整展示页为 `index.html`

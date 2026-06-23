@@ -204,7 +204,7 @@ $CLI workflow clean --older-than 30d --dry-run true
 $CLI workflow clean --older-than 3d --save-settings true --auto-clean true
 ```
 
-Built-in recipes include `unity-change-implementation`, `unity-sharded-review`, `runtime-target-sweep`, `runtime-debug-investigation`, `runtime-ui-validation`, `prefab-asset-sweep`, and `bug-hunter-loop`.
+Built-in recipes include `bug-hunter-loop`, `harness-readiness-check`, `prefab-asset-sweep`, `runtime-debug-investigation`, `runtime-target-sweep`, `runtime-ui-validation`, `unity-change-implementation`, and `unity-sharded-review`.
 
 `runtime-debug-investigation` is for investigating Runtime, Player, Play Mode, UI, log, or performance symptoms. It checks evidence completeness first and does not treat Runtime errors themselves as workflow failure conditions; once a root cause is confirmed and a fix is requested, hand off to an implementation workflow.
 

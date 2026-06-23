@@ -204,7 +204,7 @@ $CLI workflow clean --older-than 30d --dry-run true
 $CLI workflow clean --older-than 3d --save-settings true --auto-clean true
 ```
 
-内置 recipes 包括 `unity-change-implementation`、`unity-sharded-review`、`runtime-target-sweep`、`runtime-debug-investigation`、`runtime-ui-validation`、`prefab-asset-sweep` 和 `bug-hunter-loop`。
+内置 recipes 包括 `bug-hunter-loop`、`harness-readiness-check`、`prefab-asset-sweep`、`runtime-debug-investigation`、`runtime-target-sweep`、`runtime-ui-validation`、`unity-change-implementation` 和 `unity-sharded-review`。
 
 `runtime-debug-investigation` 用于排查 Runtime、Player、Play Mode、UI、日志或性能症状。它优先检查证据是否完整，不把 Runtime 错误本身当作 workflow 失败条件；确认根因并需要修复时，再交接到实施工作流。
 
