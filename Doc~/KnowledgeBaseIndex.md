@@ -137,7 +137,7 @@
 - `AIBridge/Workflows` 仍然是用户配置面板，不是 recipe/run/debug 控制台。
 - `AIBridge/Workflow Graph` 是独立高级入口，不应并回默认面板。
 - `compile dotnet` 只是额外检查，不是 Unity 编译替代品。
-- `code_index` 仍是默认关闭的只读语义入口。
+- `code_index` 仍是默认关闭的只读语义入口；默认忽略 `Unity.*` 程序集，以及 `Library/PackageCache/com.unity.*` / `Packages/com.unity.*` 源码路径，被排除源码程序集仍作为 metadata reference 保留。
 - `workflow run-cli` 不会自动执行 `agent` / `manual`，这些步骤仍需要外部执行器回流。
 - `exec run --stdin` / `exec batch --stdin` 的 stdin 契约是 JSON 请求，不是裸 shell 命令；AI-facing 提示必须明确“先 pipe JSON，再调用 CLI”，避免把 `--stdin` 后面的追加参数误当成 stdin。
 - `aibridge-development-workflow` 使用短入口，Harness 采用 compact gate；完整探测矩阵、fallback、resume 和证据 schema 移入 `harness-readiness-detail.md` 按需加载。

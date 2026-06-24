@@ -58,7 +58,7 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void ProjectSettings_DefaultsToCodeExecutionEnabledAndCodeIndexDisabled()
+        public void ProjectSettings_DefaultsToCodeExecutionEnabledAndCodeIndexPackageIgnores()
         {
             var settings = ScriptableObject.CreateInstance<AIBridgeProjectSettings>();
 
@@ -67,6 +67,9 @@ namespace AIBridge.Editor.Tests
                 Assert.That(settings.EnableCodeExecution, Is.True);
                 Assert.That(settings.CodeExecutionRiskAccepted, Is.True);
                 Assert.That(settings.CodeIndex.EnableCodeIndex, Is.False);
+                Assert.That(settings.CodeIndex.IgnoredAssemblyPatterns, Is.EqualTo("Unity.*"));
+                Assert.That(settings.CodeIndex.IgnoredSourcePathPatterns, Does.Contain("Library/PackageCache/com.unity.*"));
+                Assert.That(settings.CodeIndex.IgnoredSourcePathPatterns, Does.Contain("Packages/com.unity.*"));
             }
             finally
             {

@@ -166,8 +166,8 @@ namespace AIBridge.Editor
         public const bool DefaultCodeIndexFallbackToTextSearch = true;
         public const string DefaultCodeIndexCleanupModeOnQuit = "processOnly";
         public const bool DefaultCodeIndexIncludePackageCacheSourceAssemblies = false;
-        public const string DefaultCodeIndexIgnoredAssemblyPatterns = "";
-        public const string DefaultCodeIndexIgnoredSourcePathPatterns = "";
+        public const string DefaultCodeIndexIgnoredAssemblyPatterns = "Unity.*";
+        public const string DefaultCodeIndexIgnoredSourcePathPatterns = "Library/PackageCache/com.unity.*\nPackages/com.unity.*";
         public const bool DefaultWorkflowImplementationBranchEnabled = true;
         public const bool DefaultWorkflowDebugBranchEnabled = true;
         public const bool DefaultWorkflowReviewBranchEnabled = true;
