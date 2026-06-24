@@ -321,6 +321,18 @@ namespace AIBridgeCLI.Core
 
         public void CleanupCommand(RuntimeTargetInfo target, string commandId)
         {
+            if (target == null || string.IsNullOrEmpty(commandId))
+            {
+                return;
+            }
+
+            try
+            {
+                SendJson(BuildUrl(target, "/aibridge/commands/" + Uri.EscapeDataString(commandId)), HttpMethod.Delete, null, _options.Token, 1000);
+            }
+            catch
+            {
+            }
         }
 
         public RuntimeDiagnosticReport Diagnose(string target, RuntimeCommandTrace commandTrace = null)

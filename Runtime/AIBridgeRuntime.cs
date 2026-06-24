@@ -44,6 +44,8 @@ namespace AIBridge.Runtime
         private const int MaxRuntimeCodeResultDepth = 8;
         private const int MaxRuntimeCodeCollectionItems = 512;
         private const int CommandPumpStaleMilliseconds = 3000;
+        private const int ClosedHttpCommandIdCapacity = 512;
+        private const float MinFileTransportPollIntervalSeconds = 0.5f;
 
         private static readonly string[] BuiltInActions =
         {
@@ -72,8 +74,8 @@ namespace AIBridge.Runtime
         /// <summary>
         /// Polling interval in seconds for legacy file transport command pickup.
         /// </summary>
-        [Tooltip("How often to check for file-transport commands when HTTP transport is not running (in seconds)")]
-        public float pollIntervalSeconds = 0.1f;
+        [Tooltip("How often to check for file-transport commands when HTTP transport is not running (minimum 0.5 seconds)")]
+        public float pollIntervalSeconds = MinFileTransportPollIntervalSeconds;
 
         /// <summary>
         /// Maximum commands to process per frame.
@@ -110,6 +112,8 @@ namespace AIBridge.Runtime
         private readonly object _pendingHttpResultsSyncRoot = new object();
         private readonly Dictionary<string, AIBridgeRuntimeCommandResult> _pendingHttpResults = new Dictionary<string, AIBridgeRuntimeCommandResult>();
         private readonly HashSet<string> _httpCommandIds = new HashSet<string>();
+        private readonly HashSet<string> _closedHttpCommandIds = new HashSet<string>();
+        private readonly Queue<string> _closedHttpCommandIdOrder = new Queue<string>();
         private readonly Dictionary<string, object> _heartbeatData = new Dictionary<string, object>(32);
         private readonly Dictionary<string, object> _heartbeatCapabilitiesData = new Dictionary<string, object>(16);
         private HttpRuntimeTransportServer _httpTransportServer;
@@ -317,7 +321,7 @@ namespace AIBridge.Runtime
                 return false;
             }
 
-            var interval = Mathf.Max(0.1f, pollIntervalSeconds);
+            var interval = Mathf.Max(MinFileTransportPollIntervalSeconds, pollIntervalSeconds);
             if (now - _lastPollTime < interval)
             {
                 return false;
@@ -1755,6 +1759,8 @@ namespace AIBridge.Runtime
             {
                 _pendingHttpResults.Clear();
                 _httpCommandIds.Clear();
+                _closedHttpCommandIds.Clear();
+                _closedHttpCommandIdOrder.Clear();
             }
 
             MarkMainThreadTick();
@@ -1880,7 +1886,23 @@ namespace AIBridge.Runtime
 
         private void WriteResult(AIBridgeRuntimeCommandResult result)
         {
-            if (result == null || string.IsNullOrEmpty(_resultsPath))
+            if (result == null)
+            {
+                return;
+            }
+
+            if (IsPendingHttpCommand(result.CommandId))
+            {
+                CacheHttpResult(ClampResultSize(result, pretty: false));
+                return;
+            }
+
+            if (IsClosedHttpCommand(result.CommandId))
+            {
+                return;
+            }
+
+            if (string.IsNullOrEmpty(_resultsPath))
             {
                 return;
             }
@@ -1890,22 +1912,41 @@ namespace AIBridge.Runtime
                 var fileName = $"{result.CommandId}.json";
                 var filePath = Path.Combine(_resultsPath, fileName);
                 var json = AIBridgeJson.Serialize(result, pretty: true);
-                var maxBytes = runtimeSettings == null ? 0 : runtimeSettings.maxResultBytes;
-                if (maxBytes > 0 && Encoding.UTF8.GetByteCount(json) > maxBytes)
+                var clampedResult = ClampResultSize(result, json, pretty: true);
+                if (!ReferenceEquals(clampedResult, result))
                 {
-                    result = AIBridgeRuntimeCommandResult.FromFailure(result.CommandId, "Runtime command result exceeded maxResultBytes.");
+                    result = clampedResult;
                     json = AIBridgeJson.Serialize(result, pretty: true);
                 }
 
-                CacheHttpResult(result);
                 WriteTextAtomic(filePath, json);
                 LogDebug($"Wrote result: {fileName}");
             }
             catch (Exception e)
             {
-                CacheHttpResult(result);
                 Debug.LogError($"[AIBridgeRuntime] Failed to write result: {e.Message}");
             }
+        }
+
+        private AIBridgeRuntimeCommandResult ClampResultSize(AIBridgeRuntimeCommandResult result, bool pretty)
+        {
+            if (result == null)
+            {
+                return null;
+            }
+
+            return ClampResultSize(result, AIBridgeJson.Serialize(result, pretty), pretty);
+        }
+
+        private AIBridgeRuntimeCommandResult ClampResultSize(AIBridgeRuntimeCommandResult result, string json, bool pretty)
+        {
+            var maxBytes = runtimeSettings == null ? 0 : runtimeSettings.maxResultBytes;
+            if (maxBytes <= 0 || string.IsNullOrEmpty(json) || Encoding.UTF8.GetByteCount(json) <= maxBytes)
+            {
+                return result;
+            }
+
+            return AIBridgeRuntimeCommandResult.FromFailure(result.CommandId, "Runtime command result exceeded maxResultBytes.");
         }
 
         private string ResolveRuntimeRootPath()
@@ -2159,9 +2200,66 @@ namespace AIBridge.Runtime
                 {
                     _pendingHttpResults.Remove(commandId);
                     _httpCommandIds.Remove(commandId);
+                    RememberClosedHttpCommand(commandId);
                 }
 
                 return true;
+            }
+        }
+
+        internal void ForgetHttpCommand(string commandId)
+        {
+            if (string.IsNullOrEmpty(commandId))
+            {
+                return;
+            }
+
+            lock (_pendingHttpResultsSyncRoot)
+            {
+                _pendingHttpResults.Remove(commandId);
+                _httpCommandIds.Remove(commandId);
+                RememberClosedHttpCommand(commandId);
+            }
+        }
+
+        private bool IsPendingHttpCommand(string commandId)
+        {
+            if (string.IsNullOrEmpty(commandId))
+            {
+                return false;
+            }
+
+            lock (_pendingHttpResultsSyncRoot)
+            {
+                return _httpCommandIds.Contains(commandId);
+            }
+        }
+
+        private bool IsClosedHttpCommand(string commandId)
+        {
+            if (string.IsNullOrEmpty(commandId))
+            {
+                return false;
+            }
+
+            lock (_pendingHttpResultsSyncRoot)
+            {
+                return _closedHttpCommandIds.Contains(commandId);
+            }
+        }
+
+        private void RememberClosedHttpCommand(string commandId)
+        {
+            if (string.IsNullOrEmpty(commandId) || !_closedHttpCommandIds.Add(commandId))
+            {
+                return;
+            }
+
+            // HTTP timeout 后异步结果可能迟到；保留一个限长集合，避免迟到结果回落到 file result 落盘。
+            _closedHttpCommandIdOrder.Enqueue(commandId);
+            while (_closedHttpCommandIdOrder.Count > ClosedHttpCommandIdCapacity)
+            {
+                _closedHttpCommandIds.Remove(_closedHttpCommandIdOrder.Dequeue());
             }
         }
 

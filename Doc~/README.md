@@ -49,3 +49,10 @@
 - `workflow-guide/README.md`：AIBridge Workflow 设计、需求讨论分支、`.aibridge/plan` 工作底稿、正式文档同步与证据校验总览；`README.md` 负责索引，完整展示页为 `index.html`
 - `workflow-guide/ContextCompression.md`：AIBridge workflow / Skill 上下文压缩规则，说明短入口、按需 Harness 细节、生成版分流规则和 invariant 测试维护要求
 - `workflow-guide/AIBridgeLoopsAnalysis.md`：AIBridge loops / FSM 分析、官方资料对照、缺口与优化建议
+
+## Runtime 性能边界
+
+- HTTP 是 Runtime 默认控制面。HTTP command 结果只经内存 pending 通道返回，不默认写入 file transport 的 `results` 目录；file transport 命令仍保留 result 文件兼容路径。
+- HTTP command 在成功读取、timeout、Runtime not-ready 或 CLI cleanup 后都会关闭 pending id，迟到异步结果会被丢弃，避免结果文件和缓存继续增长。
+- Runtime file transport 只在 HTTP transport 未运行时轮询命令目录，并限制最低轮询间隔，避免 10Hz 常驻目录扫描。
+- `runtime.ui.snapshot` / `runtime.ui.find` 默认只返回可点击坐标和基础按钮状态；需要逐按钮 raycast 诊断时传入 `includeRaycastDetails=true`。

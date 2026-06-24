@@ -110,5 +110,32 @@ namespace AIBridge.Editor.Tests
                 buffer.Dispose();
             }
         }
+
+        [Test]
+        public void LogBuffer_RingBufferKeepsNewestEntriesInOrder()
+        {
+            var buffer = new AIBridgeRuntimeLogBuffer();
+            buffer.Initialize(3);
+
+            try
+            {
+                for (var i = 0; i < 5; i++)
+                {
+                    var message = "aibridge-runtime-log-buffer-ring-" + i;
+                    LogAssert.Expect(LogType.Log, message);
+                    Debug.Log(message);
+                }
+
+                var entries = buffer.GetEntries(10, "Log", "aibridge-runtime-log-buffer-ring-", false, null, null);
+                Assert.That(entries.Length, Is.EqualTo(3));
+                Assert.That(entries[0].message, Is.EqualTo("aibridge-runtime-log-buffer-ring-2"));
+                Assert.That(entries[1].message, Is.EqualTo("aibridge-runtime-log-buffer-ring-3"));
+                Assert.That(entries[2].message, Is.EqualTo("aibridge-runtime-log-buffer-ring-4"));
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
     }
 }

@@ -13,6 +13,7 @@ namespace AIBridge.Editor
     public class CommandWatcher
     {
         private static readonly TimeSpan CommandDirectoryRescanInterval = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan WatcherUnavailableScanInterval = TimeSpan.FromSeconds(1);
         /// <summary>
         /// Timeout for stale command/result files (10 minutes)
         /// </summary>
@@ -147,7 +148,13 @@ namespace AIBridge.Editor
 
         private bool ShouldScanCommandDirectory(DateTime nowUtc)
         {
-            if (_commandWatcher == null || _watcherUnavailable)
+            if (_watcherUnavailable)
+            {
+                return Interlocked.CompareExchange(ref _commandsDirty, 0, 0) != 0
+                    || nowUtc - _lastCommandScanUtc >= WatcherUnavailableScanInterval;
+            }
+
+            if (_commandWatcher == null)
             {
                 return true;
             }

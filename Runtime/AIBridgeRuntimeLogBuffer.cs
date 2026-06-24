@@ -20,8 +20,10 @@ namespace AIBridge.Runtime
         private const int UnknownFrame = -1;
 
         private readonly object _syncRoot = new object();
-        private readonly List<AIBridgeRuntimeLogEntry> _entries = new List<AIBridgeRuntimeLogEntry>();
+        private AIBridgeRuntimeLogEntry[] _entries = new AIBridgeRuntimeLogEntry[500];
         private int _capacity = 500;
+        private int _startIndex;
+        private int _count;
         private bool _initialized;
         private int _mainThreadId;
 
@@ -31,7 +33,7 @@ namespace AIBridge.Runtime
             {
                 lock (_syncRoot)
                 {
-                    return _entries.Count;
+                    return _count;
                 }
             }
         }
@@ -39,6 +41,11 @@ namespace AIBridge.Runtime
         public void Initialize(int capacity)
         {
             _capacity = Math.Max(1, capacity);
+            lock (_syncRoot)
+            {
+                ResizeStorage(_capacity);
+            }
+
             if (_initialized)
             {
                 return;
@@ -64,8 +71,10 @@ namespace AIBridge.Runtime
         {
             lock (_syncRoot)
             {
-                var count = _entries.Count;
-                _entries.Clear();
+                var count = _count;
+                Array.Clear(_entries, 0, _entries.Length);
+                _startIndex = 0;
+                _count = 0;
                 return count;
             }
         }
@@ -93,9 +102,9 @@ namespace AIBridge.Runtime
             var results = new List<AIBridgeRuntimeLogEntry>();
             lock (_syncRoot)
             {
-                for (var i = _entries.Count - 1; i >= 0 && results.Count < count; i--)
+                for (var i = _count - 1; i >= 0 && results.Count < count; i--)
                 {
-                    var entry = _entries[i];
+                    var entry = _entries[GetPhysicalIndex(i)];
                     if (!MatchesLogType(logType, entry.type))
                     {
                         continue;
@@ -137,12 +146,43 @@ namespace AIBridge.Runtime
 
             lock (_syncRoot)
             {
-                _entries.Add(entry);
-                while (_entries.Count > _capacity)
+                if (_count < _capacity)
                 {
-                    _entries.RemoveAt(0);
+                    _entries[GetPhysicalIndex(_count)] = entry;
+                    _count++;
+                }
+                else
+                {
+                    // 日志缓存是高频路径，满容量后覆盖最旧项，避免 List.RemoveAt(0) 触发整体搬移。
+                    _entries[_startIndex] = entry;
+                    _startIndex = (_startIndex + 1) % _capacity;
                 }
             }
+        }
+
+        private void ResizeStorage(int capacity)
+        {
+            if (_entries != null && _entries.Length == capacity)
+            {
+                return;
+            }
+
+            var next = new AIBridgeRuntimeLogEntry[capacity];
+            var copyCount = Math.Min(_count, capacity);
+            var skip = _count - copyCount;
+            for (var i = 0; i < copyCount; i++)
+            {
+                next[i] = _entries == null ? null : _entries[GetPhysicalIndex(i + skip)];
+            }
+
+            _entries = next;
+            _startIndex = 0;
+            _count = copyCount;
+        }
+
+        private int GetPhysicalIndex(int logicalIndex)
+        {
+            return (_startIndex + logicalIndex) % _capacity;
         }
 
         private static AIBridgeRuntimeLogEntry CloneEntry(AIBridgeRuntimeLogEntry entry, bool includeStackTrace)

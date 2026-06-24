@@ -141,8 +141,10 @@
 - `workflow run-cli` 不会自动执行 `agent` / `manual`，这些步骤仍需要外部执行器回流。
 - `exec run --stdin` / `exec batch --stdin` 的 stdin 契约是 JSON 请求，不是裸 shell 命令；AI-facing 提示必须明确“先 pipe JSON，再调用 CLI”，避免把 `--stdin` 后面的追加参数误当成 stdin。
 - `aibridge-development-workflow` 使用短入口，Harness 采用 compact gate；完整探测矩阵、fallback、resume 和证据 schema 移入 `harness-readiness-detail.md` 按需加载。
-- Runtime HTTP transport 正常运行时不再轮询 file command 目录；旧 File transport 仅作为 HTTP 未运行时的兼容回退路径。
+- Runtime HTTP transport 正常运行时不再轮询 file command 目录，也不为 HTTP command 默认写 result 文件；旧 File transport 仅作为 HTTP 未运行时的兼容回退路径。
+- Runtime HTTP command 成功、timeout、Runtime not-ready 和 CLI cleanup 都会关闭 pending id，迟到的 HTTP 异步结果不会回落到 file result 落盘。
 - Runtime heartbeat 默认间隔为 2 秒；File heartbeat stale 判定保留 15 秒窗口，不会因默认心跳降频触发误判。
+- Runtime UI snapshot/find 默认不做逐按钮 raycast；需要遮挡诊断时显式传入 `includeRaycastDetails=true`。
 
 ## 当前已知漂移
 

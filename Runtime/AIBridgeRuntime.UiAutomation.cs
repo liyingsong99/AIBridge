@@ -15,7 +15,8 @@ namespace AIBridge.Runtime
         {
             var includeDisabled = ReadBoolParam(cmd, "includeDisabled", false);
             var maxResults = Math.Max(1, ReadIntParam(cmd, "maxResults", UiDefaultMaxResults));
-            var buttonCollection = CollectButtonSnapshots(null, includeDisabled, maxResults, true);
+            var includeRaycastDetails = ReadBoolParam(cmd, "includeRaycastDetails", false);
+            var buttonCollection = CollectButtonSnapshots(null, includeDisabled, maxResults, includeRaycastDetails);
             var canvases = BuildCanvasSnapshots(buttonCollection.CountsByCanvasPath);
             var selected = GetSelectedGameObject();
             var eventSystem = BuildEventSystemSnapshot();
@@ -36,6 +37,7 @@ namespace AIBridge.Runtime
                     ["returnedButtonCount"] = buttonCollection.Entries.Count,
                     ["clickableButtonCount"] = CountClickableButtons(buttonCollection.Entries),
                     ["truncated"] = buttonCollection.Truncated,
+                    ["raycastDetails"] = includeRaycastDetails,
                     ["hasEventSystem"] = EventSystem.current != null
                 }
             };
@@ -46,7 +48,8 @@ namespace AIBridge.Runtime
             var keyword = ReadStringParam(cmd, "keyword", null);
             var includeDisabled = ReadBoolParam(cmd, "includeDisabled", false);
             var maxResults = Math.Max(1, ReadIntParam(cmd, "maxResults", UiDefaultMaxResults));
-            var buttonCollection = CollectButtonSnapshots(keyword, includeDisabled, maxResults, true);
+            var includeRaycastDetails = ReadBoolParam(cmd, "includeRaycastDetails", false);
+            var buttonCollection = CollectButtonSnapshots(keyword, includeDisabled, maxResults, includeRaycastDetails);
 
             return new Dictionary<string, object>
             {
@@ -59,7 +62,8 @@ namespace AIBridge.Runtime
                     ["matchCount"] = buttonCollection.TotalCount,
                     ["returnedCount"] = buttonCollection.Entries.Count,
                     ["clickableCount"] = CountClickableButtons(buttonCollection.Entries),
-                    ["truncated"] = buttonCollection.Truncated
+                    ["truncated"] = buttonCollection.Truncated,
+                    ["raycastDetails"] = includeRaycastDetails
                 }
             };
         }
@@ -358,7 +362,6 @@ namespace AIBridge.Runtime
                 return result;
             }
 
-            var raycastEnabled = includeRaycastDetails && EventSystem.current != null;
             var canvasPathCount = result.CountsByCanvasPath;
             for (var i = 0; i < buttons.Length; i++)
             {
@@ -399,25 +402,8 @@ namespace AIBridge.Runtime
                     }
                 }
 
-                if (raycastEnabled && entry.ScreenPointAvailable)
-                {
-                    List<RaycastResult> hits;
-                    string error;
-                    if (TryRaycast(entry.ScreenPoint, out hits, out error))
-                    {
-                        entry.RaycastAvailable = true;
-                        entry.RaycastCount = hits.Count;
-                        entry.RaycastIndex = IndexOfGameObjectInRaycast(button.gameObject, hits);
-                        if (hits.Count > 0)
-                        {
-                            entry.RaycastTarget = hits[0].gameObject;
-                        }
-                    }
-                }
-
                 entry.Clickable = button.IsInteractable()
-                    && entry.ScreenPointAvailable
-                    && (!entry.RaycastAvailable || entry.RaycastIndex == 0);
+                    && entry.ScreenPointAvailable;
                 result.Entries.Add(entry);
                 result.TotalCount++;
             }
@@ -429,7 +415,46 @@ namespace AIBridge.Runtime
                 result.Entries.RemoveRange(maxResults, result.Entries.Count - maxResults);
             }
 
+            if (includeRaycastDetails)
+            {
+                FillButtonRaycastDetails(result.Entries);
+            }
+
             return result;
+        }
+
+        private static void FillButtonRaycastDetails(List<UiButtonSnapshotEntry> entries)
+        {
+            if (entries == null || entries.Count == 0 || EventSystem.current == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < entries.Count; i++)
+            {
+                var entry = entries[i];
+                if (entry == null || entry.Button == null || !entry.ScreenPointAvailable)
+                {
+                    continue;
+                }
+
+                List<RaycastResult> hits;
+                string error;
+                if (TryRaycast(entry.ScreenPoint, out hits, out error))
+                {
+                    entry.RaycastAvailable = true;
+                    entry.RaycastCount = hits.Count;
+                    entry.RaycastIndex = IndexOfGameObjectInRaycast(entry.Button.gameObject, hits);
+                    if (hits.Count > 0)
+                    {
+                        entry.RaycastTarget = hits[0].gameObject;
+                    }
+
+                    entry.Clickable = entry.Button.IsInteractable()
+                        && entry.ScreenPointAvailable
+                        && entry.RaycastIndex == 0;
+                }
+            }
         }
 
         private UiButtonSnapshotEntry CreateButtonSnapshotEntry(Button button)
@@ -460,9 +485,10 @@ namespace AIBridge.Runtime
                 entry.CanvasRenderMode = canvas.renderMode.ToString();
             }
 
+            var corners = UiGeometryScratch.Corners;
             Rect screenRect;
             string error;
-            if (TryGetScreenMetrics(button.transform as RectTransform, out var screenPoint, out screenRect, out error))
+            if (TryGetScreenMetrics(button.transform as RectTransform, corners, out var screenPoint, out screenRect, out error))
             {
                 entry.ScreenPointAvailable = true;
                 entry.ScreenPoint = screenPoint;
@@ -716,7 +742,7 @@ namespace AIBridge.Runtime
             }
 
             Rect screenRect;
-            if (TryGetScreenMetrics(target.transform as RectTransform, out screenPoint, out screenRect, out error))
+            if (TryGetScreenMetrics(target.transform as RectTransform, UiGeometryScratch.Corners, out screenPoint, out screenRect, out error))
             {
                 pointSource = "target";
                 return true;
@@ -756,7 +782,7 @@ namespace AIBridge.Runtime
             return false;
         }
 
-        private static bool TryGetScreenMetrics(RectTransform rectTransform, out Vector2 screenPoint, out Rect screenRect, out string error)
+        private static bool TryGetScreenMetrics(RectTransform rectTransform, Vector3[] corners, out Vector2 screenPoint, out Rect screenRect, out string error)
         {
             screenPoint = Vector2.zero;
             screenRect = new Rect();
@@ -776,7 +802,11 @@ namespace AIBridge.Runtime
                 return false;
             }
 
-            var corners = new Vector3[4];
+            if (corners == null || corners.Length < 4)
+            {
+                corners = new Vector3[4];
+            }
+
             rectTransform.GetWorldCorners(corners);
             var minX = float.MaxValue;
             var minY = float.MaxValue;
@@ -1364,6 +1394,25 @@ namespace AIBridge.Runtime
             public GameObject ClickHandler;
             public List<RaycastResult> RaycastResults;
             public Vector2 ScreenPoint;
+        }
+
+        private static class UiGeometryScratch
+        {
+            [ThreadStatic]
+            private static Vector3[] _corners;
+
+            public static Vector3[] Corners
+            {
+                get
+                {
+                    if (_corners == null)
+                    {
+                        _corners = new Vector3[4];
+                    }
+
+                    return _corners;
+                }
+            }
         }
     }
 }

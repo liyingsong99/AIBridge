@@ -23,6 +23,7 @@ namespace AIBridge.Runtime.Transports
         private const string HealthPath = "/aibridge/health";
         private const string CommandsPath = "/aibridge/commands";
         private const string ResultsPathPrefix = "/aibridge/results/";
+        private const string CleanupPathPrefix = "/aibridge/commands/";
         private const string ArtifactsPathPrefix = "/aibridge/artifacts/";
 
         private readonly AIBridgeRuntime _runtime;
@@ -208,6 +209,24 @@ namespace AIBridge.Runtime.Transports
                 return;
             }
 
+            if (string.Equals(request.Method, "DELETE", StringComparison.OrdinalIgnoreCase)
+                && request.Path.StartsWith(CleanupPathPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!ValidateAuthorization(request, stream))
+                {
+                    return;
+                }
+
+                var commandId = Uri.UnescapeDataString(request.Path.Substring(CleanupPathPrefix.Length));
+                _runtime.ForgetHttpCommand(commandId);
+                WriteJson(stream, 200, new Dictionary<string, object>
+                {
+                    ["success"] = true,
+                    ["commandId"] = commandId
+                });
+                return;
+            }
+
             if (string.Equals(request.Method, "GET", StringComparison.OrdinalIgnoreCase)
                 && request.Path.StartsWith(ResultsPathPrefix, StringComparison.OrdinalIgnoreCase))
             {
@@ -324,6 +343,7 @@ namespace AIBridge.Runtime.Transports
 
                 if (!TryValidateRuntimeReady(out notReadyReason, out mainThreadAgeMs))
                 {
+                    _runtime.ForgetHttpCommand(command.Id);
                     WriteJson(stream, 503, BuildRuntimeNotReadyResult(command.Id, notReadyReason, mainThreadAgeMs));
                     return;
                 }
@@ -332,6 +352,7 @@ namespace AIBridge.Runtime.Transports
                 Thread.Sleep(20);
             }
 
+            _runtime.ForgetHttpCommand(command.Id);
             WriteJson(stream, 504, AIBridgeRuntimeCommandResult.FromFailure(command.Id, "handler_timeout"));
         }
 
