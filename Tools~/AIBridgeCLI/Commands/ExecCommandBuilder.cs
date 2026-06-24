@@ -41,6 +41,7 @@ namespace AIBridgeCLI.Commands
             sb.AppendLine();
             sb.AppendLine("Agent note: --stdin means the exec request JSON is read from standard input.");
             sb.AppendLine("Do not append a raw shell command after --stdin; pipe JSON into the CLI instead.");
+            sb.AppendLine("If values contain quotes, backslashes, or regex, build a PowerShell object and use ConvertTo-Json, or use --request-file.");
             sb.AppendLine();
             sb.AppendLine("Usage:");
             sb.AppendLine("  AIBridgeCLI exec run --stdin");
@@ -48,8 +49,8 @@ namespace AIBridgeCLI.Commands
             sb.AppendLine("  AIBridgeCLI exec batch --stdin");
             sb.AppendLine();
             sb.AppendLine("Single request schema:");
-            sb.AppendLine("  command: string");
-            sb.AppendLine("  args: string[]");
+            sb.AppendLine("  command: string      Executable name/path only");
+            sb.AppendLine("  args: string[]       Flags and positional argv");
             sb.AppendLine("  cwd: string");
             sb.AppendLine("  env: object");
             sb.AppendLine("  stdin: string");

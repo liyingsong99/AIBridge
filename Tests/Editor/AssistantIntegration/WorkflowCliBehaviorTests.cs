@@ -269,6 +269,38 @@ namespace AIBridge.Editor.Tests
             }
         }
 
+        [Test]
+        public void ExecRunStdinRejectsMalformedJsonWithEscapingHint()
+        {
+            var packageRoot = GetPackageRoot();
+            var cliPath = ResolveCliPath(packageRoot);
+            if (string.IsNullOrEmpty(cliPath) || !File.Exists(cliPath))
+            {
+                Assert.Ignore("AIBridgeCLI executable was not found for this platform.");
+            }
+
+            var projectRoot = CreateTemporaryUnityProject();
+            try
+            {
+                var malformedJson = "{\"command\":\"rg\",\"queries\":[\"HpSlider|SetHealth\\(\"],\"paths\":[\"Packages\"]}";
+                var run = RunCli(cliPath, projectRoot, "exec run --stdin", malformedJson);
+                var output = run.Stdout + run.Stderr;
+
+                Assert.AreNotEqual(0, run.ExitCode, output);
+                StringAssert.Contains("Invalid exec JSON request", output);
+                StringAssert.Contains("Bad JSON escape sequence", output);
+                StringAssert.Contains("ConvertTo-Json", output);
+                StringAssert.Contains("--request-file", output);
+            }
+            finally
+            {
+                if (Directory.Exists(projectRoot))
+                {
+                    Directory.Delete(projectRoot, true);
+                }
+            }
+        }
+
         private static void AssertRequiredGateStatus(WorkflowGateResultView[] gateResults, string gateId, string expectedStatus)
         {
             Assert.IsNotNull(gateResults, "Gate results are missing.");
@@ -287,7 +319,7 @@ namespace AIBridge.Editor.Tests
             Assert.Fail("Gate was not found: " + gateId);
         }
 
-        private static CliExecutionResult RunCli(string cliPath, string projectRoot, string arguments)
+        private static CliExecutionResult RunCli(string cliPath, string projectRoot, string arguments, string stdinText = null)
         {
             var startInfo = new ProcessStartInfo
             {
@@ -297,7 +329,8 @@ namespace AIBridge.Editor.Tests
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
-                RedirectStandardError = true
+                RedirectStandardError = true,
+                RedirectStandardInput = stdinText != null
             };
             startInfo.EnvironmentVariables["UNITY_PROJECT_ROOT"] = projectRoot;
             startInfo.EnvironmentVariables["AIBRIDGE_PACKAGE_ROOT"] = GetPackageRoot();
@@ -331,6 +364,11 @@ namespace AIBridge.Editor.Tests
                 };
 
                 Assert.IsTrue(process.Start(), "Failed to start AIBridgeCLI.");
+                if (stdinText != null)
+                {
+                    process.StandardInput.Write(stdinText);
+                    process.StandardInput.Close();
+                }
                 process.BeginOutputReadLine();
                 process.BeginErrorReadLine();
                 if (!process.WaitForExit(15000))

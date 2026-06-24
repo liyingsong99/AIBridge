@@ -130,6 +130,8 @@ namespace AIBridgeCLI.Commands
         private static string GetExecJsonUsageHint()
         {
             return "exec run --stdin expects a JSON object piped to stdin, not a raw shell command. "
+                + "Use command for the executable name/path and args/queries/globs/paths for arguments. "
+                + "When values contain quotes, backslashes, or regex, build a PowerShell object and pipe ConvertTo-Json output, or use --request-file. "
                 + "Example JSON: { \"command\": \"rg\", \"args\": [\"-n\"], \"queries\": [\"TODO\"], \"paths\": [\"Packages\"] }. "
                 + "PowerShell: $request | & ./.aibridge/cli/AIBridgeCLI.exe exec run --stdin. "
                 + "Do not write: AIBridgeCLI exec run --stdin rg -n TODO Packages.";
