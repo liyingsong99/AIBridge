@@ -1,4 +1,5 @@
 using System;
+using UnityEditor;
 using UnityEditor.TestTools.TestRunner.Api;
 
 namespace AIBridge.Editor
@@ -8,6 +9,21 @@ namespace AIBridge.Editor
     /// </summary>
     public class TestCommand : ICommand
     {
+        private const string PlayModeRunFailureMessage =
+            "AIBridge test run failed because Unity Editor is currently in Play Mode. Stop Play Mode and wait for Edit Mode before retrying.";
+
+        private readonly Func<bool> _isEditorInPlayMode;
+
+        public TestCommand()
+            : this(() => EditorApplication.isPlaying)
+        {
+        }
+
+        internal TestCommand(Func<bool> isEditorInPlayMode)
+        {
+            _isEditorInPlayMode = isEditorInPlayMode ?? (() => EditorApplication.isPlaying);
+        }
+
         public string Type => "test";
         public bool RequiresRefresh => false;
 
@@ -17,7 +33,9 @@ namespace AIBridge.Editor
 $CLI test run --mode EditMode
 $CLI test run --test-name ""MyNamespace.MyFixture.MyTest""
 $CLI test status
-```";
+```
+
+`test run` must start while the Editor is in Edit Mode. If Unity is already in Play Mode, the command fails immediately and tells the agent to stop Play Mode before retrying.";
 
         public CommandResult Execute(CommandRequest request)
         {
@@ -59,6 +77,11 @@ $CLI test status
             if (mode == TestMode.PlayMode)
             {
                 return CommandResult.Failure(request.id, "PlayMode tests are not supported yet. Please use EditMode for now.");
+            }
+
+            if (_isEditorInPlayMode())
+            {
+                return CommandResult.Failure(request.id, PlayModeRunFailureMessage);
             }
 
             var startResult = TestRunTracker.StartRun(runId, mode, testName, groupName, assemblyName, timeoutMs);
@@ -136,5 +159,6 @@ $CLI test status
             mode = TestMode.EditMode;
             return false;
         }
+
     }
 }

@@ -188,6 +188,8 @@ $CLI test run --mode EditMode
 $CLI test status
 ```
 
+`test run` must start while the Editor is in Edit Mode. If Unity is already in Play Mode, the command fails immediately with a Play Mode reason and asks the agent to stop Play Mode before retrying.
+
 Use `compile unity` for Unity validation. `compile dotnet` is only an extra solution build check and is not a replacement for Unity compilation.
 
 ### Selection, Menu Items, and Profiler

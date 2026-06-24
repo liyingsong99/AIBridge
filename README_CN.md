@@ -188,6 +188,8 @@ $CLI test run --mode EditMode
 $CLI test status
 ```
 
+`test run` 必须在 Editor 处于 Edit Mode 时启动。如果 Unity 已经处于 Play Mode，命令会直接失败，并明确提示先退出 Play Mode 再重试。
+
 Unity 验证必须使用 `compile unity`。`compile dotnet` 只能作为额外的解决方案构建检查，不能替代 Unity 编译。
 
 ### Selection、菜单项和 Profiler
