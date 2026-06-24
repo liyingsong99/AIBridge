@@ -23,7 +23,7 @@ Generated command references are installed under `references/` in the target ass
 
 ## Host Tools
 
-For external host tools such as `rg`, `git`, `dotnet`, `python`, `node`, `sg`, or `grep`, prefer `exec run --stdin` when arguments are non-trivial, include regex/globs/JSON/spaces, require stdin, need timeout/output limits, or run multiple `jobs`. `exec run --stdin` reads a JSON request object from stdin; pipe JSON into the CLI and never append a raw shell command after `--stdin`. Keep AIBridge/Unity commands direct: `compile unity`, `get_logs`, `asset`, `inspector`, `runtime`, `workflow`, `multi`, and `code execute`. Use `multi --stdin` for multiple AIBridge commands and `exec` `jobs[]` for multiple external host commands.
+Use `exec run --stdin` only for external host tools such as `rg`, `git`, `dotnet`, `python`, `node`, `sg`, or `grep`. AIBridge commands, including `harness status`, `compile unity`, `get_logs`, `asset`, `inspector`, `runtime`, `workflow`, `multi`, and `code execute`, run directly. `exec run --stdin` reads JSON from stdin; use `command`, not `cmd`, and do not append a raw shell command after `--stdin`. Use `multi --stdin` for multiple AIBridge commands and `exec` `jobs[]` for multiple external host commands.
 
 ## Harness Snapshot
 

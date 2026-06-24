@@ -329,8 +329,7 @@ $values = (@{ 'm_LocalPosition.x' = 0; 'm_LocalPosition.y' = 1 } | ConvertTo-Jso
 
 ### 外部 Exec
 
-`exec` 用于无 shell 执行 `rg`、`git`、`dotnet`、`python` 或 `node` 等外部工具。请求通过 stdin 或请求文件传入 JSON，参数保持数组形式，不再拼接 PowerShell 字符串。
-`exec run --stdin` 读取的是 stdin 中的 JSON 请求对象；必须把 JSON 通过管道传给 CLI，不能在 `--stdin` 后面继续追加裸 shell 命令。
+`exec` 用于无 shell 执行 `rg`、`git`、`dotnet`、`python` 或 `node` 等外部工具。`harness status` 这类 AIBridge 命令直接调用。请求通过 stdin 或请求文件传入 JSON；`exec run --stdin` 使用 `command`，不是 `cmd`，也不能在 `--stdin` 后面继续追加裸 shell 命令。
 
 ```powershell
 $request = @'

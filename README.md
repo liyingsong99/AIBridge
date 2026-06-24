@@ -329,8 +329,7 @@ $values = (@{ 'm_LocalPosition.x' = 0; 'm_LocalPosition.y' = 1 } | ConvertTo-Jso
 
 ### External Exec
 
-Use `exec` for shellless external tools such as `rg`, `git`, `dotnet`, `python`, or `node`. Requests are JSON from stdin or a request file; arguments stay as arrays instead of PowerShell strings.
-`exec run --stdin` reads a JSON request object from stdin; pipe JSON into the CLI and do not append a raw shell command after `--stdin`.
+Use `exec` for shellless external tools such as `rg`, `git`, `dotnet`, `python`, or `node`. AIBridge commands like `harness status` run directly. Requests are JSON from stdin or a request file; `exec run --stdin` uses `command`, not `cmd`, and does not accept a raw shell command after `--stdin`.
 
 ```powershell
 $request = @'
