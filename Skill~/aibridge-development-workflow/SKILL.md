@@ -7,9 +7,7 @@ description: "AIBridge/Unity 多分支开发工作流入口。Use when a task re
 
 ## 入口边界
 
-快速任务不进入本 Skill：纯问答、代码解释、简单查找/显示，且不需要修改代码或 Unity 资源、不输出审查/验证/根因结论时，直接回答或执行。如误入本 Skill，停止展开分支和 Harness 探测。
-
-需要修改代码或 Unity 资源、调整持久化 AGENTS/Skill/workflow 规则、调试根因、采集 Runtime/日志证据、输出风险审查/验证结论，或处理 workflow recipe / 多 Agent / handoff 时，才进入本 workflow；编排分支按需加载 `aibridge-workflow-orchestration`。
+如误入本 Skill（纯问答/解释/只读分析），直接回答，停止展开分支和 Harness 探测。
 
 ## 必读顺序
 

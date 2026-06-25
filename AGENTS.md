@@ -39,23 +39,16 @@
 ## SkillDoc 生成规则
 1. 主 `Skill~/SKILL.md` 保持轻量，只放 CLI 调用入口、核心规则和 reference 索引
 2. 命令文档默认生成到目标 Skill 的 `references/command-reference.md`
-3. 命令需要写入其它 reference 文件时，实现 `ICommandSkillDocProvider`
-4. `CommandSkillDoc.TargetSkillName` 默认是 `aibridge`
-5. `CommandSkillDoc.TargetReferenceFileName` 默认是 `command-reference.md`
-6. 大模块按职责拆分 reference，例如：
+3. 大模块按职责拆分 reference，例如：
    - batch / multi：`aibridge-batch-script/references/batch-script-reference.md`
    - prefab：`aibridge-prefab-patch/references/prefab-reference.md`
    - inspector：`aibridge/references/inspector-property-reference.md`
    - unity yaml：`unity-yaml-editing/references/unity-yaml-reference.md`
-7. 未实现 `ICommandSkillDocProvider` 的旧命令继续使用 `ICommand.SkillDescription`，并写入默认 reference
-8. SkillInstaller 自动安装 `Skill~/SKILL.md` 和 `Skill~/*/SKILL.md`；新增 Skill 不要修改 RootRule 索引或安装器路由
-9. 需要受功能开关控制的可选 Skill，在 Skill 目录放 `aibridge-skill.json` 并声明 `requiredFeature`，不要把功能说明硬塞进主 Skill
-10. 面向 AI 的 Skill / SkillDescription / command reference 必须精简凝练，只保留调用方式、关键约束和必要决策规则，避免冗余解释性说明
-11. 面向用户的编辑器面板、README、HelpBox、Tooltip 可以解释功能影响、默认行为和使用说明；不要把这类用户说明混入面向 AI 的提示词
+4. SkillInstaller 自动安装 `Skill~/SKILL.md` 和 `Skill~/*/SKILL.md`；新增 Skill 不要修改 RootRule 索引或安装器路由
+5. 需要受功能开关控制的可选 Skill，在 Skill 目录放 `aibridge-skill.json` 并声明 `requiredFeature`，不要把功能说明硬塞进主 Skill
+6. 面向 AI 的 Skill / SkillDescription / command reference 必须精简凝练，只保留调用方式、关键约束和必要决策规则，避免冗余解释性说明
+7. 面向用户的编辑器面板、README、HelpBox、Tooltip 可以解释功能影响、默认行为和使用说明；不要把这类用户说明混入面向 AI 的提示词
 
 ## 模板维护规则
 1. `Templates~/ProjectRules/AGENTS.zh-CN.md` 和 `Templates~/ProjectRules/AGENTS.en-US.md` 是安装到 Unity 项目的示例文件
 2. `Templates~/Rules/AIBridge.RootRule.md` 是注入到已有规则文件的通用最小引导块
-3. RootRule 只放 CLI 路径、常用命令、host 工具 `exec` 路由、“快速任务不进工作流 / 工作流任务先加载工作流”的路由规则、Skill 根目录提示、项目版本和 compact 能力摘要
-4. 完整行为规范必须放在 `aibridge-development-workflow`
-5. CLI 详细命令说明必须放在对应 Skill 的 `references/*.md`
