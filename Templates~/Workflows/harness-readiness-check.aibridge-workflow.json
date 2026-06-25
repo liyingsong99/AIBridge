@@ -177,17 +177,14 @@
   "artifacts": [
     {
       "kind": "command-result",
-      "description": "Workflow CLI probe results.",
       "required": true
     },
     {
       "kind": "evidence",
-      "description": "Harness and optional capability evidence imported from the main agent or external executor.",
       "required": false
     },
     {
       "kind": "workflow-report",
-      "description": "Readiness matrix and recommended fallback path.",
       "required": true
     }
   ]

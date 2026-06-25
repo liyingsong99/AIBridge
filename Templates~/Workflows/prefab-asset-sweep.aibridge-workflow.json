@@ -230,12 +230,10 @@
   "artifacts": [
     {
       "kind": "patch-proposal",
-      "description": "Merged patch proposal list before serial application.",
       "required": true
     },
     {
       "kind": "validation-report",
-      "description": "Dry-run, compile, and log validation.",
       "required": true
     }
   ]

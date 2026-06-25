@@ -221,17 +221,14 @@
   "artifacts": [
     {
       "kind": "console-log",
-      "description": "Console evidence before and after the fix.",
       "required": true
     },
     {
       "kind": "patch-proposal",
-      "description": "Confirmed fix proposal.",
       "required": false
     },
     {
       "kind": "workflow-report",
-      "description": "Loop report with evidence and remaining risks.",
       "required": true
     }
   ]

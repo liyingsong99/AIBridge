@@ -178,12 +178,10 @@
   "artifacts": [
     {
       "kind": "runtime-log",
-      "description": "Runtime error log result.",
       "required": true
     },
     {
       "kind": "runtime-screenshot",
-      "description": "UI screenshot after actions.",
       "required": true
     }
   ]

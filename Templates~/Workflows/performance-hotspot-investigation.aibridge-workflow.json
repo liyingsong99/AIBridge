@@ -279,37 +279,30 @@
   "artifacts": [
     {
       "kind": "profiler-snapshot",
-      "description": "Editor Profiler status, frame, memory, rendering, and script snapshots.",
       "required": false
     },
     {
       "kind": "console-log",
-      "description": "Editor Console error evidence collected before Runtime sampling.",
       "required": false
     },
     {
       "kind": "runtime-status",
-      "description": "Runtime target reachability and status evidence.",
       "required": true
     },
     {
       "kind": "runtime-log",
-      "description": "Runtime error log evidence collected before sampling.",
       "required": false
     },
     {
       "kind": "runtime-screenshot",
-      "description": "Runtime screenshot evidence for the sampled scenario.",
       "required": false
     },
     {
       "kind": "runtime-perf",
-      "description": "Runtime performance sample with FPS, frame time, hitch, memory, GC, rendering, warning, and unsupported data.",
       "required": true
     },
     {
       "kind": "workflow-report",
-      "description": "Performance hotspot Markdown report.",
       "required": true
     }
   ]

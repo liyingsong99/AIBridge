@@ -149,7 +149,6 @@
   "artifacts": [
     {
       "kind": "validation-report",
-      "description": "Confirmed findings and uncertain evidence gaps.",
       "required": true
     }
   ]

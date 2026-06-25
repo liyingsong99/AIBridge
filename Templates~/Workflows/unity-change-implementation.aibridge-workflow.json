@@ -158,12 +158,10 @@
   "artifacts": [
     {
       "kind": "validation-report",
-      "description": "Compile and log validation result.",
       "required": true
     },
     {
       "kind": "workflow-report",
-      "description": "Final Markdown report.",
       "required": true
     }
   ]

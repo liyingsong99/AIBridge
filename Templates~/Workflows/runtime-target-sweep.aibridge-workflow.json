@@ -163,22 +163,18 @@
   "artifacts": [
     {
       "kind": "runtime-status",
-      "description": "Runtime target status result.",
       "required": true
     },
     {
       "kind": "runtime-log",
-      "description": "Runtime error log result.",
       "required": true
     },
     {
       "kind": "runtime-screenshot",
-      "description": "Runtime screenshot payload when available.",
       "required": false
     },
     {
       "kind": "runtime-perf",
-      "description": "Runtime performance sample.",
       "required": false
     }
   ]

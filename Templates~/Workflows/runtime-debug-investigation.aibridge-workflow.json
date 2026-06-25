@@ -320,37 +320,30 @@
   "artifacts": [
     {
       "kind": "console-log",
-      "description": "Editor Console evidence collected before Runtime diagnosis.",
       "required": true
     },
     {
       "kind": "runtime-status",
-      "description": "Runtime target reachability and status evidence.",
       "required": true
     },
     {
       "kind": "runtime-log",
-      "description": "Runtime error log evidence.",
       "required": true
     },
     {
       "kind": "runtime-screenshot",
-      "description": "Runtime screenshot evidence when available.",
       "required": false
     },
     {
       "kind": "runtime-perf",
-      "description": "Runtime performance sample when available.",
       "required": false
     },
     {
       "kind": "verdict",
-      "description": "Imported confirmed, refuted, or uncertain candidate verdicts.",
       "required": false
     },
     {
       "kind": "workflow-report",
-      "description": "Diagnosis report with evidence and remaining risks.",
       "required": true
     }
   ]
