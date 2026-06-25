@@ -438,11 +438,11 @@ $CLI gameview list_resolutions
             var gameView = GetMainGameView(false);
             int currentIndex = gameView != null ? GetSelectedSizeIndex(gameView) : -1;
 
+            // count 等于 resolutions.Count，移除冗余
             return CommandResult.Success(request.id, new
             {
                 action = "list_resolutions",
                 resolutions,
-                count = totalCount,
                 currentIndex
             });
         }

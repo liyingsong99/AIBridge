@@ -27,18 +27,15 @@ namespace AIBridge.Runtime
                 ["targetId"] = _targetId,
                 ["screen"] = BuildScreenSnapshot(),
                 ["eventSystem"] = eventSystem,
-                ["selected"] = BuildGameObjectInfo(selected),
+                // selected 已包含在 eventSystem.selected 中；hasEventSystem 与 eventSystem.present 等价；canvasCount/returnedButtonCount 与数组长度等价
                 ["canvases"] = canvases,
                 ["buttons"] = BuildButtonSnapshots(buttonCollection.Entries),
                 ["summary"] = new Dictionary<string, object>
                 {
-                    ["canvasCount"] = canvases.Count,
                     ["buttonCount"] = buttonCollection.TotalCount,
-                    ["returnedButtonCount"] = buttonCollection.Entries.Count,
                     ["clickableButtonCount"] = CountClickableButtons(buttonCollection.Entries),
                     ["truncated"] = buttonCollection.Truncated,
-                    ["raycastDetails"] = includeRaycastDetails,
-                    ["hasEventSystem"] = EventSystem.current != null
+                    ["raycastDetails"] = includeRaycastDetails
                 }
             };
         }
@@ -60,7 +57,7 @@ namespace AIBridge.Runtime
                 ["summary"] = new Dictionary<string, object>
                 {
                     ["matchCount"] = buttonCollection.TotalCount,
-                    ["returnedCount"] = buttonCollection.Entries.Count,
+                    // returnedCount 等于 buttons 数组长度，移除
                     ["clickableCount"] = CountClickableButtons(buttonCollection.Entries),
                     ["truncated"] = buttonCollection.Truncated,
                     ["raycastDetails"] = includeRaycastDetails
@@ -98,9 +95,8 @@ namespace AIBridge.Runtime
                 ["point"] = BuildVector2Info(screenPoint),
                 ["pointSource"] = pointSource,
                 ["requestedTarget"] = BuildGameObjectInfo(target),
-                ["hitCount"] = hits.Count,
-                ["hits"] = BuildRaycastSnapshots(hits),
-                ["topHit"] = hits.Count > 0 ? BuildRaycastSnapshot(hits[0], 0) : null
+                // hitCount 等于 hits.Count；topHit 等于 hits[0]，移除以减小返回体
+                ["hits"] = BuildRaycastSnapshots(hits)
             };
         }
 
@@ -132,13 +128,12 @@ namespace AIBridge.Runtime
                 ["requestedTarget"] = BuildGameObjectInfo(target),
                 ["selectedBefore"] = BuildGameObjectInfo(selectedBefore),
                 ["selectedAfter"] = BuildGameObjectInfo(selectedAfter),
-                ["hitCount"] = hits.Count,
+                // hitCount/topHit 与 hits.Count / hits[0] 重复，已移除
                 ["hits"] = BuildRaycastSnapshots(hits),
                 ["raycastTarget"] = BuildGameObjectInfo(clickState.RaycastTarget),
                 ["pointerPress"] = BuildGameObjectInfo(clickState.PointerPress),
                 ["clickHandler"] = BuildGameObjectInfo(clickState.ClickHandler),
-                ["clicked"] = clickState.PointerPress != null && clickState.ClickHandler != null && clickState.PointerPress == clickState.ClickHandler,
-                ["topHit"] = hits.Count > 0 ? BuildRaycastSnapshot(hits[0], 0) : null
+                ["clicked"] = clickState.PointerPress != null && clickState.ClickHandler != null && clickState.PointerPress == clickState.ClickHandler
             };
         }
 
@@ -317,12 +312,11 @@ namespace AIBridge.Runtime
                 ["clickPoint"] = entry.ScreenPointAvailable ? BuildVector2Info(entry.ScreenPoint) : null,
                 ["screenRect"] = entry.ScreenRectAvailable ? BuildRectInfo(entry.ScreenRect) : null,
                 ["raycastAvailable"] = entry.RaycastAvailable,
-                ["topmost"] = entry.RaycastAvailable && entry.RaycastIndex == 0,
+                // topmost 可由 raycastIndex==0 推导；canvasName 可由 canvasPath 末段推导，移除以减少 UI 树重复字段
                 ["raycastIndex"] = entry.RaycastIndex,
                 ["raycastCount"] = entry.RaycastCount,
                 ["raycastTarget"] = BuildGameObjectInfo(entry.RaycastTarget),
                 ["canvasPath"] = entry.CanvasPath,
-                ["canvasName"] = entry.CanvasName,
                 ["canvasSortingOrder"] = entry.CanvasSortingOrder,
                 ["canvasRenderMode"] = entry.CanvasRenderMode
             };
@@ -348,8 +342,8 @@ namespace AIBridge.Runtime
                 ["displayIndex"] = hit.displayIndex,
                 ["screenPosition"] = BuildVector2Info(hit.screenPosition),
                 ["worldPosition"] = BuildVector3Info(hit.worldPosition),
-                ["worldNormal"] = BuildVector3Info(hit.worldNormal),
-                ["isTopmost"] = index == 0
+                ["worldNormal"] = BuildVector3Info(hit.worldNormal)
+                // isTopmost 由 index==0 即可判断
             };
         }
 
@@ -659,16 +653,13 @@ namespace AIBridge.Runtime
 
         private static Dictionary<string, object> BuildRectInfo(Rect rect)
         {
+            // 只保留 x/y/width/height/center；xMin/yMin/xMax/yMax 可由 x+width/y+height 推导，避免在 UI 树大量节点中重复
             return new Dictionary<string, object>
             {
                 ["x"] = rect.x,
                 ["y"] = rect.y,
                 ["width"] = rect.width,
                 ["height"] = rect.height,
-                ["xMin"] = rect.xMin,
-                ["yMin"] = rect.yMin,
-                ["xMax"] = rect.xMax,
-                ["yMax"] = rect.yMax,
                 ["center"] = BuildVector2Info(rect.center)
             };
         }

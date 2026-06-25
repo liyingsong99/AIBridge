@@ -271,10 +271,10 @@ $CLI asset read_text --assetPath ""Assets/Scripts/Player.cs"" --startLine 1 --ma
 
             AssetDatabase.ImportAsset(assetPath, options);
 
+            // imported 在成功分支恒为 true，与外层 success 等价，移除
             return CommandResult.Success(request.id, new
             {
-                assetPath = assetPath,
-                imported = true
+                assetPath = assetPath
             });
         }
 
@@ -286,10 +286,8 @@ $CLI asset read_text --assetPath ""Assets/Scripts/Player.cs"" --startLine 1 --ma
 
             AssetDatabase.Refresh(options);
 
-            return CommandResult.Success(request.id, new
-            {
-                refreshed = true
-            });
+            // refreshed 在成功分支恒为 true，与外层 success 等价；data 为空对象即可
+            return CommandResult.Success(request.id, new { });
         }
 
         private CommandResult GetAssetPath(CommandRequest request)

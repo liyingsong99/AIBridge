@@ -473,11 +473,10 @@ namespace AIBridge.Runtime
             switch (cmd.Action)
             {
                 case "runtime.ping":
+                    // 外层 success/Timestamp 已表达存活与时间戳，无需重复返回 pong/timestamp
                     result = AIBridgeRuntimeCommandResult.FromSuccess(cmd.Id, new
                     {
-                        targetId = _targetId,
-                        pong = true,
-                        timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                        targetId = _targetId
                     });
                     return true;
                 case "runtime.status":
@@ -615,28 +614,25 @@ namespace AIBridge.Runtime
                     result = AIBridgeRuntimeCommandResult.FromSuccess(cmd.Id, new
                     {
                         action = "runtime.screenshot",
+                        // filename 可由 Path.GetFileName(imagePath) 推导；HTTP 传输层会自行提取后用于拉取产物
                         imagePath = path,
-                        filename = filename,
                         width = texture.width,
                         height = texture.height,
                         fileSize = bytes == null ? 0 : bytes.Length,
                         orientation = Screen.orientation.ToString(),
+                        // safeArea 只保留 x/y/width/height，xMin/xMax/yMin/yMax 可由其推导，避免冗余
                         safeArea = new
                         {
                             x = safeArea.x,
                             y = safeArea.y,
                             width = safeArea.width,
-                            height = safeArea.height,
-                            xMin = safeArea.xMin,
-                            yMin = safeArea.yMin,
-                            xMax = safeArea.xMax,
-                            yMax = safeArea.yMax
+                            height = safeArea.height
                         },
                         screenDpi = Screen.dpi,
                         capturedFrame = capturedFrame,
                         capturedAtUtc = capturedAtUtc.ToString("o"),
-                        sha256 = ComputeSha256(bytes),
-                        timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                        // 外层 Result.Timestamp 已是 unix ms，移除内层重复 timestamp，capturedAtUtc 表达采集瞬间更精确
+                        sha256 = ComputeSha256(bytes)
                     });
                 }
             }
@@ -1228,10 +1224,10 @@ namespace AIBridge.Runtime
             if (clear)
             {
                 var clearedCount = _logBuffer.Clear();
+                // count 恒为 0 且等于 logs.Length，移除冗余
                 return new
                 {
                     logs = new AIBridgeRuntimeLogEntry[0],
-                    count = 0,
                     clearedCount = clearedCount,
                     bufferCount = _logBuffer.Count,
                     targetId = _targetId
@@ -1245,10 +1241,10 @@ namespace AIBridge.Runtime
             var sinceFrame = ReadNullableIntParam(cmd, "sinceFrame");
             var sinceTimestamp = ReadSinceTimestampParam(cmd);
             var logs = _logBuffer.GetEntries(count, logType, regex, includeStackTrace, sinceFrame, sinceTimestamp);
+            // count 等于 logs.Length，移除；保留 bufferCount 反映缓冲整体规模
             return new
             {
                 logs = logs,
-                count = logs.Length,
                 bufferCount = _logBuffer.Count,
                 filters = new
                 {

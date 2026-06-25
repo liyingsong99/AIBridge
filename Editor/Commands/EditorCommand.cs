@@ -157,10 +157,10 @@ $CLI editor get_state
 
             EditorApplication.isPlaying = true;
 
+            // started 在成功分支恒为 true，与外层 success 等价，移除
             return CommandResult.Success(request.id, new
             {
                 action = "play",
-                started = true,
                 domainReload = domainReload
             });
         }
@@ -169,6 +169,7 @@ $CLI editor get_state
         {
             if (!EditorApplication.isPlaying)
             {
+                // alreadyStopped 表达“已是停止状态”，保留以便与正常 stop 区分
                 return CommandResult.Success(request.id, new
                 {
                     action = "stop",
@@ -178,10 +179,10 @@ $CLI editor get_state
 
             EditorApplication.isPlaying = false;
 
+            // stopped 在成功分支恒为 true，与外层 success 等价，移除
             return CommandResult.Success(request.id, new
             {
-                action = "stop",
-                stopped = true
+                action = "stop"
             });
         }
 

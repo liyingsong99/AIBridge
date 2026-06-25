@@ -304,9 +304,10 @@ namespace AIBridgeCLI.Core
 
             if (!TryGetRequestParam(request, "output", out var outputPath) || string.IsNullOrWhiteSpace(outputPath))
             {
+                // 未指定 output 时仅把 imagePath 规范成绝对路径，不再额外输出与其重复的 pcPath
                 if (File.Exists(imagePath))
                 {
-                    data["pcPath"] = Path.GetFullPath(imagePath);
+                    data["imagePath"] = Path.GetFullPath(imagePath);
                 }
 
                 return;
@@ -328,8 +329,8 @@ namespace AIBridgeCLI.Core
                     Directory.CreateDirectory(directory);
                 }
 
+                // 复制到 output 后，imagePath 仍指向源文件、output 指向副本，二者语义不同；不再输出与 output 重复的 pcPath
                 File.Copy(imagePath, fullOutputPath, true);
-                data["pcPath"] = fullOutputPath;
                 data["output"] = fullOutputPath;
                 data["copiedToOutput"] = true;
                 data["sha256"] = ComputeSha256(fullOutputPath);

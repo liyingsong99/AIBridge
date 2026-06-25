@@ -182,10 +182,10 @@ $CLI gameobject get_info --path ""Player""
                 }
             }
 
+            // count 等于 results.Count，移除
             return CommandResult.Success(request.id, new
             {
-                results = results,
-                count = results.Count
+                results = results
             });
         }
 

@@ -44,9 +44,9 @@ namespace AIBridge.Editor
                 }
             }
 
+            // totalCommands 等于 commands.Count，移除
             return CommandResult.Success(requestId, new
             {
-                totalCommands = commands.Count,
                 commands = commands,
                 usage = "Use { \"type\": \"help\", \"params\": { \"command\": \"<command_type>\" } } for detailed help"
             });

@@ -31,10 +31,10 @@ $CLI menu_item --menuPath ""Assets/Create/Folder""
                 var result = EditorApplication.ExecuteMenuItem(menuPath);
                 if (result)
                 {
+                    // executed 在成功分支恒为 true，与外层 success 等价，移除
                     return CommandResult.Success(request.id, new
                     {
-                        menuPath = menuPath,
-                        executed = true
+                        menuPath = menuPath
                     });
                 }
                 else

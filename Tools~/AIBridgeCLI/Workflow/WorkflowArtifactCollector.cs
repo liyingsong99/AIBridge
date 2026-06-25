@@ -74,7 +74,6 @@ namespace AIBridgeCLI.Workflow
             var candidates = new List<FileArtifactCandidate>();
             AddCandidate(candidates, execution.Result, "imagePath", DetectImageKind(command), "imagePath");
             AddCandidate(candidates, execution.Result, "gifPath", "gif", "gifPath");
-            AddCandidate(candidates, execution.Result, "pcPath", DetectImageKind(command), "pcPath");
             AddCandidate(candidates, execution.Result, "output", DetectImageKind(command), "output");
 
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

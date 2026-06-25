@@ -99,8 +99,7 @@ $CLI screenshot gif --frameCount 100 --fps 25 --scale 0.5 --colorCount 128
                 imagePath = result.ImagePath,
                 width = result.Width,
                 height = result.Height,
-                timestamp = result.Timestamp,
-                filename = result.Filename
+                timestamp = result.Timestamp
             });
         }
 
@@ -122,8 +121,7 @@ $CLI screenshot gif --frameCount 100 --fps 25 --scale 0.5 --colorCount 128
                 imagePath = result.ImagePath,
                 width = result.Width,
                 height = result.Height,
-                timestamp = result.Timestamp,
-                filename = result.Filename
+                timestamp = result.Timestamp
             });
         }
 
@@ -201,7 +199,6 @@ $CLI screenshot gif --frameCount 100 --fps 25 --scale 0.5 --colorCount 128
                 {
                     action = "gif",
                     gifPath = gifResult.GifPath,
-                    filename = gifResult.Filename,
                     frameCount = gifResult.FrameCount,
                     width = gifResult.Width,
                     height = gifResult.Height,

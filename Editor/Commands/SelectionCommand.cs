@@ -110,13 +110,13 @@ $CLI selection remove --path ""Enemy1""
                 }
             }
 
+            // count 等于 gameObjects.Count + assets.Count，可由数组长度推导
             return CommandResult.Success(request.id, new
             {
                 gameObjects = gameObjects,
                 assets = assets,
                 activeObject = Selection.activeObject != null ? Selection.activeObject.name : null,
-                activeObjectInstanceId = Selection.activeObject != null ? AIBridgeEditorObjectIdentity.GetSerializedId(Selection.activeObject) : null,
-                count = gameObjects.Count + assets.Count
+                activeObjectInstanceId = Selection.activeObject != null ? AIBridgeEditorObjectIdentity.GetSerializedId(Selection.activeObject) : null
             });
         }
 
@@ -197,10 +197,10 @@ $CLI selection remove --path ""Enemy1""
             Selection.objects = new UnityEngine.Object[0];
             Selection.activeObject = null;
 
+            // cleared 在成功时恒为 true，与外层 success 等价，移除
             return CommandResult.Success(request.id, new
             {
-                action = "clear",
-                cleared = true
+                action = "clear"
             });
         }
 

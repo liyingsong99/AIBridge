@@ -132,13 +132,13 @@ Avoid inline complex `--json` in PowerShell; build a JSON variable for `--values
                     components.Add(info);
                 }
 
+                // count 等于 components.Count，移除
                 return CommandResult.Success(request.id, new
                 {
                     gameObjectName = go.name,
                     assetPath = context.AssetPath,
                     objectPath = context.ObjectPath,
-                    components = components,
-                    count = components.Count
+                    components = components
                 });
             }
             finally
@@ -287,13 +287,13 @@ Avoid inline complex `--json` in PowerShell; build a JSON variable for `--values
                     matches.Add(BuildPropertyInfo(iterator));
                 }
 
+                // count 等于 matches.Count，移除
                 return CommandResult.Success(request.id, new
                 {
                     targetName = serializedTarget.name,
                     targetType = serializedTarget.GetType().Name,
                     componentName = component != null ? component.GetType().Name : null,
                     keyword = keyword,
-                    count = matches.Count,
                     matches = matches,
                     assetPath = context.AssetPath,
                     objectPath = context.ObjectPath

@@ -628,7 +628,9 @@ namespace AIBridgeCLI.Core
                 return;
             }
 
-            var filename = ReadString(data, "filename");
+            // filename 由 Runtime 端 imagePath 推导，避免在返回体中重复携带
+            var sourceImagePath = ReadString(data, "imagePath");
+            var filename = string.IsNullOrWhiteSpace(sourceImagePath) ? null : Path.GetFileName(sourceImagePath);
             if (string.IsNullOrWhiteSpace(filename))
             {
                 return;
@@ -640,9 +642,7 @@ namespace AIBridgeCLI.Core
                 Directory.CreateDirectory(Path.GetDirectoryName(cachePath));
                 var bytes = SendBytes(BuildUrl(target, "/aibridge/artifacts/" + Uri.EscapeDataString(filename)), ResolveToken(request));
                 File.WriteAllBytes(cachePath, bytes);
-                data["devicePath"] = ReadString(data, "imagePath");
                 data["imagePath"] = cachePath;
-                data["pcPath"] = cachePath;
                 data["artifactDownloaded"] = true;
             }
             catch (Exception ex)

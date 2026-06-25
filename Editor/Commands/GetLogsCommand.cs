@@ -51,10 +51,10 @@ $CLI get_logs [--count 100] [--logType Error|Warning] [--regex ""pattern""]
                 // 面板默认值使用“最低等级”语义；显式 CLI 参数保持历史精确筛选，避免破坏现有 AI 命令。
                 var filterMode = hasLogType ? LogFilterMode.Exact : LogFilterMode.MinimumLevel;
                 var logs = GetConsoleLogs(count, logType, filterMode, regexPattern);
+                // count 等于 logs.Count，移除冗余
                 return CommandResult.Success(request.id, new
                 {
-                    logs = logs,
-                    count = logs.Count
+                    logs = logs
                 });
             }
             catch (Exception ex)

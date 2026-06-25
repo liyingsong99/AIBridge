@@ -171,13 +171,12 @@ $CLI compile dotnet [--solution MyGame.sln]  # Optional validation
 
             if (includeDetails)
             {
+                // includeDetails 已返回 errors/warnings 数组，errorCount/warningCount 与其长度等价，移除
                 return CommandResult.Success(request.id, new
                 {
                     action = "status",
                     status = statusStr,
                     isCompiling = false,
-                    errorCount = result.errorCount,
-                    warningCount = result.warningCount,
                     duration = result.durationSeconds,
                     errors = ConvertErrors(result.errors),
                     warnings = ConvertErrors(result.warnings)
@@ -280,17 +279,14 @@ $CLI compile dotnet [--solution MyGame.sln]  # Optional validation
                     }
 
                     var exitCode = process.ExitCode;
-                    var success = exitCode == 0;
 
+                    // success 可由 exitCode==0 推导；errorCount/warningCount 与数组长度等价，移除
                     return CommandResult.Success(request.id, new DotnetBuildResult
                     {
                         action = "dotnet",
                         solution = solutionPath,
                         configuration = configuration,
                         exitCode = exitCode,
-                        success = success,
-                        errorCount = errors.Count,
-                        warningCount = warnings.Count,
                         duration = stopwatch.Elapsed.TotalSeconds,
                         errors = errors,
                         warnings = warnings,
@@ -359,9 +355,6 @@ $CLI compile dotnet [--solution MyGame.sln]  # Optional validation
             public string solution;
             public string configuration;
             public int exitCode;
-            public bool success;
-            public int errorCount;
-            public int warningCount;
             public double duration;
             public List<object> errors;
             public List<object> warnings;

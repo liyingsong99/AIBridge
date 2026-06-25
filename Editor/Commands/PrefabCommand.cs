@@ -179,10 +179,10 @@ $CLI prefab patch --prefabPath ""Assets/Prefabs/Player.prefab"" --ops ""patch_op
 
             PrefabUtility.UnpackPrefabInstance(go, mode, InteractionMode.AutomatedAction);
 
+            // unpacked 在成功分支恒为 true，与外层 success 等价，移除
             return CommandResult.Success(request.id, new
             {
                 gameObjectName = go.name,
-                unpacked = true,
                 completely = completely
             });
         }
@@ -361,11 +361,11 @@ $CLI prefab patch --prefabPath ""Assets/Prefabs/Player.prefab"" --ops ""patch_op
             // Refresh AssetDatabase to ensure changes are visible
             AssetDatabase.Refresh();
 
+            // applied 在成功分支恒为 true，与外层 success 等价，移除
             return CommandResult.Success(request.id, new
             {
                 gameObjectName = go.name,
-                prefabPath = prefabPath,
-                applied = true
+                prefabPath = prefabPath
             });
         }
 

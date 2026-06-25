@@ -154,10 +154,10 @@ $CLI scene new [--setup empty]
 
             var scene = EditorSceneManager.NewScene(newSceneSetup, NewSceneMode.Single);
 
+            // created 在成功分支恒为 true，与外层 success 等价，移除
             return CommandResult.Success(request.id, new
             {
-                sceneName = scene.name,
-                created = true
+                sceneName = scene.name
             });
         }
 
