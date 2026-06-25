@@ -1241,20 +1241,11 @@ namespace AIBridge.Runtime
             var sinceFrame = ReadNullableIntParam(cmd, "sinceFrame");
             var sinceTimestamp = ReadSinceTimestampParam(cmd);
             var logs = _logBuffer.GetEntries(count, logType, regex, includeStackTrace, sinceFrame, sinceTimestamp);
-            // count 等于 logs.Length，移除；保留 bufferCount 反映缓冲整体规模
+            // count 等于 logs.Length，移除；filters 为输入参数回显，移除；保留 bufferCount 反映缓冲整体规模
             return new
             {
                 logs = logs,
                 bufferCount = _logBuffer.Count,
-                filters = new
-                {
-                    logType = logType,
-                    regex = regex,
-                    includeStackTrace = includeStackTrace,
-                    tail = count,
-                    sinceFrame = sinceFrame,
-                    sinceTime = sinceTimestamp
-                },
                 targetId = _targetId
             };
         }

@@ -93,8 +93,7 @@ namespace AIBridge.Runtime
                 ["action"] = RuntimeUiRaycastAction,
                 ["targetId"] = _targetId,
                 ["point"] = BuildVector2Info(screenPoint),
-                ["pointSource"] = pointSource,
-                ["requestedTarget"] = BuildGameObjectInfo(target),
+                // pointSource/requestedTarget 为输入回显，移除
                 // hitCount 等于 hits.Count；topHit 等于 hits[0]，移除以减小返回体
                 ["hits"] = BuildRaycastSnapshots(hits)
             };
@@ -124,8 +123,7 @@ namespace AIBridge.Runtime
                 ["action"] = RuntimeUiClickAction,
                 ["targetId"] = _targetId,
                 ["point"] = BuildVector2Info(screenPoint),
-                ["pointSource"] = pointSource,
-                ["requestedTarget"] = BuildGameObjectInfo(target),
+                // pointSource/requestedTarget 为输入回显，移除
                 ["selectedBefore"] = BuildGameObjectInfo(selectedBefore),
                 ["selectedAfter"] = BuildGameObjectInfo(selectedAfter),
                 // hitCount/topHit 与 hits.Count / hits[0] 重复，已移除

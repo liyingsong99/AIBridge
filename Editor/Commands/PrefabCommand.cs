@@ -179,11 +179,10 @@ $CLI prefab patch --prefabPath ""Assets/Prefabs/Player.prefab"" --ops ""patch_op
 
             PrefabUtility.UnpackPrefabInstance(go, mode, InteractionMode.AutomatedAction);
 
-            // unpacked 在成功分支恒为 true，与外层 success 等价，移除
+            // unpacked 在成功分支恒为 true，与外层 success 等价，移除；completely 为输入回显，移除
             return CommandResult.Success(request.id, new
             {
-                gameObjectName = go.name,
-                completely = completely
+                gameObjectName = go.name
             });
         }
 

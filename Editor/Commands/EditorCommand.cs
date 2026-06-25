@@ -157,11 +157,10 @@ $CLI editor get_state
 
             EditorApplication.isPlaying = true;
 
-            // started 在成功分支恒为 true，与外层 success 等价，移除
+            // started 在成功分支恒为 true，与外层 success 等价，移除；domainReload 为输入回显，移除
             return CommandResult.Success(request.id, new
             {
-                action = "play",
-                domainReload = domainReload
+                action = "play"
             });
         }
 

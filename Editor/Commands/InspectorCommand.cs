@@ -287,13 +287,12 @@ Avoid inline complex `--json` in PowerShell; build a JSON variable for `--values
                     matches.Add(BuildPropertyInfo(iterator));
                 }
 
-                // count 等于 matches.Count，移除
+                // count 等于 matches.Count，移除；keyword 为输入回显，移除
                 return CommandResult.Success(request.id, new
                 {
                     targetName = serializedTarget.name,
                     targetType = serializedTarget.GetType().Name,
                     componentName = component != null ? component.GetType().Name : null,
-                    keyword = keyword,
                     matches = matches,
                     assetPath = context.AssetPath,
                     objectPath = context.ObjectPath

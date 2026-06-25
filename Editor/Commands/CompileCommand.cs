@@ -281,11 +281,10 @@ $CLI compile dotnet [--solution MyGame.sln]  # Optional validation
                     var exitCode = process.ExitCode;
 
                     // success 可由 exitCode==0 推导；errorCount/warningCount 与数组长度等价，移除
+                    // solution/configuration 为输入回显，移除
                     return CommandResult.Success(request.id, new DotnetBuildResult
                     {
                         action = "dotnet",
-                        solution = solutionPath,
-                        configuration = configuration,
                         exitCode = exitCode,
                         duration = stopwatch.Elapsed.TotalSeconds,
                         errors = errors,
@@ -352,8 +351,6 @@ $CLI compile dotnet [--solution MyGame.sln]  # Optional validation
         private sealed class DotnetBuildResult
         {
             public string action;
-            public string solution;
-            public string configuration;
             public int exitCode;
             public double duration;
             public List<object> errors;
