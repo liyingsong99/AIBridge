@@ -188,6 +188,8 @@ $CLI test run --mode EditMode
 $CLI test status
 ```
 
+`test run` 必须在 Editor 处于 Edit Mode 时启动。如果 Unity 已经处于 Play Mode，命令会直接失败，并明确提示先退出 Play Mode 再重试。
+
 Unity 验证必须使用 `compile unity`。`compile dotnet` 只能作为额外的解决方案构建检查，不能替代 Unity 编译。
 
 ### Selection、菜单项和 Profiler
@@ -329,8 +331,7 @@ $values = (@{ 'm_LocalPosition.x' = 0; 'm_LocalPosition.y' = 1 } | ConvertTo-Jso
 
 ### 外部 Exec
 
-`exec` 用于无 shell 执行 `rg`、`git`、`dotnet`、`python` 或 `node` 等外部工具。请求通过 stdin 或请求文件传入 JSON，参数保持数组形式，不再拼接 PowerShell 字符串。
-`exec run --stdin` 读取的是 stdin 中的 JSON 请求对象；必须把 JSON 通过管道传给 CLI，不能在 `--stdin` 后面继续追加裸 shell 命令。
+`exec` 用于无 shell 执行 `rg`、`git`、`dotnet`、`python` 或 `node` 等外部工具。`harness status` 这类 AIBridge 命令直接调用。请求通过 stdin 或请求文件传入 JSON；`exec run --stdin` 使用 `command`，不是 `cmd`，也不能在 `--stdin` 后面继续追加裸 shell 命令。`command` 只放可执行文件名，flags、路径和搜索文本放到 `args`、`queries`、`globs` 或 `paths`。值里包含引号、反斜杠或正则时，先用 PowerShell 对象再管道传入 `ConvertTo-Json` 输出，或者改用 `--request-file`。
 
 ```powershell
 $request = @'

@@ -3,7 +3,7 @@
 ## 状态
 
 - 状态：当前索引
-- 更新时间：2026-06-23
+- 更新时间：2026-06-24
 - 维护范围：`Packages/cn.lys.aibridge`
 
 ## 目的
@@ -137,9 +137,10 @@
 - `AIBridge/Workflows` 仍然是用户配置面板，不是 recipe/run/debug 控制台。
 - `AIBridge/Workflow Graph` 是独立高级入口，不应并回默认面板。
 - `compile dotnet` 只是额外检查，不是 Unity 编译替代品。
+- `test run` 必须在 Editor 处于 Edit Mode 时启动；若当前处于 Play Mode，会直接失败并明确提示先退出 Play Mode。
 - `code_index` 仍是默认关闭的只读语义入口；默认忽略 `Unity.*` 程序集，以及 `Library/PackageCache/com.unity.*` / `Packages/com.unity.*` 源码路径，被排除源码程序集仍作为 metadata reference 保留。
 - `workflow run-cli` 不会自动执行 `agent` / `manual`，这些步骤仍需要外部执行器回流。
-- `exec run --stdin` / `exec batch --stdin` 的 stdin 契约是 JSON 请求，不是裸 shell 命令；AI-facing 提示必须明确“先 pipe JSON，再调用 CLI”，避免把 `--stdin` 后面的追加参数误当成 stdin。
+- `exec run --stdin` / `exec batch --stdin` 只面向外部 host 工具；`harness status` 这类 AIBridge 命令直接调用。stdin 契约是 JSON 请求，`command` 只放可执行文件名，`args` / `queries` / `globs` / `paths` 承载参数。包含引号、反斜杠或正则等转义敏感内容时，优先用 PowerShell 对象 `ConvertTo-Json` 或 `--request-file`，不要手写 inline JSON 字符串。
 - `aibridge-development-workflow` 使用短入口，Harness 采用 compact gate；完整探测矩阵、fallback、resume 和证据 schema 移入 `harness-readiness-detail.md` 按需加载。
 - Runtime HTTP transport 正常运行时不再轮询 file command 目录，也不为 HTTP command 默认写 result 文件；旧 File transport 仅作为 HTTP 未运行时的兼容回退路径。
 - Runtime HTTP command 成功、timeout、Runtime not-ready 和 CLI cleanup 都会关闭 pending id，迟到的 HTTP 异步结果不会回落到 file result 落盘。

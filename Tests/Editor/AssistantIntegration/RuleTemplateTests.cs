@@ -62,8 +62,11 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("Host Exec", rootRule);
             StringAssert.Contains("$CLI exec run --stdin", rootRule);
             StringAssert.Contains("$CLI exec batch --stdin", rootRule);
-            StringAssert.Contains("including quick search/display tasks", rootRule);
-            StringAssert.Contains("never append a raw shell command after `--stdin`", rootRule);
+            StringAssert.Contains("arguments are non-trivial, include regex/globs/JSON/spaces", rootRule);
+            StringAssert.Contains("do not append raw shell commands after `--stdin`", rootRule);
+            StringAssert.Contains("quotes, backslashes, or regex", rootRule);
+            StringAssert.Contains("ConvertTo-Json", rootRule);
+            StringAssert.Contains("--request-file", rootRule);
             StringAssert.DoesNotContain("In AIBridge workflow tasks", rootRule);
             StringAssert.Contains("without loading `aibridge-development-workflow`", rootRule);
             StringAssert.Contains("simple search/display", rootRule);
@@ -104,8 +107,11 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("工作流任务先加载", rootRule);
             StringAssert.Contains("外部 host 工具", rootRule);
             StringAssert.Contains("$CLI exec run --stdin", rootRule);
-            StringAssert.Contains("快速查找/显示任务也适用", rootRule);
-            StringAssert.Contains("禁止把裸 shell 命令追加在 `--stdin` 后面", rootRule);
+            StringAssert.Contains("参数不简单、包含正则/通配符/JSON/空格", rootRule);
+            StringAssert.Contains("不要在 `--stdin` 后面追加裸 shell 命令", rootRule);
+            StringAssert.Contains("引号、反斜杠或正则", rootRule);
+            StringAssert.Contains("ConvertTo-Json", rootRule);
+            StringAssert.Contains("--request-file", rootRule);
             Assert.Less(
                 rootRule.IndexOf("**路由原则**", StringComparison.Ordinal),
                 rootRule.IndexOf("**项目版本**", StringComparison.Ordinal));

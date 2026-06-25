@@ -10,7 +10,7 @@ namespace AIBridgeCLI.Commands
     public class TestCommandBuilder : BaseCommandBuilder
     {
         public override string Type => "test";
-        public override string Description => "Run Unity tests or query native test status";
+        public override string Description => "Run Unity tests or query native test status. test run must start while the Editor is in Edit Mode";
 
         public override string[] Actions => new[]
         {
@@ -21,7 +21,7 @@ namespace AIBridgeCLI.Commands
         {
             ["run"] = new List<ParameterInfo>
             {
-                new ParameterInfo("mode", "Test mode: EditMode or PlayMode", false, "EditMode"),
+                new ParameterInfo("mode", "Test mode: EditMode or PlayMode. AIBridge currently starts runs only from Edit Mode", false, "EditMode"),
                 new ParameterInfo("test-name", "Exact test full name, mapped to Unity Filter.testNames", false, null),
                 new ParameterInfo("group-name", "Regex / fixture / namespace, mapped to Unity Filter.groupNames", false, null),
                 new ParameterInfo("assembly-name", "Assembly name, mapped to Unity Filter.assemblyNames", false, null),
