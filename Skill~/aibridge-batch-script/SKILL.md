@@ -7,8 +7,6 @@ description: AIBridge batch and multi command automation. Use when Codex needs t
 
 Prefer `multi --stdin` for long scripts, JSON-heavy commands, or PowerShell quoting-sensitive commands
 
-`$CLI` means the platform-appropriate AIBridge CLI invocation, usually `./.aibridge/cli/AIBridgeCLI.exe` on Windows
-
 ## Rules
 
 - Run commands from the Unity project root

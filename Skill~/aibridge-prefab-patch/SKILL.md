@@ -5,9 +5,7 @@ description: Unity Prefab asset patch workflow for AIBridge. Use when modifying 
 
 # AIBridge Prefab Patch
 
-Use `prefab patch` when one Prefab edit needs multiple operations in one load/save cycle. For single-field or small batched edits, prefer `inspector set_property` or `inspector set_properties`. For scene objects, prefer `gameobject`, `transform`, and `inspector`. If the requested Prefab/Scene/custom `.asset` operation is not supported by AIBridge, load `unity-yaml-editing` and follow its direct UnityYAML rules
-
-`$CLI` means the platform-appropriate AIBridge CLI invocation, usually `./.aibridge/cli/AIBridgeCLI.exe` on Windows
+Use `prefab patch` when one Prefab edit needs multiple operations in one load/save cycle. For single-field or small batched edits, prefer `inspector set_property` or `inspector set_properties`. For scene objects, prefer `gameobject`, `transform`, and `inspector`. For unsupported operations, load `unity-yaml-editing`.
 
 ## 参数选择
 
@@ -35,50 +33,15 @@ $CLI prefab patch --prefabPath "Assets/Prefabs/Player.prefab" --ops ".aibridge/p
 ```json
 [
   { "op": "ensure_child", "path": "Player/HP" },
-  { "op": "ensure_component", "path": "Player/HP", "typeName": "Animator" },
-  {
-    "op": "set_property",
-    "target": { "path": "Player/HP", "componentName": "Animator" },
-    "propertyName": "m_Enabled",
-    "value": true
-  },
-  {
-    "op": "set_array",
-    "target": { "path": "Player", "componentName": "YourComponent" },
-    "propertyName": "items",
-    "items": [
-      { "key": "HP", "value": { "$gameObject": "Player/HP" } },
-      {
-        "key": "HPAnimator",
-        "value": {
-          "$component": { "path": "Player/HP", "typeName": "Animator" }
-        }
-      }
-    ]
-  }
+  { "op": "set_property", "target": { "path": "Player/HP", "componentName": "Animator" }, "propertyName": "m_Enabled", "value": true }
 ]
 ```
 
-## 支持的操作
-
-- `ensure_child`: Ensure a GameObject path exists. Optional fields: `active`, `tag`, `layer`.
-- `ensure_component`: Ensure a component exists on `path`. Use `typeName`.
-- `set_property`: Set one SerializedProperty on a GameObject/component/asset target.
-- `set_properties`: Set multiple SerializedProperties on one target.
-- `set_array`: Replace an array property.
-- `append_array`: Append items to an array property.
-- `clear_array`: Clear an array property.
+Supported ops: `ensure_child`, `ensure_component`, `set_property`, `set_properties`, `set_array`, `append_array`, `clear_array`. See `references/prefab-reference.md` for full op schemas.
 
 ## 不支持时的处理
 
-`prefab patch` currently does not cover every Unity serialized structure. Use `unity-yaml-editing` when the task needs unsupported operations such as:
-
-- Scene `.unity` object creation or structure edits not exposed by scene/gameobject/transform/inspector commands.
-- Prefab Variant override structures, nested modification records, or operations outside the listed patch ops.
-- Creating a brand-new Prefab file from text serialization, including paired `.meta`, root object, child hierarchy, and component documents.
-- Adding Prefab documents/components whose schema is not covered by patch ops, after copying the shape from the same Unity version/project.
-- ScriptableObjectTable/custom `.asset` creation or structural edits that cannot be represented by Inspector SerializedProperty writes.
-- Other text-serialized Unity assets (`.mat`, `.controller`, `.anim`, etc.) requiring direct document/fileID/GUID changes.
+If an operation is not covered by patch ops, load `unity-yaml-editing` and follow its Decision Order.
 
 ## 引用写法
 
@@ -94,12 +57,8 @@ null
 
 ## 注意事项
 
-- Do not edit Prefab YAML directly unless no Unity/AIBridge API path exists; when required, use `unity-yaml-editing`.
-- For direct YAML fallback, copy component schema from a same-project example, update every `GameObject.m_Component`, `Transform.m_Children`, `Transform.m_Father`, and component `m_GameObject` reference, then re-import and inspect.
-- Paths are normalized against the prefab root; both `Root/Child` and `Child` can work when unambiguous.
-- Duplicate child names under the same parent are ambiguous; use exact hierarchy paths.
-- Duplicate components of the same type are ambiguous; use `componentIndex` when needed.
-- Keep operation JSON under `.aibridge/patch_ops/`; do not put it under `Assets/` or commit it.
+- Do not edit Prefab YAML directly; for unsupported operations use `unity-yaml-editing`.
+- Duplicate child names or component types are ambiguous; use exact hierarchy paths and `componentIndex`.
 
 ## References
 

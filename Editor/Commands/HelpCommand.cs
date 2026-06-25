@@ -47,8 +47,7 @@ namespace AIBridge.Editor
             // totalCommands 等于 commands.Count，移除
             return CommandResult.Success(requestId, new
             {
-                commands = commands,
-                usage = "Use { \"type\": \"help\", \"params\": { \"command\": \"<command_type>\" } } for detailed help"
+                commands = commands
             });
         }
 
@@ -153,7 +152,6 @@ namespace AIBridge.Editor
                 case "asset":
                     return new
                     {
-                        format_note = "For asset search/find, format=full (default) returns asset objects, while format=paths returns asset path strings in data.assets.",
                         search = new { type = "asset", @params = new { action = "search", mode = "script", keyword = "Player", format = "paths", maxResults = 20 } },
                         find = new { type = "asset", @params = new { action = "find", filter = "t:Prefab", format = "paths", maxResults = 10 } },
                         get_path = new { type = "asset", @params = new { action = "get_path", guid = "abc123..." } },
@@ -179,7 +177,6 @@ namespace AIBridge.Editor
                 case "inspector":
                     return new
                     {
-                        powershell_note = "For set_properties in PowerShell, build a values JSON variable, escape embedded quotes for native EXE argument passing, and pass --values $values instead of inline --json.",
                         get_components = new { type = "inspector", @params = new { action = "get_components", path = "Main Camera" } },
                         get_prefab_components = new { type = "inspector", @params = new { action = "get_components", assetPath = "Assets/UI/LoginPanel.prefab", objectPath = "Root/Button" } },
                         find_rect_transform_property = new { type = "inspector", @params = new { action = "find_property", assetPath = "Assets/UI/LoginPanel.prefab", objectPath = "Root/Button", componentName = "RectTransform", keyword = "AnchoredPosition" } },
@@ -227,14 +224,12 @@ namespace AIBridge.Editor
                     return new
                     {
                         from_file = new { type = "batch", @params = new { action = "from_file", file = ".aibridge/scripts/setup.txt" } },
-                        from_text_runtime = new { type = "batch", @params = new { action = "from_text", scriptPath = ".aibridge/scripts/temp_script.txt", keepFile = false } },
-                        cli_note = "CLI batch from_text writes --text to a temporary scriptPath before sending this Unity command."
+                        from_text_runtime = new { type = "batch", @params = new { action = "from_text", scriptPath = ".aibridge/scripts/temp_script.txt", keepFile = false } }
                     };
 
                 case "code":
                     return new
                     {
-                        safety = "Enabled by default in AIBridge/Settings -> Basic -> Enable Code Execution. Disable the setting for untrusted projects or callers.",
                         file = new { type = "code", @params = new { action = "execute", file = ".aibridge/code/check.csx", timeout = 5000 } },
                         inline = new { type = "code", @params = new { action = "execute", code = "Debug.Log(\"hello\"); return 123;", timeout = 5000 } },
                         status = new { type = "code", @params = new { action = "status" } },
