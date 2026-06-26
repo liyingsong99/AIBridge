@@ -781,15 +781,14 @@ namespace AIBridge.Editor
             }
 
             var content = File.ReadAllText(sourcePath, System.Text.Encoding.UTF8);
-            var cliExeName = GetCliExecutableName();
             var hardcodedPath = $"Packages/{PACKAGE_NAME}/Tools~/CLI/AIBridgeCLI.exe";
-            var fixedCliPath = "./" + CLI_CACHE_FOLDER + "/" + cliExeName;
+            var fixedCliPath = GetProjectRelativeCliPath();
             if (content.Contains(hardcodedPath))
             {
                 content = content.Replace(hardcodedPath, fixedCliPath);
             }
 
-            content = ApplyProjectVersionTokens(content);
+            content = ApplyProjectTemplateTokens(content);
             WriteTextIfChanged(targetFile, content, Utf8NoBom);
         }
 
@@ -1088,15 +1087,14 @@ namespace AIBridge.Editor
             }
 
             var content = File.ReadAllText(sourcePath, System.Text.Encoding.UTF8);
-            var cliExeName = GetCliExecutableName();
             var hardcodedPath = $"Packages/{PACKAGE_NAME}/Tools~/CLI/AIBridgeCLI.exe";
-            var fixedCliPath = "./" + CLI_CACHE_FOLDER + "/" + cliExeName;
+            var fixedCliPath = GetProjectRelativeCliPath();
             if (content.Contains(hardcodedPath))
             {
                 content = content.Replace(hardcodedPath, fixedCliPath);
             }
 
-            content = ApplyProjectVersionTokens(content);
+            content = ApplyProjectTemplateTokens(content);
             return WriteTextIfChanged(targetFile, content, Utf8NoBom);
         }
 
@@ -1349,7 +1347,7 @@ namespace AIBridge.Editor
 
         private static Dictionary<string, string> BuildTemplateTokens(string projectRoot, AssistantIntegrationTarget target, IEnumerable<AssistantIntegrationTarget> selectedTargets)
         {
-            var cliExeName = GetCliExecutableName();
+            var cliPath = GetProjectRelativeCliPath();
             var language = AIBridgeProjectSettings.Instance.EditorLanguage;
             var unityVersion = GetCurrentUnityVersionText();
             var csharpLanguageVersion = GetCurrentCSharpLanguageVersionText();
@@ -1358,7 +1356,11 @@ namespace AIBridge.Editor
             var harnessCapabilityRule = HarnessCapabilitySnapshot.BuildRootRuleSummary(projectRoot, selectedTargets, language);
             return new Dictionary<string, string>
             {
-                { "CLI_PATH", "./" + CLI_CACHE_FOLDER + "/" + cliExeName },
+                { "CLI_PATH", cliPath },
+                { "CLI_PATH_RULE", AIBridgeEditorText.For(
+                    language,
+                    "`$CLI` points to the project-local AIBridge CLI. In PowerShell, assign `$CLI = \"" + cliPath + "\"`, then run `& $CLI <command> [action] [options]`.",
+                    "`$CLI` 指向项目本地 AIBridge CLI。PowerShell 中可先设 `$CLI = \"" + cliPath + "\"`，再用 `& $CLI <command> [action] [options]` 调用。") },
                 { "COMMON_COMMANDS_TITLE", AIBridgeEditorText.For(language, "Common Commands", "常用命令") },
                 { "HOST_EXEC_TITLE", AIBridgeEditorText.For(language, "Host Exec", "Host Exec") },
                 { "HOST_EXEC_RULE", AIBridgeEditorText.For(
@@ -1448,11 +1450,17 @@ namespace AIBridge.Editor
             return false;
         }
 
-        internal static string ApplyProjectVersionTokens(string content)
+        internal static string ApplyProjectTemplateTokens(string content)
         {
             return content
                 .Replace("{{UNITY_VERSION}}", GetCurrentUnityVersionText())
-                .Replace("{{CSHARP_LANGUAGE_VERSION}}", GetCurrentCSharpLanguageVersionText());
+                .Replace("{{CSHARP_LANGUAGE_VERSION}}", GetCurrentCSharpLanguageVersionText())
+                .Replace("{{AIBRIDGE_CLI_PATH}}", GetProjectRelativeCliPath());
+        }
+
+        private static string GetProjectRelativeCliPath()
+        {
+            return "./" + CLI_CACHE_FOLDER + "/" + GetCliExecutableName();
         }
 
         private static string GetCurrentUnityVersionText()

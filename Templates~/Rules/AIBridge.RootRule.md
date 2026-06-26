@@ -1,12 +1,13 @@
 ---
 templateId: unity-integration
 assistant: aibridge
-version: 7
+version: 8
 target: root-rule
 ---
 ## AIBridge Bootstrap
 
 **CLI Alias**: `$CLI = {{CLI_PATH}}`
+- {{CLI_PATH_RULE}}
 
 **{{COMMON_COMMANDS_TITLE}}**:
 ```bash

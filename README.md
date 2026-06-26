@@ -128,7 +128,7 @@ You can also clone this repository into a Unity project's `Packages` folder.
 4. Click `Install Selected Integrations`.
 5. Optionally click `Install Unity Project AGENTS.md Template` to create a root `AGENTS.md`.
 
-Installed AIBridge Skills are written to each selected tool's default skills directory by default, such as `.codex/skills/` for Codex. You can set a custom directory in the `Workflows > Skills` tab, but custom directories may not be discovered automatically by the AI tool. Each AI tool receives a minimal RootRule and, only when needed for a custom directory, a plugin adapter that references the Skill root. The RootRule includes the fixed CLI path, common commands, host-tool `exec` routing, Skill root, and `aibridge-development-workflow` entry point; multi-branch routing and targeted checklists live in the workflow Skill. Advanced workflow orchestration guidance is installed as an AIBridge Skill and is loaded only for multi-agent workflow, adversarial verification, recipe, Runtime debug investigation, or Runtime target sweep tasks. Command references are generated under each installed Skill's `references/` directory.
+Installed AIBridge Skills are written to each selected tool's default skills directory by default, such as `.codex/skills/` for Codex. You can set a custom directory in the `Workflows > Skills` tab, but custom directories may not be discovered automatically by the AI tool. Each AI tool receives a minimal RootRule and, only when needed for a custom directory, a plugin adapter that references the Skill root. The RootRule includes the fixed project-root-relative CLI path, an explicit `$CLI` binding, common commands, host-tool `exec` routing, Skill root, and `aibridge-development-workflow` entry point; multi-branch routing and targeted checklists live in the workflow Skill. Advanced workflow orchestration guidance is installed as an AIBridge Skill and is loaded only for multi-agent workflow, adversarial verification, recipe, Runtime debug investigation, or Runtime target sweep tasks. Command references are generated under each installed Skill's `references/` directory.
 
 You can also open the `Workflows > Recommended Library` tab, refresh the default `obra/superpowers` repository, and install third-party Skills into the selected tools' skills directories.
 
@@ -156,6 +156,8 @@ Run commands from the Unity project root after AIBridge has copied its CLI cache
 ```powershell
 $CLI = "./.aibridge/cli/AIBridgeCLI.exe"
 ```
+
+Generated RootRules state this path explicitly and include the concise PowerShell `$CLI` usage.
 
 On macOS/Linux, use the bundled platform executable or run the DLL with `dotnet` according to your project setup.
 

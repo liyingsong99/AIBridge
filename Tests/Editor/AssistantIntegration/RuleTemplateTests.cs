@@ -21,6 +21,7 @@ namespace AIBridge.Editor.Tests
         {
             var template = RuleTemplateLoader.Load(ProjectRoot, "Templates~/Rules/AIBridge.RootRule.md");
 
+            StringAssert.Contains("{{CLI_PATH_RULE}}", template.Body);
             StringAssert.Contains("{{WORKFLOW_SKILL_ENTRY}}", template.Body);
             StringAssert.Contains("{{SKILL_ROOT_RULE}}", template.Body);
             StringAssert.Contains("{{UNITY_VERSION_RULE}}", template.Body);
@@ -46,6 +47,7 @@ namespace AIBridge.Editor.Tests
         public void EnabledCodeIndexRendersCodeLookupRouting()
         {
             var target = AssistantIntegrationRegistry.GetTargets().First(item => item.Id == "codex");
+            var expectedCliPath = GetExpectedProjectCliPath();
 
             AIBridgeProjectSettings.Instance.CodeIndex.EnableCodeIndex = true;
             SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
@@ -59,6 +61,9 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("this root rule or the workflow", rootRule);
             StringAssert.Contains("probes harness readiness", rootRule);
             StringAssert.Contains("Harness capability snapshot", rootRule);
+            StringAssert.Contains("project-local AIBridge CLI", rootRule);
+            StringAssert.Contains("$CLI = \"" + expectedCliPath + "\"", rootRule);
+            StringAssert.Contains("& $CLI <command> [action] [options]", rootRule);
             StringAssert.Contains("Host Exec", rootRule);
             StringAssert.Contains("$CLI exec run --stdin", rootRule);
             StringAssert.Contains("$CLI exec batch --stdin", rootRule);
@@ -95,11 +100,15 @@ namespace AIBridge.Editor.Tests
         public void SimplifiedChineseRootRuleKeepsQuickTasksOutOfWorkflow()
         {
             var target = AssistantIntegrationRegistry.GetTargets().First(item => item.Id == "codex");
+            var expectedCliPath = GetExpectedProjectCliPath();
 
             AIBridgeProjectSettings.Instance.EditorLanguage = AIBridgeEditorLanguage.SimplifiedChinese;
             SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
 
             var rootRule = File.ReadAllText(Path.Combine(ProjectRoot, "AGENTS.md"));
+            StringAssert.Contains("项目本地 AIBridge CLI", rootRule);
+            StringAssert.Contains("$CLI = \"" + expectedCliPath + "\"", rootRule);
+            StringAssert.Contains("& $CLI <command> [action] [options]", rootRule);
             StringAssert.Contains("RootRule 只提供 compact 摘要", rootRule);
             StringAssert.Contains("读取完整 snapshot 或运行完整探测", rootRule);
             StringAssert.Contains("不加载 `aibridge-development-workflow`", rootRule);
@@ -195,14 +204,16 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void ProjectAgentsTemplateHasNoUnresolvedVersionTokens()
+        public void ProjectAgentsTemplateHasNoUnresolvedProjectTokens()
         {
             var template = RuleTemplateLoader.Load(ProjectRoot, "Templates~/ProjectRules/AGENTS.zh-CN.md");
 
-            var rendered = SkillInstaller.ApplyProjectVersionTokens(template.Body);
+            var rendered = SkillInstaller.ApplyProjectTemplateTokens(template.Body);
 
             Assert.IsFalse(rendered.Contains("{{UNITY_VERSION}}"));
             Assert.IsFalse(rendered.Contains("{{CSHARP_LANGUAGE_VERSION}}"));
+            Assert.IsFalse(rendered.Contains("{{AIBRIDGE_CLI_PATH}}"));
+            StringAssert.Contains(GetExpectedProjectCliPath(), rendered);
         }
 
         [Test]
@@ -243,6 +254,15 @@ namespace AIBridge.Editor.Tests
             }
 
             return Directory.GetCurrentDirectory();
+        }
+
+        private static string GetExpectedProjectCliPath()
+        {
+#if UNITY_EDITOR_WIN
+            return "./.aibridge/cli/AIBridgeCLI.exe";
+#else
+            return "./.aibridge/cli/AIBridgeCLI";
+#endif
         }
     }
 }

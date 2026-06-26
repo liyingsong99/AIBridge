@@ -12,5 +12,6 @@
 - For planning-oriented or cross-module changes, write `.aibridge/plan/<slug>.md` first, then sync the confirmed content into the formal knowledge base documents.
 
 ## Project Validation
+- `$CLI` points to the project-local AIBridge CLI: `{{AIBRIDGE_CLI_PATH}}`. In PowerShell, assign `$CLI = "{{AIBRIDGE_CLI_PATH}}"`, then run `& $CLI ...`.
 - Unity compilation must use `$CLI compile unity`.
 - `compile dotnet` is only an extra check and must not replace or fallback from Unity compilation.

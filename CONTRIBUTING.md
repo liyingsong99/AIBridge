@@ -44,7 +44,7 @@ Thanks for contributing to AIBridge. This repository contains the `cn.lys.aibrid
 - Do not edit the Skill installer or RootRule routing just to add a new sibling Skill; `SkillInstaller` discovers `Skill~/SKILL.md` and `Skill~/*/SKILL.md`.
 - Put optional Skill feature gates in `aibridge-skill.json` with `requiredFeature`.
 - Keep AI-facing Skill docs compact. Put user-facing explanation in README, Editor UI, HelpBox, or tooltips instead.
-- Keep `Templates~/Rules/AIBridge.RootRule.md` minimal: CLI path, common commands, host-tool `exec` routing, quick-task/workflow routing, Skill root hint, package version, and compact capability summary.
+- Keep `Templates~/Rules/AIBridge.RootRule.md` minimal: explicit project-root-relative `$CLI` binding, common commands, host-tool `exec` routing, quick-task/workflow routing, Skill root hint, package version, and compact capability summary.
 
 ### Validation
 
@@ -112,7 +112,7 @@ The GitHub workflow builds platform CLI binaries under `Tools~/CLI`. Prefer to i
 - 新增 sibling Skill 不要为了索引去改 Skill 安装器或 RootRule 路由；`SkillInstaller` 会发现 `Skill~/SKILL.md` 和 `Skill~/*/SKILL.md`。
 - 受功能开关控制的可选 Skill，在目录内放 `aibridge-skill.json` 并声明 `requiredFeature`。
 - 面向 AI 的 Skill 文档保持精简；用户说明放入 README、Editor UI、HelpBox 或 Tooltip。
-- `Templates~/Rules/AIBridge.RootRule.md` 只保留 CLI 路径、常用命令、host 工具 `exec` 路由、快速任务/工作流任务路由、Skill 根目录提示、包版本和 compact 能力摘要。
+- `Templates~/Rules/AIBridge.RootRule.md` 只保留明确的项目根目录相对 `$CLI` 绑定、常用命令、host 工具 `exec` 路由、快速任务/工作流任务路由、Skill 根目录提示、包版本和 compact 能力摘要。
 
 ### 验证
 

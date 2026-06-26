@@ -822,7 +822,7 @@ namespace AIBridge.Editor
             try
             {
                 var content = File.ReadAllText(sourcePath, System.Text.Encoding.UTF8);
-                content = SkillInstaller.ApplyProjectVersionTokens(content);
+                content = SkillInstaller.ApplyProjectTemplateTokens(content);
                 File.WriteAllText(targetPath, content, System.Text.Encoding.UTF8);
 
                 SelectSingleTool("codex");

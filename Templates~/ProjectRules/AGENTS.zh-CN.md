@@ -12,5 +12,6 @@
 - 方案型或跨模块调整先写 `.aibridge/plan/<slug>.md` 工作底稿，再同步正式知识库文档。
 
 ## 项目验证
+- `$CLI` 指向项目本地 AIBridge CLI：`{{AIBRIDGE_CLI_PATH}}`。PowerShell 中可先设 `$CLI = "{{AIBRIDGE_CLI_PATH}}"`，再用 `& $CLI ...` 调用。
 - Unity 编译只能使用 `$CLI compile unity`
 - `compile dotnet` 只能作为额外检查，不能作为 Unity 编译的替代或 fallback

@@ -505,9 +505,9 @@ namespace AIBridge.Editor
 
             try
             {
-                // 项目模板包含 Unity/C# 版本占位符，安装时必须渲染成当前项目的实际要求。
+                // 项目模板包含 Unity/C# 版本和 CLI 路径占位符，安装时必须渲染成当前项目的实际要求。
                 var content = File.ReadAllText(sourcePath, System.Text.Encoding.UTF8);
-                content = SkillInstaller.ApplyProjectVersionTokens(content);
+                content = SkillInstaller.ApplyProjectTemplateTokens(content);
                 File.WriteAllText(targetPath, content, System.Text.Encoding.UTF8);
                 Debug.Log(AIBridgeEditorText.T($"[AIBridge] AGENTS.md installed to: {targetPath}", $"[AIBridge] AGENTS.md 已安装到: {targetPath}"));
 
