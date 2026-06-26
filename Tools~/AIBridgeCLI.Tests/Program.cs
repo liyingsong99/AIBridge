@@ -17,6 +17,7 @@ namespace AIBridgeCLI.Tests
                 WorkflowReport_IncludesRuntimePerformanceEvidence();
                 WorkflowReport_IncludesFailedRuntimePerformanceEvidence();
                 ArtifactRequiredGate_MatchesSemanticKind();
+            LostTestRunStatus_IsRecognizedAfterAck();
                 DialogButtonInfo_ExposesStrictLogicalChoices();
                 DialogButtonInfo_DoesNotExposeChoicesForDisabledButtons();
                 SelectButton_FindsUniqueMatchAcrossDialogs();
@@ -174,6 +175,14 @@ namespace AIBridgeCLI.Tests
                     File.Delete(artifactPath);
                 }
             }
+        }
+
+        private static void LostTestRunStatus_IsRecognizedAfterAck()
+        {
+            AssertTrue(AIBridgeCLI.Program.IsLostTestRunStatus("cmd_123", "unknown", true), "Confirmed unknown status should be treated as a lost test run.");
+            AssertTrue(!AIBridgeCLI.Program.IsLostTestRunStatus("cmd_123", "unknown", false), "Unconfirmed unknown status should not fail fast.");
+            AssertTrue(!AIBridgeCLI.Program.IsLostTestRunStatus(null, "unknown", true), "Missing runId should not be treated as a lost run.");
+            AssertTrue(!AIBridgeCLI.Program.IsLostTestRunStatus("cmd_123", "running", true), "Running status should not be treated as lost.");
         }
 
         private static JObject CreateRuntimePerfCommandResult()

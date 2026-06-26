@@ -26,6 +26,7 @@ namespace AIBridgeCLI
             var sender = CreateCommandSender(commandTimeout, parsed);
             var startTime = DateTime.Now;
             var runId = PathHelper.GenerateCommandId();
+            var startAcknowledged = false;
 
             var startParams = new Dictionary<string, object>
             {
@@ -65,6 +66,7 @@ namespace AIBridgeCLI
             }
             else
             {
+                startAcknowledged = true;
                 var data = startResult.data as JObject;
                 if (data != null)
                 {
@@ -103,6 +105,13 @@ namespace AIBridgeCLI
                 }
 
                 var statusPayload = BuildTestPayload(statusData, runId, startTime, null);
+                if (startAcknowledged && IsLostTestRunStatus(runId, statusPayload.Status, statusPayload.StatusConfirmed))
+                {
+                    return FinishTestResult(parsed, outputMode, TestResultPayload.FromFailure(
+                        runId,
+                        BuildLostTestRunMessage(runId, statusPayload.Error)));
+                }
+
                 if (!statusPayload.IsFinal)
                 {
                     continue;
@@ -192,6 +201,27 @@ namespace AIBridgeCLI
             };
             payload.Success = payload.Status == "passed";
             return payload;
+        }
+
+        internal static bool IsLostTestRunStatus(string expectedRunId, string status, bool statusConfirmed)
+        {
+            return statusConfirmed
+                   && !string.IsNullOrWhiteSpace(expectedRunId)
+                   && string.Equals(status, "unknown", StringComparison.OrdinalIgnoreCase);
+        }
+
+        static string BuildLostTestRunMessage(string runId, string statusError)
+        {
+            var message = "Unity test run state was lost for runId " + runId
+                          + ". This can happen after a domain reload or if the AIBridge test state cache was cleared. "
+                          + "The native Unity test may have finished, but AIBridge cannot confirm this run result.";
+
+            if (!string.IsNullOrWhiteSpace(statusError))
+            {
+                message += " Last status error: " + statusError;
+            }
+
+            return message;
         }
 
         static List<object> ConvertFailedTests(JArray failedTestsArray)

@@ -34,7 +34,7 @@
 | Skills | `Skill~/aibridge-development-workflow`、`Skill~/aibridge-workflow-orchestration`、`Skill~/aibridge-code-index`、`Skill~/aibridge-prefab-patch`、`Skill~/aibridge-batch-script`、`Skill~/unity-yaml-editing` | 分别覆盖 workflow 短入口/分支路由、编排、语义检索、Prefab patch、批处理和 YAML 兜底 |
 | 文档 | `Doc~/README.md`、`Doc~/WorkflowsPanel.md`、`Doc~/WorkflowGraphPanel.md`、`Doc~/workflow-guide/README.md`、`Doc~/workflow-guide/ContextCompression.md`、`Doc~/workflow-guide/AIBridgeLoopsAnalysis.md` | 功能目录、面板定位、workflow 说明、上下文压缩策略和 FSM 分析 |
 | 模板 | `Templates~/Rules/AIBridge.RootRule.md`、`Templates~/ProjectRules/AGENTS*.md`、`Templates~/Workflows/*.json` | RootRule、项目规则模板和内置 workflow recipes |
-| 生成与缓存 | `.aibridge/harness/capabilities.json`、`.aibridge/workflows/active-run.json`、`.aibridge/workflows/runs/`、`.aibridge/text-index/`、`.aibridge/code-index/snapshot/`、`.aibridge/code/`、`.aibridge/plan/` | 当前项目的能力快照、运行产物、文本索引、代码索引、临时代码和方案底稿 |
+| 生成与缓存 | `.aibridge/harness/capabilities.json`、`.aibridge/test-runs/`、`.aibridge/workflows/active-run.json`、`.aibridge/workflows/runs/`、`.aibridge/text-index/`、`.aibridge/code-index/snapshot/`、`.aibridge/code/`、`.aibridge/plan/` | 当前项目的能力快照、测试队列状态、运行产物、文本索引、代码索引、临时代码和方案底稿 |
 
 ## CLI 功能目录
 
@@ -138,6 +138,7 @@
 - `AIBridge/Workflow Graph` 是独立高级入口，不应并回默认面板。
 - `compile dotnet` 只是额外检查，不是 Unity 编译替代品。
 - `test run` 必须在 Editor 处于 Edit Mode 时启动；若当前处于 Play Mode，会直接失败并明确提示先退出 Play Mode。
+- `test run` 在并发请求下会持久化队列到 `.aibridge/test-runs/state.json`；已确认的 run 若后续变成 `unknown`，CLI 会快速失败并提示状态丢失，而不是一直等完整 timeout。
 - `code_index` 仍是默认关闭的只读语义入口；默认忽略 `Unity.*` 程序集，以及 `Library/PackageCache/com.unity.*` / `Packages/com.unity.*` 源码路径，被排除源码程序集仍作为 metadata reference 保留。
 - `workflow run-cli` 不会自动执行 `agent` / `manual`，这些步骤仍需要外部执行器回流。
 - RootRule 必须简洁写明 `$CLI` 指向项目本地 AIBridge CLI 路径，并给出 PowerShell 调用方式。

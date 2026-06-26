@@ -1,5 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Text;
+using AIBridge.Internal.Json;
 using NUnit.Framework.Interfaces;
 using UnityEditor;
 using UnityEditor.TestTools.TestRunner.Api;
@@ -14,6 +18,9 @@ namespace AIBridge.Editor
     public static class TestRunTracker
     {
         private const int MaxKnownRunCount = 64;
+        private const int PersistedStateSchemaVersion = 1;
+        private const string StateDirectoryName = "test-runs";
+        private const string StateFileName = "state.json";
 
         public enum TestRunStatus
         {
@@ -63,6 +70,7 @@ namespace AIBridge.Editor
             public bool startedByInvocation;
             public bool attachedToExistingRun;
             public bool isRunning;
+            public string nativeRunGuid;
             public string error;
             public TestRunFilterInfo requestedFilter;
             public TestRunFilterInfo executedFilter;
@@ -73,18 +81,21 @@ namespace AIBridge.Editor
         {
             public void RunStarted(ITestAdaptor testsToRun)
             {
-                if (_currentState == null)
+                if (!HasActiveTrackedCurrentRun())
                 {
                     return;
                 }
 
                 _currentState.total = testsToRun != null ? testsToRun.TestCaseCount : 0;
+                PersistState();
             }
 
             public void RunFinished(ITestResultAdaptor result)
             {
-                if (_currentState == null)
+                if (!HasActiveTrackedCurrentRun())
                 {
+                    AIBridgeLogger.LogWarning("Ignoring Unity test completion because no AIBridge test run is currently tracked.");
+                    EnsureQueueUpdate();
                     return;
                 }
 
@@ -98,6 +109,7 @@ namespace AIBridge.Editor
                 _currentState.status = result.FailCount > 0 ? TestRunStatus.Failed : TestRunStatus.Passed;
 
                 LogSummary(_currentState.status);
+                PersistState();
                 EnsureQueueUpdate();
             }
 
@@ -107,7 +119,7 @@ namespace AIBridge.Editor
 
             public void TestFinished(ITestResultAdaptor result)
             {
-                if (_currentState == null || result == null || result.Test == null || result.Test.IsSuite)
+                if (!HasActiveTrackedCurrentRun() || result == null || result.Test == null || result.Test.IsSuite)
                 {
                     return;
                 }
@@ -127,8 +139,10 @@ namespace AIBridge.Editor
 
             public void OnError(string message)
             {
-                if (_currentState == null)
+                if (!HasActiveTrackedCurrentRun())
                 {
+                    AIBridgeLogger.LogWarning("Ignoring Unity test error because no AIBridge test run is currently tracked.");
+                    EnsureQueueUpdate();
                     return;
                 }
 
@@ -148,6 +162,7 @@ namespace AIBridge.Editor
                 }
 
                 LogSummary(_currentState.status);
+                PersistState();
                 EnsureQueueUpdate();
             }
         }
@@ -159,6 +174,7 @@ namespace AIBridge.Editor
         private static TestRunnerApi _testRunnerApi;
         private static TestRunState _currentState;
         private static bool _initialized;
+        private static string _stateFilePathOverride;
 
         static TestRunTracker()
         {
@@ -167,20 +183,60 @@ namespace AIBridge.Editor
 
         public static void Initialize()
         {
-            if (_initialized)
+            if (_initialized && _testRunnerApi != null)
             {
                 return;
             }
 
-            _testRunnerApi = ScriptableObject.CreateInstance<TestRunnerApi>();
-            _testRunnerApi.RegisterCallbacks(Callbacks);
-            _currentState = new TestRunState
+            if (_testRunnerApi == null)
             {
-                status = TestRunStatus.Idle
-            };
+                _testRunnerApi = ScriptableObject.CreateInstance<TestRunnerApi>();
+                _testRunnerApi.RegisterCallbacks(Callbacks);
+            }
 
-            _initialized = true;
-            AIBridgeLogger.LogDebug("TestRunTracker initialized");
+            if (!_initialized)
+            {
+                RestorePersistedState();
+                if (_currentState == null)
+                {
+                    _currentState = new TestRunState
+                    {
+                        status = TestRunStatus.Idle
+                    };
+                }
+
+                if (IsNativeRunActive() || PendingRuns.Count > 0)
+                {
+                    EnsureQueueUpdate();
+                }
+
+                _initialized = true;
+                AIBridgeLogger.LogDebug("TestRunTracker initialized");
+            }
+        }
+
+        private static bool IsNativeTestRunRunning(string nativeRunGuid)
+        {
+            if (string.IsNullOrWhiteSpace(nativeRunGuid))
+            {
+                return false;
+            }
+
+            try
+            {
+                var method = typeof(TestRunnerApi).GetMethod("IsRunning", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+                if (method == null)
+                {
+                    return false;
+                }
+
+                return (bool)method.Invoke(null, new object[] { nativeRunGuid });
+            }
+            catch (Exception ex)
+            {
+                AIBridgeLogger.LogWarning("Failed to inspect Unity test run state: " + ex.Message);
+                return false;
+            }
         }
 
         /// <summary>
@@ -196,6 +252,7 @@ namespace AIBridge.Editor
             if (IsNativeRunActive() || PendingRuns.Count > 0)
             {
                 PendingRuns.Enqueue(state);
+                PersistState();
                 EnsureQueueUpdate();
 
                 return new StartRunResult
@@ -209,6 +266,7 @@ namespace AIBridge.Editor
             }
 
             StartNativeRun(state);
+            PersistState();
 
             return new StartRunResult
             {
@@ -228,11 +286,14 @@ namespace AIBridge.Editor
             {
                 if (KnownRuns.TryGetValue(runId, out var knownState))
                 {
+                    RefreshKnownStateIfLost(knownState);
                     return BuildSnapshot(knownState);
                 }
 
                 return BuildUnknownSnapshot(runId);
             }
+
+            RefreshCurrentRunIfLost();
 
             var state = _currentState ?? new TestRunState
             {
@@ -299,6 +360,7 @@ namespace AIBridge.Editor
             state.isRunning = true;
             state.executedFilter = CreateFilterInfo(state.testName, state.groupName, state.assemblyName);
             _currentState = state;
+            PersistState();
 
             var executionSettings = new ExecutionSettings(filter)
             {
@@ -307,7 +369,8 @@ namespace AIBridge.Editor
 
             try
             {
-                _testRunnerApi.Execute(executionSettings);
+                state.nativeRunGuid = _testRunnerApi.Execute(executionSettings);
+                PersistState();
             }
             catch (Exception ex)
             {
@@ -315,12 +378,14 @@ namespace AIBridge.Editor
                 state.endTime = DateTime.Now;
                 state.status = TestRunStatus.Failed;
                 state.error = ex.Message;
+                state.nativeRunGuid = null;
                 state.failedTests.Add(new FailedTestInfo
                 {
                     name = "TestRunStartError",
                     message = ex.Message,
                     stackTrace = ex.StackTrace
                 });
+                PersistState();
                 EnsureQueueUpdate();
             }
         }
@@ -341,6 +406,7 @@ namespace AIBridge.Editor
             while (PendingRuns.Count > 0)
             {
                 var next = PendingRuns.Dequeue();
+                PersistState();
                 if (next.status == TestRunStatus.Timeout)
                 {
                     continue;
@@ -361,10 +427,13 @@ namespace AIBridge.Editor
             }
 
             EditorApplication.update -= OnQueueUpdate;
+            PersistState();
         }
 
         private static bool IsNativeRunActive()
         {
+            // 先把重载后可能丢失的运行状态收口，避免队列一直卡在旧的 running 标记上。
+            RefreshCurrentRunIfLost();
             return _currentState != null && _currentState.isRunning;
         }
 
@@ -384,8 +453,10 @@ namespace AIBridge.Editor
             }
 
             state.status = TestRunStatus.Timeout;
+            state.isRunning = false;
             state.endTime = DateTime.Now;
             state.error = "Test run timed out while waiting in the Unity TestRunner queue.";
+            PersistState();
         }
 
         private static TestRunSnapshot BuildSnapshot(TestRunState state)
@@ -424,6 +495,7 @@ namespace AIBridge.Editor
                 queuePosition = GetQueuePosition(state),
                 requestedFilter = state.requestedFilter,
                 executedFilter = state.executedFilter,
+                nativeRunGuid = state.nativeRunGuid,
                 error = state.error
             };
         }
@@ -447,14 +519,47 @@ namespace AIBridge.Editor
                 return;
             }
 
-            if (state.isRunning && state.timeoutMs > 0 && (DateTime.Now - state.startTime).TotalMilliseconds > state.timeoutMs)
+            if (state.isRunning
+                && state.status != TestRunStatus.Timeout
+                && state.timeoutMs > 0
+                && (DateTime.Now - state.startTime).TotalMilliseconds > state.timeoutMs)
             {
                 state.status = TestRunStatus.Timeout;
                 state.error = "Test run timed out. Unity may still be running tests.";
+                PersistState();
             }
             else if (IsQueuedRunExpired(state))
             {
                 MarkTimedOutBeforeStart(state);
+            }
+        }
+
+        private static void RefreshCurrentRunIfLost()
+        {
+            RefreshKnownStateIfLost(_currentState);
+        }
+
+        private static void RefreshKnownStateIfLost(TestRunState state)
+        {
+            if (state == null || !state.isRunning)
+            {
+                return;
+            }
+
+            if (IsNativeTestRunRunning(state.nativeRunGuid))
+            {
+                return;
+            }
+
+            state.isRunning = false;
+            state.status = TestRunStatus.Unknown;
+            state.endTime = DateTime.Now;
+            state.error = "Unity test run state was lost during reload.";
+            PersistState();
+
+            if (_currentState != null && string.Equals(_currentState.runId, state.runId, StringComparison.Ordinal))
+            {
+                EnsureQueueUpdate();
             }
         }
 
@@ -484,7 +589,7 @@ namespace AIBridge.Editor
             return -1;
         }
 
-        private static void AddKnownRun(TestRunState state)
+        private static void AddKnownRun(TestRunState state, bool trim = true)
         {
             if (state == null || string.IsNullOrEmpty(state.runId))
             {
@@ -493,7 +598,10 @@ namespace AIBridge.Editor
 
             KnownRuns[state.runId] = state;
             KnownRunOrder.Add(state.runId);
-            TrimKnownRuns();
+            if (trim)
+            {
+                TrimKnownRuns();
+            }
         }
 
         private static void TrimKnownRuns()
@@ -523,6 +631,382 @@ namespace AIBridge.Editor
                     KnownRuns.Remove(oldest);
                 }
             }
+        }
+
+        private static bool HasCurrentRunId()
+        {
+            return _currentState != null && !string.IsNullOrEmpty(_currentState.runId);
+        }
+
+        private static bool HasActiveTrackedCurrentRun()
+        {
+            return HasCurrentRunId() && _currentState.isRunning;
+        }
+
+        private static string GetStateFilePath()
+        {
+            if (!string.IsNullOrWhiteSpace(_stateFilePathOverride))
+            {
+                return _stateFilePathOverride;
+            }
+
+            var projectRoot = Path.GetDirectoryName(Application.dataPath);
+            return Path.Combine(projectRoot, ".aibridge", StateDirectoryName, StateFileName);
+        }
+
+        private static void PersistState()
+        {
+            try
+            {
+                var path = GetStateFilePath();
+                var directory = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                var state = new PersistedTestRunStore
+                {
+                    schemaVersion = PersistedStateSchemaVersion,
+                    currentRunId = HasCurrentRunId() ? _currentState.runId : null,
+                    updatedAtUtc = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture)
+                };
+
+                foreach (var pending in PendingRuns)
+                {
+                    if (pending != null && !string.IsNullOrEmpty(pending.runId))
+                    {
+                        state.pendingRunIds.Add(pending.runId);
+                    }
+                }
+
+                foreach (var runId in KnownRunOrder)
+                {
+                    if (KnownRuns.TryGetValue(runId, out var knownState))
+                    {
+                        state.runs.Add(ToPersistedState(knownState));
+                    }
+                }
+
+                File.WriteAllText(path, AIBridgeJson.Serialize(state, pretty: true), new UTF8Encoding(false));
+            }
+            catch (Exception ex)
+            {
+                AIBridgeLogger.LogWarning("Failed to persist Unity test run state: " + ex.Message);
+            }
+        }
+
+        private static void RestorePersistedState()
+        {
+            try
+            {
+                var path = GetStateFilePath();
+                if (!File.Exists(path))
+                {
+                    return;
+                }
+
+                var data = AIBridgeJson.DeserializeObject(File.ReadAllText(path, Encoding.UTF8));
+                if (data == null)
+                {
+                    return;
+                }
+
+                KnownRuns.Clear();
+                KnownRunOrder.Clear();
+                PendingRuns.Clear();
+
+                var runs = GetList(data, "runs");
+                if (runs != null)
+                {
+                    foreach (var item in runs)
+                    {
+                        var runData = item as Dictionary<string, object>;
+                        var state = FromPersistedState(runData);
+                        if (state != null)
+                        {
+                            AddKnownRun(state, trim: false);
+                        }
+                    }
+                }
+
+                var currentRunId = GetString(data, "currentRunId", null);
+                if (!string.IsNullOrEmpty(currentRunId) && KnownRuns.TryGetValue(currentRunId, out var currentState))
+                {
+                    _currentState = currentState;
+                }
+                else if (KnownRunOrder.Count > 0)
+                {
+                    _currentState = KnownRuns[KnownRunOrder[KnownRunOrder.Count - 1]];
+                }
+
+                if (_currentState != null && _currentState.isRunning && !IsNativeTestRunRunning(_currentState.nativeRunGuid))
+                {
+                    _currentState.isRunning = false;
+                    _currentState.status = TestRunStatus.Unknown;
+                    _currentState.endTime = DateTime.Now;
+                    _currentState.error = "Unity test run state was lost during reload.";
+                }
+
+                var pendingIds = GetList(data, "pendingRunIds");
+                if (pendingIds != null)
+                {
+                    foreach (var item in pendingIds)
+                    {
+                        var runId = Convert.ToString(item, CultureInfo.InvariantCulture);
+                        if (!string.IsNullOrEmpty(runId)
+                            && KnownRuns.TryGetValue(runId, out var pendingState)
+                            && pendingState.status == TestRunStatus.Queued)
+                        {
+                            PendingRuns.Enqueue(pendingState);
+                        }
+                    }
+                }
+
+                TrimKnownRuns();
+                PersistState();
+            }
+            catch (Exception ex)
+            {
+                AIBridgeLogger.LogWarning("Failed to restore Unity test run state: " + ex.Message);
+            }
+        }
+
+        private static PersistedTestRunState ToPersistedState(TestRunState state)
+        {
+            return new PersistedTestRunState
+            {
+                runId = state.runId,
+                status = StatusToString(state.status),
+                mode = state.mode,
+                testName = state.testName,
+                groupName = state.groupName,
+                assemblyName = state.assemblyName,
+                queuedTime = FormatDateTime(state.queuedTime),
+                startTime = FormatDateTime(state.startTime),
+                endTime = state.endTime.HasValue ? FormatDateTime(state.endTime.Value) : null,
+                timeoutMs = state.timeoutMs,
+                total = state.total,
+                passed = state.passed,
+                failed = state.failed,
+                skipped = state.skipped,
+                inconclusive = state.inconclusive,
+                startedByInvocation = state.startedByInvocation,
+                attachedToExistingRun = state.attachedToExistingRun,
+                isRunning = state.isRunning,
+                nativeRunGuid = state.nativeRunGuid,
+                error = state.error,
+                requestedFilter = state.requestedFilter,
+                executedFilter = state.executedFilter,
+                failedTests = new List<FailedTestInfo>(state.failedTests)
+            };
+        }
+
+        private static TestRunState FromPersistedState(Dictionary<string, object> data)
+        {
+            if (data == null)
+            {
+                return null;
+            }
+
+            var runId = GetString(data, "runId", null);
+            if (string.IsNullOrEmpty(runId))
+            {
+                return null;
+            }
+
+            var mode = GetString(data, "mode", "EditMode");
+            var state = new TestRunState
+            {
+                runId = runId,
+                status = ParseStatus(GetString(data, "status", "unknown")),
+                modeValue = ParseMode(mode),
+                mode = mode,
+                testName = GetString(data, "testName", null),
+                groupName = GetString(data, "groupName", null),
+                assemblyName = GetString(data, "assemblyName", null),
+                queuedTime = ParseDateTime(GetString(data, "queuedTime", null)),
+                startTime = ParseDateTime(GetString(data, "startTime", null)),
+                endTime = ParseNullableDateTime(GetString(data, "endTime", null)),
+                timeoutMs = GetInt(data, "timeoutMs", 0),
+                total = GetInt(data, "total", 0),
+                passed = GetInt(data, "passed", 0),
+                failed = GetInt(data, "failed", 0),
+                skipped = GetInt(data, "skipped", 0),
+                inconclusive = GetInt(data, "inconclusive", 0),
+                startedByInvocation = GetBool(data, "startedByInvocation", false),
+                attachedToExistingRun = GetBool(data, "attachedToExistingRun", false),
+                isRunning = GetBool(data, "isRunning", false),
+                nativeRunGuid = GetString(data, "nativeRunGuid", null),
+                error = GetString(data, "error", null),
+                requestedFilter = ParseFilter(data, "requestedFilter"),
+                executedFilter = ParseFilter(data, "executedFilter")
+            };
+
+            state.failedTests.AddRange(ParseFailedTests(data));
+            return state;
+        }
+
+        private static string FormatDateTime(DateTime value)
+        {
+            return value == default ? null : value.ToString("o", CultureInfo.InvariantCulture);
+        }
+
+        private static DateTime ParseDateTime(string value)
+        {
+            return DateTime.TryParse(value, null, DateTimeStyles.RoundtripKind, out var parsed)
+                ? parsed
+                : default;
+        }
+
+        private static DateTime? ParseNullableDateTime(string value)
+        {
+            return DateTime.TryParse(value, null, DateTimeStyles.RoundtripKind, out var parsed)
+                ? parsed
+                : (DateTime?)null;
+        }
+
+        private static TestMode ParseMode(string value)
+        {
+            return string.Equals(value, "PlayMode", StringComparison.OrdinalIgnoreCase)
+                ? TestMode.PlayMode
+                : TestMode.EditMode;
+        }
+
+        private static TestRunStatus ParseStatus(string status)
+        {
+            if (string.Equals(status, "queued", StringComparison.OrdinalIgnoreCase))
+            {
+                return TestRunStatus.Queued;
+            }
+
+            if (string.Equals(status, "running", StringComparison.OrdinalIgnoreCase))
+            {
+                return TestRunStatus.Running;
+            }
+
+            if (string.Equals(status, "passed", StringComparison.OrdinalIgnoreCase))
+            {
+                return TestRunStatus.Passed;
+            }
+
+            if (string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase))
+            {
+                return TestRunStatus.Failed;
+            }
+
+            if (string.Equals(status, "timeout", StringComparison.OrdinalIgnoreCase))
+            {
+                return TestRunStatus.Timeout;
+            }
+
+            if (string.Equals(status, "idle", StringComparison.OrdinalIgnoreCase))
+            {
+                return TestRunStatus.Idle;
+            }
+
+            return TestRunStatus.Unknown;
+        }
+
+        private static TestRunFilterInfo ParseFilter(Dictionary<string, object> data, string key)
+        {
+            if (data == null || !data.TryGetValue(key, out var value))
+            {
+                return null;
+            }
+
+            var filterData = value as Dictionary<string, object>;
+            if (filterData == null)
+            {
+                return null;
+            }
+
+            return CreateFilterInfo(
+                GetString(filterData, "testName", null),
+                GetString(filterData, "groupName", null),
+                GetString(filterData, "assemblyName", null));
+        }
+
+        private static List<FailedTestInfo> ParseFailedTests(Dictionary<string, object> data)
+        {
+            var result = new List<FailedTestInfo>();
+            var items = GetList(data, "failedTests");
+            if (items == null)
+            {
+                return result;
+            }
+
+            foreach (var item in items)
+            {
+                var testData = item as Dictionary<string, object>;
+                if (testData == null)
+                {
+                    continue;
+                }
+
+                result.Add(new FailedTestInfo
+                {
+                    name = GetString(testData, "name", null),
+                    message = GetString(testData, "message", null),
+                    stackTrace = GetString(testData, "stackTrace", null)
+                });
+            }
+
+            return result;
+        }
+
+        private static string GetString(Dictionary<string, object> data, string key, string defaultValue)
+        {
+            if (data == null || !data.TryGetValue(key, out var value) || value == null)
+            {
+                return defaultValue;
+            }
+
+            return Convert.ToString(value, CultureInfo.InvariantCulture);
+        }
+
+        private static int GetInt(Dictionary<string, object> data, string key, int defaultValue)
+        {
+            if (data == null || !data.TryGetValue(key, out var value) || value == null)
+            {
+                return defaultValue;
+            }
+
+            try
+            {
+                return Convert.ToInt32(value, CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                return defaultValue;
+            }
+        }
+
+        private static bool GetBool(Dictionary<string, object> data, string key, bool defaultValue)
+        {
+            if (data == null || !data.TryGetValue(key, out var value) || value == null)
+            {
+                return defaultValue;
+            }
+
+            try
+            {
+                return Convert.ToBoolean(value, CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                return defaultValue;
+            }
+        }
+
+        private static List<object> GetList(Dictionary<string, object> data, string key)
+        {
+            if (data == null || !data.TryGetValue(key, out var value))
+            {
+                return null;
+            }
+
+            return value as List<object>;
         }
 
         private static string NormalizeFilterValue(string value)
@@ -576,11 +1060,81 @@ namespace AIBridge.Editor
             }
         }
 
+        internal static void ReloadPersistedStateForTests(string stateFilePath)
+        {
+            _stateFilePathOverride = stateFilePath;
+            PendingRuns.Clear();
+            KnownRuns.Clear();
+            KnownRunOrder.Clear();
+            _currentState = null;
+            _initialized = true;
+
+            RestorePersistedState();
+            if (_currentState == null)
+            {
+                _currentState = new TestRunState
+                {
+                    status = TestRunStatus.Idle
+                };
+            }
+        }
+
+        internal static void ResetStateForTests()
+        {
+            PendingRuns.Clear();
+            KnownRuns.Clear();
+            KnownRunOrder.Clear();
+            _currentState = new TestRunState
+            {
+                status = TestRunStatus.Idle
+            };
+            _stateFilePathOverride = null;
+            _initialized = true;
+        }
+
         private static void LogSummary(TestRunStatus status)
         {
             var snapshot = GetSnapshot();
             AIBridgeLogger.LogInfo(
                 $"Test run {StatusToString(status)}. runId={snapshot.runId}, mode={snapshot.mode}, total={snapshot.total}, passed={snapshot.passed}, failed={snapshot.failed}, skipped={snapshot.skipped}, inconclusive={snapshot.inconclusive}, duration={snapshot.duration:F2}s");
+        }
+
+        [Serializable]
+        private class PersistedTestRunStore
+        {
+            public int schemaVersion;
+            public string currentRunId;
+            public string updatedAtUtc;
+            public List<string> pendingRunIds = new List<string>();
+            public List<PersistedTestRunState> runs = new List<PersistedTestRunState>();
+        }
+
+        [Serializable]
+        private class PersistedTestRunState
+        {
+            public string runId;
+            public string status;
+            public string mode;
+            public string testName;
+            public string groupName;
+            public string assemblyName;
+            public string queuedTime;
+            public string startTime;
+            public string endTime;
+            public int timeoutMs;
+            public int total;
+            public int passed;
+            public int failed;
+            public int skipped;
+            public int inconclusive;
+            public bool startedByInvocation;
+            public bool attachedToExistingRun;
+            public bool isRunning;
+            public string nativeRunGuid;
+            public string error;
+            public TestRunFilterInfo requestedFilter;
+            public TestRunFilterInfo executedFilter;
+            public List<FailedTestInfo> failedTests = new List<FailedTestInfo>();
         }
     }
 
@@ -612,8 +1166,9 @@ namespace AIBridge.Editor
         public bool startedByInvocation;
         public bool attachedToExistingRun;
         public int queuePosition;
-        public TestRunTracker.TestRunFilterInfo requestedFilter;
-        public TestRunTracker.TestRunFilterInfo executedFilter;
-        public string error;
-    }
+            public TestRunTracker.TestRunFilterInfo requestedFilter;
+            public TestRunTracker.TestRunFilterInfo executedFilter;
+            public string nativeRunGuid;
+            public string error;
+        }
 }
