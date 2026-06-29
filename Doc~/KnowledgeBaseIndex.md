@@ -134,6 +134,7 @@
 
 ## 当前对齐结论
 
+- `README.md` 和 `README_CN.md` 已明确标注 Unity 2019.4+ ~ 6000.x 兼容范围，避免用户误读为不支持 Unity 6000.x。
 - `AIBridge/Workflows` 仍然是用户配置面板，不是 recipe/run/debug 控制台。
 - `AIBridge/Workflow Graph` 是独立高级入口，不应并回默认面板。
 - `compile dotnet` 只是额外检查，不是 Unity 编译替代品。

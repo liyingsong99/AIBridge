@@ -6,7 +6,7 @@
 
 [English](./README.md) | 中文
 
-![Unity 2019.4+](https://img.shields.io/badge/Unity-2019.4%2B-black?style=flat-square&logo=unity)
+![Unity 2019.4+ ~ 6000.x](https://img.shields.io/badge/Unity-2019.4%2B%20~%206000.x-black?style=flat-square&logo=unity)
 ![Package 1.5.1](https://img.shields.io/badge/Package-1.5.1-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
@@ -91,7 +91,7 @@ AIBridge 不替代 Codex、Claude、Cursor 这类 AI 工具；它们仍负责推
 
 ## 系统要求
 
-- Unity 2019.4 或更高版本。
+- Unity 2019.4 或更高版本，包括 Unity 6000.x。
 - .NET 8.0 Runtime，用于随包 CLI。
 - Unity 侧命令需要 Unity Editor 正在运行，例如 `compile unity`、`asset`、`scene`、`inspector`、`prefab`、`input`、`screenshot`、`code`、`get_logs`。
 - `text_index` 是 CLI-only 命令，不需要 Unity Editor。它只索引配置范围内的文本路径，并跳过常见生成目录、大文件和二进制文件。

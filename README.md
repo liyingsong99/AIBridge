@@ -6,7 +6,7 @@
 
 English | [中文](./README_CN.md)
 
-![Unity 2019.4+](https://img.shields.io/badge/Unity-2019.4%2B-black?style=flat-square&logo=unity)
+![Unity 2019.4+ ~ 6000.x](https://img.shields.io/badge/Unity-2019.4%2B%20~%206000.x-black?style=flat-square&logo=unity)
 ![Package 1.5.1](https://img.shields.io/badge/Package-1.5.1-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
@@ -91,7 +91,7 @@ The important distinction is protocol layer versus Unity tool layer: AIBridge is
 
 ## Requirements
 
-- Unity 2019.4 or later.
+- Unity 2019.4 or later, including Unity 6000.x.
 - .NET 8.0 Runtime for the bundled CLI.
 - Unity Editor must be running for Unity-side commands such as `compile unity`, `asset`, `scene`, `inspector`, `prefab`, `input`, `screenshot`, `code`, and `get_logs`.
 - `text_index` is CLI-only and does not require Unity Editor. It indexes only configured text paths and skips common generated folders, large files, and binary files.
