@@ -2755,6 +2755,7 @@ namespace AIBridgeCLI.Commands
             public long OwnerStartTicks { get; private set; }
             public bool Enabled { get; private set; }
             public bool AutoRefresh { get; private set; }
+            public string WarmupMode { get; private set; }
             public string ProcessPriority { get; private set; }
             public bool FallbackToTextSearch { get; private set; }
             public bool IncludeSnapshotOnReset { get; private set; }
@@ -2791,6 +2792,7 @@ namespace AIBridgeCLI.Commands
                     OwnerStartTicks = ownerStartTicks,
                     Enabled = GetConfigBool(config, "enableCodeIndex", false),
                     AutoRefresh = ResolveBool(options, "auto-refresh", GetConfigBool(config, "autoRefreshOnFileChange", true)),
+                    WarmupMode = ResolveString(options, "warmup-mode", GetConfigString(config, "warmupMode", "semantic")),
                     ProcessPriority = ResolveString(options, "priority", "normal"),
                     FallbackToTextSearch = ResolveBool(options, "fallback", GetConfigBool(config, "fallbackToTextSearch", true)),
                     IncludeSnapshotOnReset = ResolveBool(options, "include-snapshot", false),
@@ -2825,6 +2827,12 @@ namespace AIBridgeCLI.Commands
             private static bool GetConfigBool(JObject config, string key, bool defaultValue)
             {
                 return config == null ? defaultValue : config.Value<bool?>(key) ?? defaultValue;
+            }
+
+            private static string GetConfigString(JObject config, string key, string defaultValue)
+            {
+                var value = config == null ? null : config.Value<string>(key);
+                return string.IsNullOrWhiteSpace(value) ? defaultValue : value;
             }
 
             private static int ResolveInt(Dictionary<string, string> options, string key)
@@ -3062,6 +3070,8 @@ namespace AIBridgeCLI.Commands
 
                 startInfo.ArgumentList.Add("--auto-refresh");
                 startInfo.ArgumentList.Add(context.AutoRefresh ? "true" : "false");
+                startInfo.ArgumentList.Add("--warmup-mode");
+                startInfo.ArgumentList.Add(string.IsNullOrWhiteSpace(context.WarmupMode) ? "semantic" : context.WarmupMode);
             }
 
             public void AddSnapshotWorkerArguments(ProcessStartInfo startInfo, CodeIndexContext context, string inputPath, int workers)

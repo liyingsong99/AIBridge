@@ -161,7 +161,7 @@ namespace AIBridge.Editor
         public const bool DefaultCodeIndexEnabled = false;
         public const bool DefaultCodeIndexPrewarmOnUnityStartup = true;
         public const int DefaultCodeIndexWarmupDelaySeconds = 10;
-        public const string DefaultCodeIndexWarmupMode = "light";
+        public const string DefaultCodeIndexWarmupMode = "semantic";
         public const bool DefaultCodeIndexAutoRefreshOnFileChange = true;
         public const bool DefaultCodeIndexFallbackToTextSearch = true;
         public const string DefaultCodeIndexCleanupModeOnQuit = "processOnly";

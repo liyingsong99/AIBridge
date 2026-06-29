@@ -108,6 +108,7 @@ namespace AIBridgeCLI.Commands
             var integrityError = manifest == null ? null : GetIndexIntegrityError(context, manifest);
             var corrupt = (indexExists && manifest == null) || !string.IsNullOrWhiteSpace(integrityError);
             var stale = corrupt || manifest == null || ComputeStale(context, manifest);
+            var indexSizeBytes = ResolveIndexSizeBytes(context, manifest, indexExists, corrupt);
             var suggestions = corrupt
                 ? new JArray("Run text_index reset, then text_index build.")
                 : null;
@@ -123,7 +124,7 @@ namespace AIBridgeCLI.Commands
                 ["configPath"] = context.ConfigPath,
                 ["manifestPath"] = context.ManifestPath,
                 ["fileCount"] = manifest == null ? 0 : manifest.Files.Count,
-                ["indexSizeBytes"] = indexExists ? GetDirectorySize(context.IndexDirectory) : 0L,
+                ["indexSizeBytes"] = indexSizeBytes,
                 ["excludedCount"] = manifest == null ? 0 : manifest.ExcludedCount,
                 ["schemaVersion"] = manifest == null ? SchemaVersion : manifest.SchemaVersion,
                 ["lastBuiltUtc"] = manifest == null ? null : manifest.BuiltAtUtc,
@@ -140,7 +141,6 @@ namespace AIBridgeCLI.Commands
         private static JObject Build(TextIndexContext context)
         {
             Directory.CreateDirectory(context.IndexDirectory);
-            WriteConfigIfMissing(context);
 
             var previousManifest = ReadManifest(context);
             var previousByPath = previousManifest == null
@@ -151,13 +151,14 @@ namespace AIBridgeCLI.Commands
                 ? 1
                 : previousManifest.Files.Max(file => file.Id) + 1;
             var files = new List<TextIndexFileRecord>();
-            var postings = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+            var postings = CreatePostingShards();
             var excluded = new TextIndexExcludedCounts();
             var changedFiles = 0;
             var reusedFiles = 0;
+            var fileGramsSizeBytes = 0L;
 
             EnsureIndexSubdirectories(context);
-            WriteConfig(context);
+            var configSizeBytes = WriteConfig(context);
 
             foreach (var fullPath in EnumerateCandidateFiles(context, excluded))
             {
@@ -216,7 +217,7 @@ namespace AIBridgeCLI.Commands
 
                 var id = reused ? previous.Id : nextId++;
                 fileIdsInUse.Add(id);
-                WriteFileGrams(context, id, grams);
+                fileGramsSizeBytes += WriteFileGrams(context, id, grams);
                 AddPostings(postings, id, grams);
                 files.Add(new TextIndexFileRecord
                 {
@@ -230,7 +231,6 @@ namespace AIBridgeCLI.Commands
             }
 
             RemoveStaleFileGrams(context, fileIdsInUse);
-            WritePostings(context, postings);
             var manifest = new TextIndexManifest
             {
                 SchemaVersion = SchemaVersion,
@@ -241,7 +241,12 @@ namespace AIBridgeCLI.Commands
                 ExcludedCount = excluded.Total,
                 Excluded = excluded
             };
-            WriteManifest(context, manifest);
+            var postingsSizeBytes = WritePostings(context, postings);
+            var stableIndexSizeBytes = GetFileLength(Path.Combine(context.IndexDirectory, AIBridgeCacheCleanup.LastUsedMarkerFileName))
+                + configSizeBytes
+                + fileGramsSizeBytes
+                + postingsSizeBytes;
+            var indexSizeBytes = WriteManifestWithIndexSize(context, manifest, stableIndexSizeBytes);
 
             return new JObject
             {
@@ -256,7 +261,7 @@ namespace AIBridgeCLI.Commands
                 ["fileCount"] = manifest.Files.Count,
                 ["changedFileCount"] = changedFiles,
                 ["reusedFileCount"] = reusedFiles,
-                ["indexSizeBytes"] = GetDirectorySize(context.IndexDirectory),
+                ["indexSizeBytes"] = indexSizeBytes,
                 ["excludedCount"] = manifest.ExcludedCount,
                 ["excluded"] = JObject.FromObject(excluded, JsonSerializer.Create(JsonSettings))
             };
@@ -698,46 +703,80 @@ namespace AIBridgeCLI.Commands
             }
         }
 
-        private static void AddPostings(Dictionary<string, List<int>> postings, int id, IEnumerable<string> grams)
+        private static Dictionary<string, List<int>>[] CreatePostingShards()
+        {
+            var shards = new Dictionary<string, List<int>>[ShardCount];
+            for (var i = 0; i < shards.Length; i++)
+            {
+                shards[i] = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+            }
+
+            return shards;
+        }
+
+        private static void AddPostings(Dictionary<string, List<int>>[] postings, int id, IEnumerable<string> grams)
         {
             foreach (var gram in grams)
             {
+                var shardMap = postings[GetShard(gram)];
                 List<int> ids;
-                if (!postings.TryGetValue(gram, out ids))
+                if (!shardMap.TryGetValue(gram, out ids))
                 {
                     ids = new List<int>();
-                    postings[gram] = ids;
+                    shardMap[gram] = ids;
                 }
 
                 ids.Add(id);
             }
         }
 
-        private static void WritePostings(TextIndexContext context, Dictionary<string, List<int>> postings)
+        private static long WritePostings(TextIndexContext context, Dictionary<string, List<int>>[] postings)
         {
             var postingsDirectory = Path.Combine(context.IndexDirectory, PostingsDirectoryName);
             DeleteDirectoryIfExists(postingsDirectory);
             Directory.CreateDirectory(postingsDirectory);
 
-            var shards = new Dictionary<int, JObject>();
-            foreach (var pair in postings)
+            long totalBytes = 0;
+            for (var shardIndex = 0; shardIndex < postings.Length; shardIndex++)
             {
-                var shard = GetShard(pair.Key);
-                JObject shardObject;
-                if (!shards.TryGetValue(shard, out shardObject))
+                var shardMap = postings[shardIndex];
+                if (shardMap == null || shardMap.Count == 0)
                 {
-                    shardObject = new JObject();
-                    shards[shard] = shardObject;
+                    continue;
                 }
 
-                pair.Value.Sort();
-                shardObject[pair.Key] = new JArray(pair.Value.Distinct());
+                var path = GetPostingShardPath(context, shardIndex);
+                WritePostingShard(path, shardMap);
+                totalBytes += GetFileLength(path);
             }
 
-            foreach (var shard in shards)
+            return totalBytes;
+        }
+
+        private static void WritePostingShard(string path, Dictionary<string, List<int>> shardMap)
+        {
+            // build 的热点在 postings 聚合尾声，这里直接按 shard 流式写盘，避免再构造一整套 JObject/JArray 中间对象。
+            using (var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var writer = new StreamWriter(stream, new UTF8Encoding(false)))
+            using (var jsonWriter = new JsonTextWriter(writer))
             {
-                var path = GetPostingShardPath(context, shard.Key);
-                File.WriteAllText(path, shard.Value.ToString(Formatting.None), new UTF8Encoding(false));
+                jsonWriter.Formatting = Formatting.None;
+                jsonWriter.WriteStartObject();
+                foreach (var gram in shardMap.Keys.OrderBy(item => item, StringComparer.Ordinal))
+                {
+                    var ids = shardMap[gram];
+                    ids.Sort();
+                    jsonWriter.WritePropertyName(gram);
+                    jsonWriter.WriteStartArray();
+                    for (var i = 0; i < ids.Count; i++)
+                    {
+                        jsonWriter.WriteValue(ids[i]);
+                    }
+
+                    jsonWriter.WriteEndArray();
+                }
+
+                jsonWriter.WriteEndObject();
             }
         }
 
@@ -831,11 +870,25 @@ namespace AIBridgeCLI.Commands
             }
         }
 
-        private static void WriteFileGrams(TextIndexContext context, int id, string[] grams)
+        private static long WriteFileGrams(TextIndexContext context, int id, string[] grams)
         {
             var path = GetFileGramsPath(context, id);
             Directory.CreateDirectory(Path.GetDirectoryName(path));
-            File.WriteAllText(path, JsonConvert.SerializeObject(grams, Formatting.None), new UTF8Encoding(false));
+            using (var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var writer = new StreamWriter(stream, new UTF8Encoding(false)))
+            using (var jsonWriter = new JsonTextWriter(writer))
+            {
+                jsonWriter.Formatting = Formatting.None;
+                jsonWriter.WriteStartArray();
+                for (var i = 0; i < grams.Length; i++)
+                {
+                    jsonWriter.WriteValue(grams[i]);
+                }
+
+                jsonWriter.WriteEndArray();
+            }
+
+            return GetFileLength(path);
         }
 
         private static string GetFileGramsPath(TextIndexContext context, int id)
@@ -1014,20 +1067,11 @@ namespace AIBridgeCLI.Commands
                 .ToList();
         }
 
-        private static void WriteConfigIfMissing(TextIndexContext context)
-        {
-            if (File.Exists(context.ConfigPath))
-            {
-                return;
-            }
-
-            WriteConfig(context);
-        }
-
-        private static void WriteConfig(TextIndexContext context)
+        private static long WriteConfig(TextIndexContext context)
         {
             Directory.CreateDirectory(context.IndexDirectory);
             File.WriteAllText(context.ConfigPath, JsonConvert.SerializeObject(context.Config, Formatting.Indented, JsonSettings), new UTF8Encoding(false));
+            return GetFileLength(context.ConfigPath);
         }
 
         private static TextIndexManifest ReadManifest(TextIndexContext context)
@@ -1053,9 +1097,40 @@ namespace AIBridgeCLI.Commands
             }
         }
 
-        private static void WriteManifest(TextIndexContext context, TextIndexManifest manifest)
+        private static long WriteManifest(TextIndexContext context, TextIndexManifest manifest)
         {
             File.WriteAllText(context.ManifestPath, JsonConvert.SerializeObject(manifest, Formatting.Indented, JsonSettings), new UTF8Encoding(false));
+            return GetFileLength(context.ManifestPath);
+        }
+
+        private static long WriteManifestWithIndexSize(TextIndexContext context, TextIndexManifest manifest, long stableIndexSizeBytes)
+        {
+            // manifest 自己也会占用索引体积，最多回写几次即可收敛，不再额外扫描整个索引目录。
+            var totalIndexSizeBytes = stableIndexSizeBytes;
+            for (var attempt = 0; attempt < 4; attempt++)
+            {
+                manifest.IndexSizeBytes = totalIndexSizeBytes;
+                var manifestSizeBytes = WriteManifest(context, manifest);
+                var actualTotalBytes = stableIndexSizeBytes + manifestSizeBytes;
+                if (actualTotalBytes == totalIndexSizeBytes)
+                {
+                    return actualTotalBytes;
+                }
+
+                totalIndexSizeBytes = actualTotalBytes;
+            }
+
+            manifest.IndexSizeBytes = totalIndexSizeBytes;
+            var finalManifestSizeBytes = WriteManifest(context, manifest);
+            var finalTotalBytes = stableIndexSizeBytes + finalManifestSizeBytes;
+            if (finalTotalBytes != totalIndexSizeBytes)
+            {
+                manifest.IndexSizeBytes = finalTotalBytes;
+                finalManifestSizeBytes = WriteManifest(context, manifest);
+                finalTotalBytes = stableIndexSizeBytes + finalManifestSizeBytes;
+            }
+
+            return finalTotalBytes;
         }
 
         private static void EnsureIndexSubdirectories(TextIndexContext context)
@@ -1177,6 +1252,33 @@ namespace AIBridgeCLI.Commands
             }
 
             return total;
+        }
+
+        private static long GetFileLength(string path)
+        {
+            try
+            {
+                return File.Exists(path) ? new FileInfo(path).Length : 0L;
+            }
+            catch
+            {
+                return 0L;
+            }
+        }
+
+        private static long ResolveIndexSizeBytes(TextIndexContext context, TextIndexManifest manifest, bool indexExists, bool corrupt)
+        {
+            if (!indexExists || context == null)
+            {
+                return 0L;
+            }
+
+            if (!corrupt && manifest != null && manifest.IndexSizeBytes > 0)
+            {
+                return manifest.IndexSizeBytes;
+            }
+
+            return GetDirectorySize(context.IndexDirectory);
         }
 
         private static JObject BuildFailure(TextIndexContext context, string error, string errorCode)
@@ -1410,6 +1512,7 @@ namespace AIBridgeCLI.Commands
             public string BuiltAtUtc { get; set; }
             public string ProjectRoot { get; set; }
             public string ConfigHash { get; set; }
+            public long IndexSizeBytes { get; set; }
             public List<TextIndexFileRecord> Files { get; set; } = new List<TextIndexFileRecord>();
             public int ExcludedCount { get; set; }
             public TextIndexExcludedCounts Excluded { get; set; }

@@ -462,7 +462,7 @@ $CLI code_index diagnostics --file Assets/Scripts/Foo.cs
 
 该命令刻意保持只读：不做 rename、重构、自动修复或文件写入。语义 workspace 不可用时，fallback 结果会明确标记 `semantic=false`，`source` 为 `rg-fallback` 或 `text-fallback`。`doctor` 会直接报告快照缺失、空快照或过期问题；程序集数或源码文件数为 0 的快照不会被视为语义可用。最终编译权威仍然是 `compile unity`。
 
-启用 Code Index 后，Unity Editor 可在 `AIBridge > Settings > Code Index` 中生成快照、配置启动后空闲预热、快照自动刷新、文本降级、PackageCache 源码是否纳入索引、忽略程序集/源码路径规则和退出清理策略。默认忽略 `Unity.*` 程序集，以及 `Library/PackageCache/com.unity.*` / `Packages/com.unity.*` 源码路径，用于降低 Unity 官方包源码噪音；被排除的源码程序集仍会作为 metadata reference 保留，避免工程语义查询缺少包类型。预热阶段只加载轻量 snapshot name index；声明位置和全局唯一的索引成员定义可直接由快照返回，Roslyn 语义 workspace 会延迟到更复杂的定义、引用、诊断等语义查询真正需要时再构建。引用查询也会尽量使用 snapshot token index 缩小 Roslyn 候选文件范围。`status` 会返回 `workspaceMode=unity-snapshot`、快照元数据、排除计数，以及 daemon 需要加载新快照时的 `stale=true`。
+启用 Code Index 后，Unity Editor 可在 `AIBridge > Settings > Code Index` 中生成快照、配置启动后空闲预热、预热模式、快照自动刷新、文本降级、PackageCache 源码是否纳入索引、忽略程序集/源码路径规则和退出清理策略。默认忽略 `Unity.*` 程序集，以及 `Library/PackageCache/com.unity.*` / `Packages/com.unity.*` 源码路径，用于降低 Unity 官方包源码噪音；被排除的源码程序集仍会作为 metadata reference 保留，避免工程语义查询缺少包类型。daemon 启动默认使用语义预热：先加载 snapshot name index，再在后台构建 Roslyn workspace，把冷启动开销从首次语义查询前移到启动阶段。若项目更关注启动期内存/CPU，可把预热模式设为 `light`，接受 Roslyn 延迟构建。引用查询也会尽量使用 snapshot token index 缩小 Roslyn 候选文件范围。`status` 会返回 `workspaceMode=unity-snapshot`、快照元数据、排除计数、已加载项目/文档数，以及 daemon 需要加载新快照时的 `stale=true`。
 
 </details>
 

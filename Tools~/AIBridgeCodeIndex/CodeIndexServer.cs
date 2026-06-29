@@ -136,6 +136,12 @@ namespace AIBridgeCodeIndex
             {
                 UpdateStatus("loading", null);
                 await workspace.WarmupAsync();
+                if (ShouldWarmupSemanticWorkspace())
+                {
+                    // daemon 首次启动时默认把 Roslyn workspace 预热完，避免首个语义查询承担冷启动编译开销。
+                    await workspace.WarmupSemanticAsync(Array.Empty<string>(), loadAllAssemblies: true);
+                }
+
                 if (_shutdownRequested)
                 {
                     return;
@@ -214,6 +220,15 @@ namespace AIBridgeCodeIndex
                 WriteStatus();
                 Log("Warmup failed: " + ex);
             }
+        }
+
+        private bool ShouldWarmupSemanticWorkspace()
+        {
+            var mode = _options == null ? null : _options.WarmupMode;
+            return string.IsNullOrWhiteSpace(mode)
+                   || string.Equals(mode, "semantic", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(mode, "full", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(mode, "true", StringComparison.OrdinalIgnoreCase);
         }
 
         private async Task HandleClientAsync(TcpClient client)

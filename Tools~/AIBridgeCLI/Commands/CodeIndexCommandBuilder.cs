@@ -56,7 +56,8 @@ namespace AIBridgeCLI.Commands
             {
                 new ParameterInfo("project-root", "Unity project root. Defaults to current Unity project", false),
                 new ParameterInfo("unity-pid", "Unity Editor process id to monitor. Daemon exits when the process is gone", false),
-                new ParameterInfo("auto-refresh", "Reload the snapshot workspace automatically when snapshot files change", false, "true")
+                new ParameterInfo("auto-refresh", "Reload the snapshot workspace automatically when snapshot files change", false, "true"),
+                new ParameterInfo("warmup-mode", "Daemon startup warmup mode: semantic or light", false, "semantic")
             };
         }
 
