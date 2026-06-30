@@ -320,7 +320,13 @@ namespace AIBridgeCLI.Commands
 
             var pathFilter = ToIndexPath(ResolveString(options, "path", null));
             var globs = ResolveGlobFilters(options);
-            var candidates = GetCandidateIds(context, manifest, query, regex);
+            string candidateError;
+            var candidates = GetCandidateIds(context, manifest, query, regex, out candidateError);
+            if (!string.IsNullOrWhiteSpace(candidateError))
+            {
+                return BuildFailure(context, candidateError + " Run text_index reset, then text_index build.", "index_corrupt");
+            }
+
             var items = new JArray();
             var searchedFileCount = 0;
             try
@@ -367,7 +373,7 @@ namespace AIBridgeCLI.Commands
                 ["projectRoot"] = context.ProjectRoot,
                 ["indexPath"] = context.IndexDirectory,
                 ["fileCount"] = manifest.Files.Count,
-                ["indexSizeBytes"] = GetDirectorySize(context.IndexDirectory),
+                ["indexSizeBytes"] = ResolveIndexSizeBytes(context, manifest, true, false),
                 ["excludedCount"] = manifest.ExcludedCount,
                 ["query"] = query,
                 ["regex"] = regex,
@@ -423,7 +429,8 @@ namespace AIBridgeCLI.Commands
                 return true;
             }
 
-            var current = new Dictionary<string, FileInfo>(StringComparer.OrdinalIgnoreCase);
+            var indexedByPath = manifest.Files.ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
+            var seenIndexedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var excluded = new TextIndexExcludedCounts();
             foreach (var path in EnumerateCandidateFiles(context, excluded))
             {
@@ -438,34 +445,31 @@ namespace AIBridgeCLI.Commands
                     continue;
                 }
 
-                if (info.Length > context.Config.MaxFileBytes || LooksBinary(path))
+                TextIndexFileRecord indexedRecord;
+                if (indexedByPath.TryGetValue(relative, out indexedRecord))
+                {
+                    seenIndexedPaths.Add(relative);
+                    if (info.Length != indexedRecord.Size || info.LastWriteTimeUtc.Ticks != indexedRecord.LastWriteTimeUtcTicks)
+                    {
+                        return true;
+                    }
+
+                    continue;
+                }
+
+                if (info.Length > context.Config.MaxFileBytes)
                 {
                     continue;
                 }
 
-                current[relative] = info;
-            }
-
-            if (current.Count != manifest.Files.Count)
-            {
-                return true;
-            }
-
-            foreach (var record in manifest.Files)
-            {
-                FileInfo info;
-                if (!current.TryGetValue(record.Path, out info))
-                {
-                    return true;
-                }
-
-                if (info.Length != record.Size || info.LastWriteTimeUtc.Ticks != record.LastWriteTimeUtcTicks)
+                // 已索引文件的改动可直接通过 size/mtime 命中；只有新增候选文件才需要额外做二进制探测。
+                if (!LooksBinary(path))
                 {
                     return true;
                 }
             }
 
-            return false;
+            return seenIndexedPaths.Count != manifest.Files.Count;
         }
 
         private static IEnumerable<string> EnumerateCandidateFiles(TextIndexContext context, TextIndexExcludedCounts excluded)
@@ -610,39 +614,12 @@ namespace AIBridgeCLI.Commands
                 return "Text index file gram cache is missing.";
             }
 
-            var postingShardCache = new Dictionary<int, JObject>();
-            for (var i = 0; i < manifest.Files.Count; i++)
-            {
-                var record = manifest.Files[i];
-                string[] grams;
-                if (!TryReadFileGrams(context, record.Id, out grams))
-                {
-                    return "Text index file gram cache is unreadable for " + record.Path + ".";
-                }
-
-                for (var gramIndex = 0; gramIndex < grams.Length; gramIndex++)
-                {
-                    var gram = grams[gramIndex];
-                    var shard = GetShard(gram);
-                    JObject shardObject;
-                    if (!TryReadPostingShard(context, shard, postingShardCache, out shardObject))
-                    {
-                        return string.IsNullOrEmpty(gram) ? null : "Text index postings are incomplete.";
-                    }
-
-                    var ids = shardObject[gram] as JArray;
-                    if (ids == null || !ids.OfType<JToken>().Any(token => token != null && token.Type == JTokenType.Integer && token.Value<int>() == record.Id))
-                    {
-                        return "Text index postings are missing entries for " + record.Path + ".";
-                    }
-                }
-            }
-
             return null;
         }
 
-        private static HashSet<int> GetCandidateIds(TextIndexContext context, TextIndexManifest manifest, string query, bool regex)
+        private static HashSet<int> GetCandidateIds(TextIndexContext context, TextIndexManifest manifest, string query, bool regex, out string error)
         {
+            error = null;
             var queryGrams = ExtractQueryTrigrams(query, regex).ToList();
             if (queryGrams.Count == 0)
             {
@@ -652,7 +629,14 @@ namespace AIBridgeCLI.Commands
             HashSet<int> candidates = null;
             foreach (var gram in queryGrams)
             {
-                var ids = ReadPosting(context, gram);
+                bool shardReadable;
+                var ids = ReadPosting(context, gram, out shardReadable);
+                if (!shardReadable)
+                {
+                    error = "Text index postings are incomplete.";
+                    return null;
+                }
+
                 if (candidates == null)
                 {
                     candidates = new HashSet<int>(ids);
@@ -780,12 +764,14 @@ namespace AIBridgeCLI.Commands
             }
         }
 
-        private static HashSet<int> ReadPosting(TextIndexContext context, string gram)
+        private static HashSet<int> ReadPosting(TextIndexContext context, string gram, out bool shardReadable)
         {
+            shardReadable = true;
             JObject shard;
             if (!TryReadPostingShard(context, GetShard(gram), null, out shard))
             {
-                return new HashSet<int>();
+                shardReadable = false;
+                return null;
             }
 
             var array = shard[gram] as JArray;

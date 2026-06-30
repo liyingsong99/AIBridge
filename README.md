@@ -7,7 +7,7 @@
 English | [中文](./README_CN.md)
 
 ![Unity 2019.4+ ~ 6000.x](https://img.shields.io/badge/Unity-2019.4%2B%20~%206000.x-black?style=flat-square&logo=unity)
-![Package 1.5.1](https://img.shields.io/badge/Package-1.5.1-5b6cff?style=flat-square)
+![Package 1.5.3](https://img.shields.io/badge/Package-1.5.3-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
