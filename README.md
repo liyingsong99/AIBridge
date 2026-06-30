@@ -128,7 +128,7 @@ You can also clone this repository into a Unity project's `Packages` folder.
 4. Click `Install Selected Integrations`.
 5. Optionally click `Install Unity Project AGENTS.md Template` to create a root `AGENTS.md`.
 
-Installed AIBridge Skills are written to each selected tool's default skills directory by default, such as `.codex/skills/` for Codex. You can set a custom directory in the `Workflows > Skills` tab, but custom directories may not be discovered automatically by the AI tool. Each AI tool receives a minimal RootRule and, only when needed for a custom directory, a plugin adapter that references the Skill root. The RootRule includes the fixed project-root-relative CLI path, an explicit `$CLI` binding, common commands, host-tool `exec` routing, Skill root, and `aibridge-development-workflow` entry point; multi-branch routing and targeted checklists live in the workflow Skill. Advanced workflow orchestration guidance is installed as an AIBridge Skill and is loaded only for multi-agent workflow, adversarial verification, recipe, Runtime debug investigation, or Runtime target sweep tasks. Command references are generated under each installed Skill's `references/` directory.
+Installed AIBridge Skills are written to each selected tool's default skills directory, such as `.codex/skills/` for Codex. You can set a custom directory in the `Workflows > Skills` tab, but custom directories may not be discovered automatically by the AI tool. Each AI tool receives a minimal RootRule and, when needed for a custom directory, a plugin adapter that references the Skill root. The RootRule includes the fixed project-root-relative CLI path, an explicit `$CLI` binding, common commands, host-tool `exec` routing, Skill root, and `aibridge-development-workflow` entry point. Multi-branch routing, targeted checklists, advanced workflow orchestration guidance, and command references live in the installed workflow Skill and its `references/` directory.
 
 You can also open the `Workflows > Recommended Library` tab, refresh the default `obra/superpowers` repository, and install third-party Skills into the selected tools' skills directories.
 
@@ -213,7 +213,7 @@ Use `harness status` for compact preflight, `selection` to manage the active Uni
 
 ### Workflow Recipes
 
-Workflow recipes are deterministic run-artifact templates, not a built-in LLM scheduler. `workflow run-cli` executes CLI, barrier, and report steps, while `agent` and `manual` steps are recorded for Codex, Claude, Cursor, or a human executor.
+Workflow recipes are deterministic run-artifact templates. `workflow run-cli` executes CLI, barrier, and report steps, while `agent` and `manual` steps are recorded for Codex, Claude, Cursor, or a human executor.
 
 ```bash
 $CLI workflow list
@@ -243,7 +243,7 @@ Built-in recipes include `bug-hunter-loop`, `harness-readiness-check`, `performa
 
 `runtime-debug-investigation` is for investigating Runtime, Player, Play Mode, UI, log, or performance symptoms. It checks evidence completeness first and does not treat Runtime errors themselves as workflow failure conditions; once a root cause is confirmed and a fix is requested, hand off to an implementation workflow.
 
-`workflow begin` creates an active run; ordinary commands can attach evidence with `--workflow-run`, `AIBRIDGE_WORKFLOW_RUN_ID`, or the active run pointer. `workflow status` and `workflow report` always require explicit `--run`; read `.aibridge/workflows/active-run.json` first when you need the active run id. `workflow run-cli --resume <runId>` resumes an existing run but still requires `--recipe` or `--file` so the CLI can load the recipe definition. Prefer a JSON file path for `--inputs`; inline JSON is fragile in PowerShell. `workflow import` stores structured external results such as `Verdict`, and `externalVerdict` gates only pass from imported artifacts. `workflow export` writes handoff packages for external tools; it is an exporter, not an embedded LLM runtime. `partial` workflow status is not treated as CLI success unless `--allow-partial true` is passed explicitly. `workflow status`, `workflow run-cli`, `workflow finish`, and JSON `workflow report` are compact by default; use `--detail full` only when you need the full manifest JSON. Compact output keeps `terminalState`, `terminalReason`, `runDirectory`, `manifestPath`, `reportPath`, `artifactIds`, gate summaries, and external gaps, while `stepGaps`, `evidenceFreshness`, and `failedCommands` stay full-detail only.
+`workflow begin` creates an active run; ordinary commands can attach evidence with `--workflow-run`, `AIBRIDGE_WORKFLOW_RUN_ID`, or the active run pointer. `workflow status` and `workflow report` always require explicit `--run`; read `.aibridge/workflows/active-run.json` first when you need the active run id. `workflow run-cli --resume <runId>` resumes an existing run but still requires `--recipe` or `--file` so the CLI can load the recipe definition. Prefer a JSON file path for `--inputs`; inline JSON is fragile in PowerShell. `workflow import` stores structured external results such as `Verdict`, and `externalVerdict` gates only pass from imported artifacts. `workflow export` writes handoff packages for external tools. `partial` workflow status is not treated as CLI success unless `--allow-partial true` is passed explicitly. `workflow status`, `workflow run-cli`, `workflow finish`, and JSON `workflow report` are compact by default; use `--detail full` only when you need the full manifest JSON. Compact output keeps `terminalState`, `terminalReason`, `runDirectory`, `manifestPath`, `reportPath`, `artifactIds`, gate summaries, and external gaps, while `stepGaps`, `evidenceFreshness`, and `failedCommands` stay full-detail only.
 
 Workflow cleanup is explicit maintenance: `workflow clean` starts in dry-run mode and should be used when you intentionally inspect or prune workflow artifacts. Routine expired run directories are handled by the AIBridge Settings > Cache cleanup policy; the active run is preserved, while old failed/blocked runs are not permanently exempt once they exceed the retention window.
 
@@ -352,7 +352,7 @@ For multiple independent commands, send a `jobs` batch. `rg` and `search` reques
 
 ### Local Text Index
 
-Use `text_index` for exact text search across project text files. It is CLI-only, read-only for source files, and stores cache data under `.aibridge/text-index/`. It is the preferred fast path for literal strings, comments, config values, YAML, Prefab/Scene text, docs, and non-C# content; use `code_index` for C# semantic relationships.
+Use `text_index` for indexed text search across project text files. It is CLI-only, read-only for source files, and stores cache data under `.aibridge/text-index/`. When the query is a known exact string and you mainly need the fastest code-line hits, prefer `rg -n --fixed-strings` first. Use `text_index` when you want broader indexed literal/regex search across scripts, configs, YAML, Prefab/Scene text, docs, and other non-C# content; use `code_index` for C# semantic relationships.
 
 ```bash
 $CLI text_index status
@@ -471,9 +471,9 @@ After Code Index is enabled, Unity Editor can generate the snapshot and prewarm 
 
 ### Roslyn Temporary C# Execution
 
-`code execute` runs controlled temporary Editor C# for complex one-off tasks that declarative CLI commands cannot express cleanly, such as generated asset sets, structured diagnostics, reports, Runtime/Public API calls, or multi-step UnityEditor API orchestration. It is not a replacement for `compile unity` or `test run`.
+`code execute` runs temporary Editor C# for one-off tasks that declarative CLI commands cannot express cleanly, such as generated asset sets, structured diagnostics, reports, Runtime/Public API calls, or multi-step UnityEditor API orchestration. It is not a replacement for `compile unity` or `test run`.
 
-`Enable Code Execution` is enabled by default in `AIBridge/Settings > Basic`; disable it there for untrusted projects or callers. This gate applies to both `code execute` and `code runtime_execute`. File mode is limited to `.aibridge/code/*.cs` or `.aibridge/code/*.csx`, and complex scripts should use file mode. Code execution is single-flight; after a timeout, use `code status` first and only use `code cancel` when you need to release AIBridge's waiting state.
+`Enable Code Execution` in `AIBridge/Settings > Basic` applies to both `code execute` and `code runtime_execute`. Disable it for untrusted projects or callers. File mode is limited to `.aibridge/code/*.cs` or `.aibridge/code/*.csx`, and complex scripts should use file mode. Code execution is single-flight; after a timeout, use `code status` first and only use `code cancel` when you need to release AIBridge's waiting state.
 
 ```bash
 $CLI code execute --file ".aibridge/code/check.csx" --timeout 5000

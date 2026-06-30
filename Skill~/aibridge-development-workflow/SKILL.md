@@ -31,7 +31,7 @@ description: "AIBridge/Unity 多分支开发工作流入口。Use when a task re
 - 不把 stale snapshot、静态检查、`dotnet build` 或推断说成当前能力或 Unity 验证通过；`compile dotnet` 只能作为额外检查，不能替代 `$CLI compile unity`。
 - C# 语义关系查询仅在 `aibridge-code-index` 已安装且项目规则启用 Code Index 时加载该 Skill；否则使用 `text_index`、`rg` 和文件读取。
 - Unity 已导入资源路径查找优先 `$CLI asset search/find --format paths`；普通仓库文件和路径正则用 `rg --files`。
-- 字面量、注释、配置、YAML、Prefab/Scene 文本和非 C# 内容搜索优先 `$CLI text_index search "literal"`；索引不可用时再用 `rg -n` 和文件读取。
+- 字面量、注释、配置、YAML、Prefab/Scene 文本和非 C# 内容搜索中，若查询是已知精确字符串且主要目标是快速定位代码行，优先直接使用 `rg -n --fixed-strings`；需要跨更多已索引文本做 literal/regex 检索时再使用 `$CLI text_index search "literal"`；索引不可用时使用 `rg -n` 和文件读取。
 - `agent` / `manual` step 需要当前 AI harness、外部执行器或人工完成，并用 `workflow import` 回传结构化结果；AIBridge CLI 不会自动执行这些步骤。
 
 ## 输出策略
