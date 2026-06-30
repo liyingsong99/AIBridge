@@ -118,12 +118,6 @@ namespace AIBridgeCLI
                 return CodeIndexCommand.Execute(parsed.Action, parsed.Options, timeout, noWait, outputMode);
             }
 
-            // Handle text_index command (CLI-only local indexed text search)
-            if (parsed.CommandType.Equals("text_index", StringComparison.OrdinalIgnoreCase))
-            {
-                return TextIndexCommand.Execute(parsed.Action, parsed.Options, parsed.ExtraArgs, outputMode);
-            }
-
             // Handle workflow command (CLI-only recipe schema, run artifacts, gates, reports)
             if (parsed.CommandType.Equals("workflow", StringComparison.OrdinalIgnoreCase))
             {

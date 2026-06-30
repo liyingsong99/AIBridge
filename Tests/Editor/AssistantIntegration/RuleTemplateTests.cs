@@ -154,9 +154,8 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("aibridge-code-index", workflowSkill);
             StringAssert.Contains("Unity 已导入资源路径查找", workflowSkill);
             StringAssert.Contains("asset search/find --format paths", workflowSkill);
-            StringAssert.Contains("已知精确字符串", workflowSkill);
-            StringAssert.Contains("优先直接使用 `rg -n --fixed-strings`", workflowSkill);
-            StringAssert.Contains("$CLI text_index search \"literal\"", workflowSkill);
+            StringAssert.Contains("宿主自带的文本搜索与文件读取工具", workflowSkill);
+            StringAssert.DoesNotContain("text_index", workflowSkill);
             StringAssert.Contains("$CLI compile unity", workflowSkill);
             StringAssert.Contains("compile dotnet", workflowSkill);
             StringAssert.Contains("workflow import", workflowSkill);
@@ -177,7 +176,7 @@ namespace AIBridge.Editor.Tests
             var branchSelection = File.ReadAllText(branchSelectionPath);
             StringAssert.Contains("【入口：Preflight / Skill 路由】", branchSelection);
             StringAssert.Contains("【模式：<启用分支之一>】", branchSelection);
-            StringAssert.Contains("aibridge-code-index、text_index、rg fallback", branchSelection);
+            StringAssert.Contains("aibridge-code-index、宿主搜索/读取工具", branchSelection);
             StringAssert.Contains("Harness 判定是 Preflight gate", branchSelection);
             StringAssert.Contains("fresh 且不影响工具选择时不单独输出", branchSelection);
             StringAssert.Contains("需求讨论分支", branchSelection);
@@ -192,9 +191,8 @@ namespace AIBridge.Editor.Tests
 
             var reviewBranchPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "branches", "review.md");
             var reviewBranch = File.ReadAllText(reviewBranchPath);
-            StringAssert.Contains("已知精确字符串", reviewBranch);
-            StringAssert.Contains("优先直接使用 `rg -n --fixed-strings`", reviewBranch);
-            StringAssert.Contains("需要跨更多已索引文本做 literal/regex 检索时再使用 `$CLI text_index search \"literal\"`", reviewBranch);
+            StringAssert.Contains("宿主自带的文本搜索与文件读取工具", reviewBranch);
+            StringAssert.DoesNotContain("text_index", reviewBranch);
 
             var sourceBranchSelectionPath = Path.Combine(GetPackageRoot(), "Skill~", "aibridge-development-workflow", "references", "branch-selection.md");
             var sourceBranchSelection = File.ReadAllText(sourceBranchSelectionPath);

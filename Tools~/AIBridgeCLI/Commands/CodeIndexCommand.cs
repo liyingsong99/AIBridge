@@ -1733,12 +1733,7 @@ namespace AIBridgeCLI.Commands
             }
 
             string source;
-            var items = TryRunTextIndex(context.ProjectRoot, query, out source);
-            if (items == null)
-            {
-                items = TryRunRg(context.ProjectRoot, query, out source);
-            }
-
+            var items = TryRunRg(context.ProjectRoot, query, out source);
             if (items == null)
             {
                 source = "text-fallback";
@@ -1760,128 +1755,6 @@ namespace AIBridgeCLI.Commands
                 ["warning"] = string.IsNullOrWhiteSpace(warning) ? "Unity snapshot workspace is not ready. Returned text-search candidates only." : warning,
                 ["items"] = JArray.FromObject(items, JsonSerializer.Create(JsonSettings))
             };
-        }
-
-        private static List<CodeIndexTextItem> TryRunTextIndex(string projectRoot, string query, out string source)
-        {
-            source = "text-index-fallback";
-            try
-            {
-                var executable = ResolveCurrentCliExecutable();
-                if (string.IsNullOrWhiteSpace(executable) || !File.Exists(executable))
-                {
-                    return null;
-                }
-
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = executable,
-                    WorkingDirectory = projectRoot,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
-                };
-                startInfo.ArgumentList.Add("text_index");
-                startInfo.ArgumentList.Add("search");
-                startInfo.ArgumentList.Add(query);
-                startInfo.ArgumentList.Add("--project-root");
-                startInfo.ArgumentList.Add(projectRoot);
-                startInfo.ArgumentList.Add("--glob");
-                startInfo.ArgumentList.Add("*.cs");
-                startInfo.ArgumentList.Add("--max-results");
-                startInfo.ArgumentList.Add("100");
-
-                var process = Process.Start(startInfo);
-                if (process == null)
-                {
-                    return null;
-                }
-
-                var output = process.StandardOutput.ReadToEnd();
-                var exited = process.WaitForExit(10000);
-                if (!exited && !process.HasExited)
-                {
-                    process.Kill();
-                    process.WaitForExit(1000);
-                }
-
-                var exitCode = process.HasExited ? process.ExitCode : -1;
-                process.Dispose();
-                if (exitCode != 0 || string.IsNullOrWhiteSpace(output))
-                {
-                    return null;
-                }
-
-                return ParseTextIndexOutput(output);
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        private static string ResolveCurrentCliExecutable()
-        {
-            var exeName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-                ? "AIBridgeCLI.exe"
-                : "AIBridgeCLI";
-            var publishedExe = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, exeName);
-            if (File.Exists(publishedExe))
-            {
-                return publishedExe;
-            }
-
-            return Environment.GetCommandLineArgs().FirstOrDefault();
-        }
-
-        private static List<CodeIndexTextItem> ParseTextIndexOutput(string output)
-        {
-            var result = new List<CodeIndexTextItem>();
-            try
-            {
-                var data = JObject.Parse(output);
-                if (!data.Value<bool>("success") || data.Value<bool?>("stale") == true)
-                {
-                    return null;
-                }
-
-                var items = data["items"] as JArray;
-                if (items == null)
-                {
-                    return result;
-                }
-
-                foreach (var token in items)
-                {
-                    if (result.Count >= 100)
-                    {
-                        break;
-                    }
-
-                    var item = token as JObject;
-                    if (item == null)
-                    {
-                        continue;
-                    }
-
-                    result.Add(new CodeIndexTextItem
-                    {
-                        kind = "text",
-                        name = item.Value<string>("match"),
-                        file = NormalizePath(item.Value<string>("path")),
-                        line = item.Value<int?>("line") ?? 0,
-                        column = item.Value<int?>("column") ?? 0,
-                        preview = item.Value<string>("preview")
-                    });
-                }
-            }
-            catch
-            {
-                return null;
-            }
-
-            return result;
         }
 
         private static List<CodeIndexTextItem> TryRunRg(string projectRoot, string query, out string source)

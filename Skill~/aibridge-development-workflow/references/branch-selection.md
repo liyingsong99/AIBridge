@@ -34,7 +34,7 @@ Preflight / Skill Routing
 |---|---|---|---|---|
 | 实施分支 | 创建、修改、修复、重构、生成、迁移、提交 | 改动当前工作树并验证 | `references/branches/implementation.md` | `aibridge、aibridge-code-index、aibridge-prefab-patch、unity-yaml-editing、aibridge-batch-script` |
 | 调试诊断分支 | 排查、诊断、复现、为什么、追踪、日志、Runtime、Player、Play Mode、性能、UI 异常 | 收集证据并给出根因判断 | `references/branches/debug.md` | `aibridge、aibridge-code-index、aibridge-workflow-orchestration、aibridge-batch-script` |
-| 审查分支 | review、audit、检查风险、设计评审、只读分析 | 输出 confirmed findings 和剩余风险 | `references/branches/review.md` | `aibridge-code-index、text_index、rg fallback、按需 aibridge-workflow-orchestration` |
+| 审查分支 | review、audit、检查风险、设计评审、只读分析 | 输出 confirmed findings 和剩余风险 | `references/branches/review.md` | `aibridge-code-index、宿主搜索/读取工具、按需 aibridge-workflow-orchestration` |
 | 验证分支 | 编译、日志、截图、测试、Runtime/UI 验证、回归确认 | 给出可重复验证结果 | `references/branches/validation.md` | `aibridge、现有 workflow recipe` |
 | 编排分支 | workflow recipe、多 Agent、并行 sweep、对抗验证、结构化 artifact | 设计或执行结构化 workflow | `references/branches/orchestration.md` | `aibridge-workflow-orchestration` |
 

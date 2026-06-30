@@ -18,8 +18,6 @@ namespace AIBridgeCLI.Tests
                 WorkflowReport_IncludesRuntimePerformanceEvidence();
                 WorkflowReport_IncludesFailedRuntimePerformanceEvidence();
                 ArtifactRequiredGate_MatchesSemanticKind();
-                TextIndex_BuildStatusAndSearch_RemainCompatible();
-                TextIndex_SearchFailsFastWhenPostingShardMissing();
                 LostTestRunStatus_IsRecognizedAfterAck();
                 DialogButtonInfo_ExposesStrictLogicalChoices();
                 DialogButtonInfo_DoesNotExposeChoicesForDisabledButtons();
@@ -180,120 +178,6 @@ namespace AIBridgeCLI.Tests
             }
         }
 
-        private static void TextIndex_BuildStatusAndSearch_RemainCompatible()
-        {
-            var previousRoot = Environment.GetEnvironmentVariable("UNITY_PROJECT_ROOT");
-            var previousDirectory = Directory.GetCurrentDirectory();
-            var previousOut = Console.Out;
-            var projectRoot = Path.Combine(Path.GetTempPath(), "AIBridgeCLI.Tests." + Guid.NewGuid().ToString("N"));
-            try
-            {
-                Directory.CreateDirectory(Path.Combine(projectRoot, "Assets"));
-                Directory.CreateDirectory(Path.Combine(projectRoot, "Packages"));
-                File.WriteAllText(Path.Combine(projectRoot, "Assets", "Example.cs"), "public class Example { string PaymentService = \"PaymentService\"; }");
-                File.WriteAllText(Path.Combine(projectRoot, "Packages", "Notes.md"), "MissingReference PaymentService");
-
-                Environment.SetEnvironmentVariable("UNITY_PROJECT_ROOT", projectRoot);
-                Directory.SetCurrentDirectory(projectRoot);
-                ResetPathHelperCache();
-
-                using (var capture = new StringWriter())
-                {
-                    Console.SetOut(capture);
-                    var buildCode = TextIndexCommand.Execute("build", new Dictionary<string, string>(), new List<string>(), OutputMode.Raw);
-                    AssertEqual(0, buildCode, "text_index build should succeed.");
-
-                    var buildJson = JObject.Parse(capture.ToString());
-                    AssertTrue(buildJson.Value<bool>("success"), "build result should be successful.");
-                    AssertTrue(buildJson.Value<int>("fileCount") >= 2, "build should index test files.");
-                    AssertTrue(buildJson.Value<long>("indexSizeBytes") > 0, "build should report a positive index size.");
-
-                    capture.GetStringBuilder().Clear();
-                    var statusCode = TextIndexCommand.Execute("status", new Dictionary<string, string>(), new List<string>(), OutputMode.Raw);
-                    AssertEqual(0, statusCode, "text_index status should succeed.");
-
-                    var statusJson = JObject.Parse(capture.ToString());
-                    AssertTrue(statusJson.Value<bool>("indexed"), "status should report indexed=true.");
-                    AssertTrue(!statusJson.Value<bool>("stale"), "status should report stale=false after build.");
-                    AssertTrue(statusJson.Value<long>("indexSizeBytes") > 0, "status should reuse a positive index size.");
-
-                    capture.GetStringBuilder().Clear();
-                    var searchCode = TextIndexCommand.Execute(
-                        "search",
-                        new Dictionary<string, string> { ["max-results"] = "10" },
-                        new List<string> { "PaymentService" },
-                        OutputMode.Raw);
-                    AssertEqual(0, searchCode, "text_index search should succeed after build.");
-
-                    var searchJson = JObject.Parse(capture.ToString());
-                    AssertTrue(searchJson.Value<bool>("success"), "search result should be successful.");
-                    AssertTrue(searchJson["items"] is JArray, "search result should include items.");
-                    AssertTrue(((JArray)searchJson["items"]).Count >= 2, "search should return both test-file matches.");
-                }
-            }
-            finally
-            {
-                Console.SetOut(previousOut);
-                Environment.SetEnvironmentVariable("UNITY_PROJECT_ROOT", previousRoot);
-                Directory.SetCurrentDirectory(previousDirectory);
-                ResetPathHelperCache();
-                if (Directory.Exists(projectRoot))
-                {
-                    Directory.Delete(projectRoot, true);
-                }
-            }
-        }
-
-        private static void TextIndex_SearchFailsFastWhenPostingShardMissing()
-        {
-            var previousRoot = Environment.GetEnvironmentVariable("UNITY_PROJECT_ROOT");
-            var previousDirectory = Directory.GetCurrentDirectory();
-            var previousOut = Console.Out;
-            var projectRoot = Path.Combine(Path.GetTempPath(), "AIBridgeCLI.Tests." + Guid.NewGuid().ToString("N"));
-            try
-            {
-                Directory.CreateDirectory(Path.Combine(projectRoot, "Assets"));
-                File.WriteAllText(Path.Combine(projectRoot, "Assets", "Example.cs"), "public class Example { string PaymentService = \"PaymentService\"; }");
-
-                Environment.SetEnvironmentVariable("UNITY_PROJECT_ROOT", projectRoot);
-                Directory.SetCurrentDirectory(projectRoot);
-                ResetPathHelperCache();
-
-                using (var capture = new StringWriter())
-                {
-                    Console.SetOut(capture);
-                    var buildCode = TextIndexCommand.Execute("build", new Dictionary<string, string>(), new List<string>(), OutputMode.Raw);
-                    AssertEqual(0, buildCode, "text_index build should succeed.");
-
-                    var shardPath = FindPostingShardForQuery(projectRoot, "PaymentService");
-                    AssertTrue(File.Exists(shardPath), "Expected posting shard should exist after build.");
-                    File.Delete(shardPath);
-
-                    capture.GetStringBuilder().Clear();
-                    var searchCode = TextIndexCommand.Execute(
-                        "search",
-                        new Dictionary<string, string> { ["max-results"] = "10" },
-                        new List<string> { "PaymentService" },
-                        OutputMode.Raw);
-                    AssertEqual(1, searchCode, "text_index search should fail when postings are missing.");
-
-                    var searchJson = JObject.Parse(capture.ToString());
-                    AssertEqual("index_corrupt", searchJson.Value<string>("errorCode"), "search should report index corruption.");
-                }
-            }
-            finally
-            {
-                Console.SetOut(previousOut);
-                Environment.SetEnvironmentVariable("UNITY_PROJECT_ROOT", previousRoot);
-                Directory.SetCurrentDirectory(previousDirectory);
-                ResetPathHelperCache();
-                if (Directory.Exists(projectRoot))
-                {
-                    Directory.Delete(projectRoot, true);
-                }
-            }
-        }
-
         private static void LostTestRunStatus_IsRecognizedAfterAck()
         {
             AssertTrue(AIBridgeCLI.Program.IsLostTestRunStatus("cmd_123", "unknown", true), "Confirmed unknown status should be treated as a lost test run.");
@@ -366,20 +250,6 @@ namespace AIBridgeCLI.Tests
                     }
                 }
             };
-        }
-
-        private static string FindPostingShardForQuery(string projectRoot, string query)
-        {
-            var shard = 17;
-            var normalized = query.ToLowerInvariant();
-            var gram = normalized.Substring(0, 3);
-            for (var i = 0; i < gram.Length; i++)
-            {
-                shard = shard * 31 + gram[i];
-            }
-
-            var shardIndex = (shard & int.MaxValue) % 16;
-            return Path.Combine(projectRoot, ".aibridge", "text-index", "postings", shardIndex.ToString("x2") + ".json");
         }
 
         private static JObject CreateFailedRuntimePerfCommandResult()

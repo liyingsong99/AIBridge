@@ -79,7 +79,7 @@ $CLI screenshot gif
 ### 5. 代码和资源关联
 
 - C# 堆栈、符号、定义、引用、调用链：优先 `aibridge-code-index`。
-- 日志文本、配置、资源路径、Prefab/Scene 名称、非 C# 内容：优先使用 `text_index`，不可用时使用 `rg` 或文件读取。
+- 日志文本、配置、资源路径、Prefab/Scene 名称、非 C# 内容：使用宿主自带的文本搜索或文件读取工具。
 - Prefab/Scene/asset 结构问题只读检查优先；需要修改时再加载对应修改 Skill。
 
 ### 6. 候选根因验证

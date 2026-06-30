@@ -1391,14 +1391,14 @@ namespace AIBridge.Editor
             {
                 return AIBridgeEditorText.For(
                     language,
-                    "Code Index: enabled. For C# code lookup or source navigation, load `aibridge-code-index` first when the query can be expressed as symbol, definition, reference, implementation, derived type, caller, or diagnostic lookup. For Unity imported asset or script asset name/type lookup, use `asset search/find --format paths` when AIBridge and the Editor are available. For file content search, prefer `rg -n --fixed-strings` when the query is a known exact string and you mainly need fast code-line hits; use `text_index search` for broader indexed literal or regex search when available; use `rg` for fuzzy text, non-indexed repository files, arbitrary path regexes, or when Text Index/Code Index/AIBridge is unavailable.",
-                    "Code Index：已启用。C# 代码查找或源码导航中，只要查询可表达为符号、定义、引用、实现、派生类型、调用者或诊断查询，应优先加载 `aibridge-code-index`。Unity 已导入资源或脚本资源的名称/类型查找中，当 AIBridge 和 Editor 可用时使用 `asset search/find --format paths`。文件内容搜索中，若查询是已知精确字符串且主要目标是快速定位代码行，优先使用 `rg -n --fixed-strings`；需要跨更多已索引文本做 literal/regex 检索时再使用 `text_index search`；模糊文本、未索引仓库文件、任意路径正则或 Text Index/Code Index/AIBridge 不可用时使用 `rg`。");
+                    "Code Index: enabled. For C# code lookup or source navigation, load `aibridge-code-index` first when the query can be expressed as symbol, definition, reference, implementation, derived type, caller, or diagnostic lookup. For Unity imported asset or script asset name/type lookup, use `asset search/find --format paths` when AIBridge and the Editor are available. For plain file content search (literal strings, comments, configs, YAML, Prefab/Scene text, docs, non-C# content), use your host's own text-search and file-read tools (for example ripgrep `rg -n`).",
+                    "Code Index：已启用。C# 代码查找或源码导航中，只要查询可表达为符号、定义、引用、实现、派生类型、调用者或诊断查询，应优先加载 `aibridge-code-index`。Unity 已导入资源或脚本资源的名称/类型查找中，当 AIBridge 和 Editor 可用时使用 `asset search/find --format paths`。普通文件内容搜索（字面量、注释、配置、YAML、Prefab/Scene 文本、文档、非 C# 内容）使用宿主自带的文本搜索与文件读取工具（如 ripgrep `rg -n`）。");
             }
 
             return AIBridgeEditorText.For(
                 language,
-                "Code Index: disabled. Do not call `code_index`; use `asset search/find --format paths` for Unity imported asset name/type lookup when AIBridge and the Editor are available; for file content search, prefer `rg -n --fixed-strings` when the query is a known exact string and you mainly need fast code-line hits, use `text_index search` for broader indexed literal or regex search when available, and use `rg` plus file reads as fallback.",
-                "Code Index：已关闭。不要调用 `code_index`；当 AIBridge 和 Editor 可用时，Unity 已导入资源的名称/类型查找使用 `asset search/find --format paths`；文件内容搜索中，若查询是已知精确字符串且主要目标是快速定位代码行，优先使用 `rg -n --fixed-strings`；需要跨更多已索引文本做 literal/regex 检索时再使用 `text_index search`；不可用时使用 `rg` 和文件读取。");
+                "Code Index: disabled. Do not call `code_index`; use `asset search/find --format paths` for Unity imported asset name/type lookup when AIBridge and the Editor are available; for file content search (literal strings, comments, configs, YAML, Prefab/Scene text, docs, non-C# content), use your host's own text-search and file-read tools (for example ripgrep `rg -n`).",
+                "Code Index：已关闭。不要调用 `code_index`；当 AIBridge 和 Editor 可用时，Unity 已导入资源的名称/类型查找使用 `asset search/find --format paths`；文件内容搜索（字面量、注释、配置、YAML、Prefab/Scene 文本、文档、非 C# 内容）使用宿主自带的文本搜索与文件读取工具（如 ripgrep `rg -n`）。");
         }
 
         private static bool ShouldInstallSkillDirectory(string sourceSkillDir)

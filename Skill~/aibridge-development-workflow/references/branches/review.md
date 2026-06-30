@@ -9,7 +9,7 @@
 1. 先确认项目偏好中审查分支已启用。
 2. 默认只读，不直接修改文件。
 3. C# 语义关系查询是否优先使用 Code Index，以 `project-workflow-preferences.md` 和当前 Code Index 可用状态为准。
-4. 字面量、注释、普通代码内容或非语义文本搜索中，若查询是已知精确字符串且主要目标是快速定位代码行，优先直接使用 `rg -n --fixed-strings`；需要跨更多已索引文本做 literal/regex 检索时再使用 `$CLI text_index search "literal"`；索引不可用或范围不适用时才使用 `rg -n` 和文件读取。
+4. 字面量、注释、普通代码内容或非语义文本搜索使用宿主自带的文本搜索与文件读取工具（如 ripgrep `rg -n`）。
 
 ## 输出规则
 

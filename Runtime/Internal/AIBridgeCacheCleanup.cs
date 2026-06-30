@@ -52,8 +52,6 @@ namespace AIBridge.Runtime.Internal
         private static readonly string[] ScreenshotExtensions = { ".png", ".jpg", ".jpeg", ".gif" };
         private static readonly string[] CodeIndexCleanupDirectories = { "snapshot", "logs", "cache", "temp", "index", "daemon", "daemon-processes" };
         private static readonly string[] CodeIndexCleanupFiles = { "status.json", "lock.json", "daemon-process.json", "daemon-launch.lock" };
-        private static readonly string[] TextIndexCleanupDirectories = { "file-grams", "postings" };
-        private static readonly string[] TextIndexCleanupFiles = { "manifest.json" };
 
         public static AIBridgeCacheCleanupSettings NormalizeSettings(AIBridgeCacheCleanupSettings settings)
         {
@@ -290,6 +288,7 @@ namespace AIBridge.Runtime.Internal
             }
         }
 
+        // text_index 功能已移除；此处保留一次性迁移清理，把老版本残留的整个 text-index 缓存目录删掉。
         private static void CleanTextIndex(CleanupContext context)
         {
             var indexDirectory = Path.Combine(context.BridgeDirectory, "text-index");
@@ -298,21 +297,7 @@ namespace AIBridge.Runtime.Internal
                 return;
             }
 
-            var lastUsedUtc = GetLastUsedUtc(indexDirectory, false);
-            if (!IsExpired(lastUsedUtc, context.CutoffUtc))
-            {
-                return;
-            }
-
-            for (var i = 0; i < TextIndexCleanupDirectories.Length; i++)
-            {
-                context.DeleteDirectory(Path.Combine(indexDirectory, TextIndexCleanupDirectories[i]));
-            }
-
-            for (var i = 0; i < TextIndexCleanupFiles.Length; i++)
-            {
-                context.DeleteFile(Path.Combine(indexDirectory, TextIndexCleanupFiles[i]));
-            }
+            context.DeleteDirectory(indexDirectory);
         }
 
         private static void CleanSkillLibraryCache(CleanupContext context)
