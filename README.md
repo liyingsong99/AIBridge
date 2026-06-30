@@ -352,7 +352,7 @@ For multiple independent commands, send a `jobs` batch. `rg` and `search` reques
 
 ### Local Text Index
 
-Use `text_index` for exact text search across project text files. It is CLI-only, read-only for source files, and stores cache data under `.aibridge/text-index/`. It is the preferred fast path for literal strings, comments, config values, YAML, Prefab/Scene text, docs, and non-C# content; use `code_index` for C# semantic relationships.
+Use `text_index` for indexed text search across project text files. It is CLI-only, read-only for source files, and stores cache data under `.aibridge/text-index/`. When the query is a known exact string and you mainly need the fastest code-line hits, prefer `rg -n --fixed-strings` first. Use `text_index` when you want broader indexed literal/regex search across scripts, configs, YAML, Prefab/Scene text, docs, and other non-C# content; use `code_index` for C# semantic relationships.
 
 ```bash
 $CLI text_index status

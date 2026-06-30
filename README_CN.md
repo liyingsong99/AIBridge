@@ -352,7 +352,7 @@ $request | & "./.aibridge/cli/AIBridgeCLI.exe" exec run --stdin
 
 ### 本地 Text Index
 
-`text_index` 用于精确搜索项目文本文件。它是 CLI-only 命令，对源码文件只读，缓存写入 `.aibridge/text-index/`。字面量字符串、注释、配置值、YAML、Prefab/Scene 文本、文档和非 C# 内容优先走它；C# 语义关系仍使用 `code_index`。
+`text_index` 用于项目文本文件的索引搜索。它是 CLI-only 命令，对源码文件只读，缓存写入 `.aibridge/text-index/`。如果查询是已知精确字符串，且主要目标是最快定位代码行，优先先用 `rg -n --fixed-strings`。当需要跨脚本、配置、YAML、Prefab/Scene 文本、文档和其他非 C# 内容做更广范围的 literal/regex 检索时，再使用 `text_index`；C# 语义关系仍使用 `code_index`。
 
 ```bash
 $CLI text_index status
