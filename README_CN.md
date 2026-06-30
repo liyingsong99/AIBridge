@@ -7,7 +7,7 @@
 [English](./README.md) | 中文
 
 ![Unity 2019.4+ ~ 6000.x](https://img.shields.io/badge/Unity-2019.4%2B%20~%206000.x-black?style=flat-square&logo=unity)
-![Package 1.5.1](https://img.shields.io/badge/Package-1.5.1-5b6cff?style=flat-square)
+![Package 1.5.3](https://img.shields.io/badge/Package-1.5.3-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
@@ -128,7 +128,7 @@ https://gitee.com/lijoujou99_admin/AIBridge.git
 4. 点击 `Install Selected Integrations`。
 5. 可选：点击 `Install Unity Project AGENTS.md Template`，在项目根目录创建 `AGENTS.md`。
 
-安装后的 AIBridge Skills 默认写入各已选工具自己的默认 skills 目录，例如 Codex 使用 `.codex/skills/`。也可以在 `Workflows > Skills` 页签设置自定义目录，但自定义目录可能无法被 AI 工具自动发现。不同 AI 工具只写入各自的最小 RootRule；只有自定义目录需要时才写入插件适配层并引用该 Skill 根目录。RootRule 包含固定的项目根目录相对 CLI 路径、明确的 `$CLI` 绑定、常用命令、host 工具 `exec` 路由、Skill 根目录和 `aibridge-development-workflow` 入口；多分支路由和针对性检查清单由 workflow Skill 维护。高级 Workflow 编排规则会作为 AIBridge Skill 一起安装，只在多 Agent workflow、对抗验证、recipe、Runtime 调试诊断或 Runtime 多目标 sweep 任务中加载。命令说明会生成到各 Skill 的 `references/` 目录。
+安装后的 AIBridge Skills 会写入各已选工具自己的默认 skills 目录，例如 Codex 使用 `.codex/skills/`。也可以在 `Workflows > Skills` 页签设置自定义目录，但自定义目录可能无法被 AI 工具自动发现。不同 AI 工具会收到各自的最小 RootRule；只有自定义目录需要时才写入插件适配层并引用该 Skill 根目录。RootRule 包含固定的项目根目录相对 CLI 路径、明确的 `$CLI` 绑定、常用命令、host 工具 `exec` 路由、Skill 根目录和 `aibridge-development-workflow` 入口。多分支路由、针对性检查清单、高级 workflow 编排规则和命令说明都放在已安装 workflow Skill 及其 `references/` 目录中。
 
 如果项目有需要，也可以在 `Workflows > 推荐库` 页签刷新默认的 `obra/superpowers` 推荐仓库，并将其中的第三方 Skill 安装到已选工具的 skills 目录。
 
@@ -213,7 +213,7 @@ $CLI profiler stop
 
 ### Workflow Recipes
 
-Workflow recipe 是确定性的运行产物模板，不是内置 LLM 调度器。`workflow run-cli` 只执行 CLI、barrier 和 report 步骤；`agent`、`manual` 步骤会被记录下来，留给 Codex、Claude、Cursor 或人工执行。
+Workflow recipe 是确定性的运行产物模板。`workflow run-cli` 只执行 CLI、barrier 和 report 步骤；`agent`、`manual` 步骤会被记录下来，留给 Codex、Claude、Cursor 或人工执行。
 
 ```bash
 $CLI workflow list
@@ -243,7 +243,7 @@ $CLI workflow clean --older-than 3d --save-settings true --auto-clean true
 
 `runtime-debug-investigation` 用于排查 Runtime、Player、Play Mode、UI、日志或性能症状。它优先检查证据是否完整，不把 Runtime 错误本身当作 workflow 失败条件；确认根因并需要修复时，再交接到实施工作流。
 
-`workflow begin` 会创建 active run；普通命令可通过 `--workflow-run`、`AIBRIDGE_WORKFLOW_RUN_ID` 或 active run 指针归档证据。`workflow status` 和 `workflow report` 必须显式传 `--run`；需要 active run 时先读取 `.aibridge/workflows/active-run.json` 里的 run id。`workflow run-cli --resume <runId>` 会继续已有 run，但仍必须带 `--recipe` 或 `--file`，让 CLI 加载 recipe 定义。`--inputs` 优先传 JSON 文件路径；PowerShell inline JSON 很容易被 shell quoting 破坏。`workflow import` 保存 `Verdict` 等结构化外部结果，`externalVerdict` gate 只基于导入 artifact 通过。`workflow export` 生成外部工具交接包，它只是导出器，不是内置 LLM runtime。`partial` workflow 状态默认不算 CLI 成功，只有显式传入 `--allow-partial true` 才按成功返回。`workflow status`、`workflow run-cli`、`workflow finish` 和 JSON `workflow report` 默认都是 compact；只有需要完整 manifest JSON 时才用 `--detail full`。精简输出保留 `terminalState`、`terminalReason`、`runDirectory`、`manifestPath`、`reportPath`、`artifactIds`、gate 摘要和外部缺口，`stepGaps`、`evidenceFreshness`、`failedCommands` 只在 full detail 中展开。
+`workflow begin` 会创建 active run；普通命令可通过 `--workflow-run`、`AIBRIDGE_WORKFLOW_RUN_ID` 或 active run 指针归档证据。`workflow status` 和 `workflow report` 必须显式传 `--run`；需要 active run 时先读取 `.aibridge/workflows/active-run.json` 里的 run id。`workflow run-cli --resume <runId>` 会继续已有 run，但仍必须带 `--recipe` 或 `--file`，让 CLI 加载 recipe 定义。`--inputs` 优先传 JSON 文件路径；PowerShell inline JSON 很容易被 shell quoting 破坏。`workflow import` 保存 `Verdict` 等结构化外部结果，`externalVerdict` gate 只基于导入 artifact 通过。`workflow export` 生成外部工具交接包。`partial` workflow 状态默认不算 CLI 成功，只有显式传入 `--allow-partial true` 才按成功返回。`workflow status`、`workflow run-cli`、`workflow finish` 和 JSON `workflow report` 默认都是 compact；只有需要完整 manifest JSON 时才用 `--detail full`。精简输出保留 `terminalState`、`terminalReason`、`runDirectory`、`manifestPath`、`reportPath`、`artifactIds`、gate 摘要和外部缺口，`stepGaps`、`evidenceFreshness`、`failedCommands` 只在 full detail 中展开。
 
 Workflow 清理是显式维护命令：`workflow clean` 默认只 dry-run，适合用户明确要检查或修剪 workflow 产物时使用。常规过期 run 目录由 AIBridge Settings > Cache/缓存清理策略负责；active run 会保留，旧 failed/blocked run 超过保留窗口后不再永久豁免。
 
@@ -471,9 +471,9 @@ $CLI code_index diagnostics --file Assets/Scripts/Foo.cs
 
 ### Roslyn 临时 C# 执行
 
-`code execute` 用于受控执行临时 Editor C#。它适合声明式 CLI 命令难以表达的复杂一次性任务，例如生成组合资源、批量诊断、结构化报告、调用项目 Runtime/Public API 或编排多步 UnityEditor API。它不是 `compile unity` 或 `test run` 的替代品。
+`code execute` 用于执行临时 Editor C#。它适合声明式 CLI 命令难以表达的复杂一次性任务，例如生成组合资源、批量诊断、结构化报告、调用项目 Runtime/Public API 或编排多步 UnityEditor API。它不是 `compile unity` 或 `test run` 的替代品。
 
-`AIBridge/Settings > Basic` 中的 `Enable Code Execution` 默认启用；不可信项目或调用方环境中可在设置里关闭。这个总开关同时约束 `code execute` 和 `code runtime_execute`。文件模式只允许 `.aibridge/code/*.cs` 或 `.aibridge/code/*.csx`，复杂脚本优先使用文件模式。代码执行同一时间只允许一个任务；超时后先用 `code status` 查看状态，必要时再用 `code cancel` 释放 AIBridge 等待状态。
+`AIBridge/Settings > Basic` 中的 `Enable Code Execution` 同时约束 `code execute` 和 `code runtime_execute`。不可信项目或调用方环境中可在设置里关闭。文件模式只允许 `.aibridge/code/*.cs` 或 `.aibridge/code/*.csx`，复杂脚本优先使用文件模式。代码执行同一时间只允许一个任务；超时后先用 `code status` 查看状态，必要时再用 `code cancel` 释放 AIBridge 等待状态。
 
 ```bash
 $CLI code execute --file ".aibridge/code/check.csx" --timeout 5000
