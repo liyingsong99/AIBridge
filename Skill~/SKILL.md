@@ -23,7 +23,7 @@ Generated command references are installed under `references/` in the target ass
 
 ## Host Tools
 
-Use `exec run --stdin` when external host tool arguments are non-trivial, include regex/globs/JSON/spaces, require stdin, need timeout/output limits, or run multiple jobs. AIBridge commands, including `harness status`, `compile unity`, `get_logs`, `asset`, `inspector`, `runtime`, `workflow`, `multi`, and `code execute`, run directly. `exec run --stdin` reads JSON from stdin; use `command`, not `cmd`, and do not append a raw shell command after `--stdin`. When the payload contains quotes, backslashes, or regex, build a PowerShell object and pipe `ConvertTo-Json` output, or use `--request-file`. Use `multi --stdin` for multiple AIBridge commands and `exec` `jobs[]` for multiple external host commands.
+Use `exec run --stdin` only for external host tools; do not use it to wrap AIBridge CLI commands. `exec run --stdin` accepts stdin JSON only: use `command`, not `cmd`, and do not append a raw shell command after `--stdin`. When the payload contains quotes, backslashes, or regex, build a PowerShell object and pipe `ConvertTo-Json` output, or use `--request-file`. Use `multi --stdin` for multiple AIBridge commands and `exec` `jobs[]` or `exec batch --stdin` for multiple external host commands.
 
 ## Harness Snapshot
 

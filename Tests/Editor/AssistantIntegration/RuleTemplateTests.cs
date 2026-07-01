@@ -70,7 +70,8 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("Host Exec", rootRule);
             StringAssert.Contains("$CLI exec run --stdin", rootRule);
             StringAssert.Contains("$CLI exec batch --stdin", rootRule);
-            StringAssert.Contains("arguments are non-trivial, include regex/globs/JSON/spaces", rootRule);
+            StringAssert.Contains("only for external host tools", rootRule);
+            StringAssert.Contains("do not use it to wrap AIBridge CLI commands", rootRule);
             StringAssert.Contains("do not append raw shell commands after `--stdin`", rootRule);
             StringAssert.Contains("quotes, backslashes, or regex", rootRule);
             StringAssert.Contains("ConvertTo-Json", rootRule);
@@ -120,7 +121,8 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("工作流任务先加载", rootRule);
             StringAssert.Contains("外部 host 工具", rootRule);
             StringAssert.Contains("$CLI exec run --stdin", rootRule);
-            StringAssert.Contains("参数不简单、包含正则/通配符/JSON/空格", rootRule);
+            StringAssert.Contains("只有调用外部 host 工具时才使用", rootRule);
+            StringAssert.Contains("不要用它包装 AIBridge CLI 命令", rootRule);
             StringAssert.Contains("不要在 `--stdin` 后面追加裸 shell 命令", rootRule);
             StringAssert.Contains("引号、反斜杠或正则", rootRule);
             StringAssert.Contains("ConvertTo-Json", rootRule);

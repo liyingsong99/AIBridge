@@ -332,6 +332,8 @@ $values = (@{ 'm_LocalPosition.x' = 0; 'm_LocalPosition.y' = 1 } | ConvertTo-Jso
 
 Use `exec` for shellless external tools such as `rg`, `git`, `dotnet`, `python`, or `node`. AIBridge commands like `harness status` run directly. Requests are JSON from stdin or a request file; `exec run --stdin` uses `command`, not `cmd`, and does not accept a raw shell command after `--stdin`. Keep `command` to the executable name and put flags, paths, and search text in `args`, `queries`, `globs`, or `paths`. When values contain quotes, backslashes, or regex, build a PowerShell object and pipe `ConvertTo-Json` output, or use `--request-file`.
 
+For multiple external host commands, use an `exec batch --stdin` request or a JSON request with `jobs`.
+
 ```powershell
 $request = @'
 {
