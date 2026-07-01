@@ -100,12 +100,32 @@ namespace AIBridgeCodeIndex
                 OwnerPid = ownerPid,
                 OwnerStartTicks = ownerStartTicks,
                 AutoRefresh = autoRefresh,
-                WarmupMode = string.IsNullOrWhiteSpace(warmupMode) ? "semantic" : warmupMode,
+                WarmupMode = NormalizeWarmupMode(warmupMode),
                 Worker = worker,
                 InputPath = inputPath,
                 Priority = string.IsNullOrWhiteSpace(priority) ? "normal" : priority,
                 WorkerCount = workerCount
             };
+        }
+
+        private static string NormalizeWarmupMode(string warmupMode)
+        {
+            if (string.IsNullOrWhiteSpace(warmupMode))
+            {
+                return "names";
+            }
+
+            if (string.Equals(warmupMode, "light", StringComparison.OrdinalIgnoreCase))
+            {
+                return "light";
+            }
+
+            if (string.Equals(warmupMode, "names", StringComparison.OrdinalIgnoreCase))
+            {
+                return "names";
+            }
+
+            return "names";
         }
     }
 }

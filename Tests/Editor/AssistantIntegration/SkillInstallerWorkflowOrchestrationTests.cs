@@ -70,6 +70,8 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("Resume 规则", detail);
             StringAssert.Contains("EvidenceRef", detail);
             StringAssert.Contains("CommandEvidence", detail);
+            StringAssert.Contains("快速定位 C# 声明文件或声明位置", detail);
+            StringAssert.Contains("snapshot / name index 可用", detail);
             StringAssert.Contains("$CLI harness status --detail full", detail);
             StringAssert.Contains("$CLI harness status --include-snapshot true", detail);
             StringAssert.Contains("workflow finish --status passed", detail);

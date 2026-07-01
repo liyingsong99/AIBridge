@@ -29,7 +29,7 @@ description: "AIBridge/Unity 多分支开发工作流入口。Use when a task re
 
 - Harness Preflight gate 走 compact-first：优先 RootRule 摘要或 `$CLI harness status` 默认输出；fresh 且不影响当前工具选择时默认不单独输出，也不读取完整 snapshot。
 - 不把 stale snapshot、静态检查、`dotnet build` 或推断说成当前能力或 Unity 验证通过；`compile dotnet` 只能作为额外检查，不能替代 `$CLI compile unity`。
-- C# 语义关系查询仅在 `aibridge-code-index` 已安装且项目规则启用 Code Index 时加载该 Skill；否则使用宿主自带的搜索/读取工具。
+- 只有在需要快速定位 C# 声明文件或声明位置时，才在 `aibridge-code-index` 已安装且项目规则启用 Code Index 的前提下加载该 Skill；其余代码分析直接使用宿主搜索/读取工具并自行读 `.cs` 文件。
 - Unity 已导入资源路径查找优先 `$CLI asset search/find --format paths`（经 Unity 资源数据库解析）；普通仓库文件和路径正则用宿主自带的文件列举/搜索工具（如 `rg --files`）。
 - 字面量、注释、配置、YAML、Prefab/Scene 文本和非 C# 内容搜索使用宿主自带的文本搜索与文件读取工具（如 ripgrep `rg -n`）。
 - `agent` / `manual` step 需要当前 AI harness、外部执行器或人工完成，并用 `workflow import` 回传结构化结果；AIBridge CLI 不会自动执行这些步骤。

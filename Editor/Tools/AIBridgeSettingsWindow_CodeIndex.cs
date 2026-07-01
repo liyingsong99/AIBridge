@@ -32,8 +32,8 @@ namespace AIBridge.Editor
             EditorGUILayout.LabelField(AIBridgeEditorText.T("Read-only Code Index", "只读 Code Index"), EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 AIBridgeEditorText.T(
-                    "Code Index starts a project-local Roslyn daemon for read-only symbol, definition, reference, implementation, caller, and diagnostic queries.",
-                    "Code Index 会启动当前工程本地的 Roslyn daemon，用于只读符号、定义、引用、实现、调用者和诊断查询。"),
+                    "Code Index starts a project-local daemon for read-only C# declaration-name lookup and declaration location queries.",
+                    "Code Index 会启动当前工程本地 daemon，用于只读的 C# 声明名查找和声明位置查询。"),
                 MessageType.Info);
 
             var oldLabelWidth = EditorGUIUtility.labelWidth;
@@ -86,8 +86,8 @@ namespace AIBridge.Editor
 
                 EditorGUILayout.HelpBox(
                     AIBridgeEditorText.T(
-                        "When disabled, PackageCache assemblies are excluded from source indexing but still kept as metadata references for project semantic resolution.",
-                        "关闭后，PackageCache 程序集不会作为源码索引项目，但仍会作为 metadata reference 保留，避免破坏工程代码语义解析。"),
+                        "When disabled, PackageCache assemblies are excluded from source indexing but still kept as metadata references for snapshot generation compatibility.",
+                        "关闭后，PackageCache 程序集不会作为源码索引项目，但仍会作为 metadata reference 保留，以兼容快照生成。"),
                     MessageType.None);
 
                 settings.IgnoredAssemblyPatterns = DrawCodeIndexPatternTextArea(

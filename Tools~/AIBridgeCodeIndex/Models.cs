@@ -64,7 +64,7 @@ namespace AIBridgeCodeIndex
     internal sealed class CodeIndexResponse
     {
         public bool success { get; set; }
-        public bool semantic { get; set; }
+        public bool? semantic { get; set; }
         public string source { get; set; }
         public string state { get; set; }
         public bool stale { get; set; }
@@ -112,14 +112,11 @@ namespace AIBridgeCodeIndex
         public long queryCacheHits { get; set; }
         public long queryCacheMisses { get; set; }
         public List<CodeIndexItem> items { get; set; }
-        public List<CodeIndexBatchResponseItem> results { get; set; }
-
         public static CodeIndexResponse FromStatus(CodeIndexStatus status)
         {
             return new CodeIndexResponse
             {
                 success = true,
-                semantic = status != null && string.Equals(status.state, "ready", System.StringComparison.OrdinalIgnoreCase),
                 source = "status",
                 state = status == null ? "unknown" : status.state,
                 stale = status == null || status.stale,
@@ -177,33 +174,4 @@ namespace AIBridgeCodeIndex
         public string message { get; set; }
     }
 
-    internal sealed class CodeIndexBatchRequest
-    {
-        public List<CodeIndexBatchRequestItem> items { get; set; }
-        public bool timing { get; set; }
-        public bool? continueOnError { get; set; }
-        public int queueTimeoutMs { get; set; }
-        public int executeTimeoutMs { get; set; }
-    }
-
-    internal sealed class CodeIndexBatchRequestItem
-    {
-        public string action { get; set; }
-        public Dictionary<string, object> parameters { get; set; }
-    }
-
-    internal sealed class CodeIndexBatchResponseItem
-    {
-        public int index { get; set; }
-        public string action { get; set; }
-        public bool success { get; set; }
-        public bool semantic { get; set; }
-        public string source { get; set; }
-        public string warning { get; set; }
-        public string error { get; set; }
-        public string errorCode { get; set; }
-        public long queuedMs { get; set; }
-        public long executionMs { get; set; }
-        public List<CodeIndexItem> items { get; set; }
-    }
 }

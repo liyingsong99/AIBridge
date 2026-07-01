@@ -161,7 +161,7 @@ namespace AIBridge.Editor
         public const bool DefaultCodeIndexEnabled = false;
         public const bool DefaultCodeIndexPrewarmOnUnityStartup = true;
         public const int DefaultCodeIndexWarmupDelaySeconds = 10;
-        public const string DefaultCodeIndexWarmupMode = "semantic";
+        public const string DefaultCodeIndexWarmupMode = "names";
         public const bool DefaultCodeIndexAutoRefreshOnFileChange = true;
         public const bool DefaultCodeIndexFallbackToTextSearch = true;
         public const string DefaultCodeIndexCleanupModeOnQuit = "processOnly";
@@ -464,6 +464,10 @@ namespace AIBridge.Editor
                 {
                     codeIndex.WarmupMode = DefaultCodeIndexWarmupMode;
                 }
+                else
+                {
+                    codeIndex.WarmupMode = NormalizeCodeIndexWarmupMode(codeIndex.WarmupMode);
+                }
 
                 codeIndex.CleanupModeOnQuit = NormalizeCodeIndexCleanupMode(codeIndex.CleanupModeOnQuit);
                 if (codeIndex.IgnoredAssemblyPatterns == null)
@@ -553,6 +557,26 @@ namespace AIBridge.Editor
             }
 
             return DefaultCodeIndexCleanupModeOnQuit;
+        }
+
+        public static string NormalizeCodeIndexWarmupMode(string warmupMode)
+        {
+            if (string.IsNullOrWhiteSpace(warmupMode))
+            {
+                return DefaultCodeIndexWarmupMode;
+            }
+
+            if (string.Equals(warmupMode, "light", StringComparison.OrdinalIgnoreCase))
+            {
+                return "light";
+            }
+
+            if (string.Equals(warmupMode, "names", StringComparison.OrdinalIgnoreCase))
+            {
+                return "names";
+            }
+
+            return DefaultCodeIndexWarmupMode;
         }
 
         public static string NormalizeWorkflowValidationLevel(string validationLevel)
@@ -959,6 +983,8 @@ namespace AIBridge.Editor
                 codeIndex.FallbackToTextSearch = DefaultCodeIndexFallbackToTextSearch;
                 codeIndex.CleanupModeOnQuit = DefaultCodeIndexCleanupModeOnQuit;
             }
+
+            codeIndex.WarmupMode = NormalizeCodeIndexWarmupMode(codeIndex.WarmupMode);
 
             if (dataVersion < 16)
             {

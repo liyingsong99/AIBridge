@@ -55,7 +55,7 @@ namespace AIBridge.Editor
             builder.AppendLine();
             builder.AppendLine("- 默认验证级别：" + GetValidationLevelText(workflowUi.DefaultValidationLevel) + " (`" + AIBridgeProjectSettings.NormalizeWorkflowValidationLevel(workflowUi.DefaultValidationLevel) + "`)");
             builder.AppendLine("- Runtime 证据偏好：" + (workflowUi.PreferRuntimeEvidence ? "优先收集可用 Runtime 证据" : "仅在任务明确需要时收集 Runtime 证据"));
-            builder.AppendLine("- Code Index 偏好：" + (workflowUi.PreferCodeIndexGuidance ? "Code Index 可用时优先用于 C# 语义查询" : "默认使用宿主自带的搜索/文件读取工具；只有明确需要语义关系时才使用 Code Index"));
+            builder.AppendLine("- Code Index 偏好：" + (workflowUi.PreferCodeIndexGuidance ? "Code Index 可用时优先用于快速 C# 声明文件定位" : "默认使用宿主自带的搜索/文件读取工具；只有明确需要快速定位 C# 声明文件时才使用 Code Index"));
             builder.AppendLine();
 
             builder.AppendLine("## 附加提示词");

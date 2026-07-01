@@ -54,8 +54,10 @@ namespace AIBridge.Editor.Tests
 
             var rootRule = File.ReadAllText(Path.Combine(ProjectRoot, "AGENTS.md"));
             StringAssert.Contains("Code Index: enabled", rootRule);
-            StringAssert.Contains("C# code lookup or source navigation", rootRule);
+            StringAssert.Contains("fast C# declaration-name lookup", rootRule);
             StringAssert.Contains("load `aibridge-code-index` first", rootRule);
+            StringAssert.Contains("only for fast C# declaration-name lookup", rootRule);
+            StringAssert.Contains("read the returned `.cs` files yourself", rootRule);
             StringAssert.Contains("asset search/find --format paths", rootRule);
             StringAssert.Contains("Unity imported asset", rootRule);
             StringAssert.Contains("this root rule or the workflow", rootRule);
@@ -150,8 +152,9 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("references/branch-selection.md", workflowSkill);
             StringAssert.Contains("references/harness-readiness-detail.md", workflowSkill);
             StringAssert.Contains("编排分支按需加载 `aibridge-workflow-orchestration`", workflowSkill);
-            StringAssert.Contains("C# 语义关系查询", workflowSkill);
+            StringAssert.Contains("快速定位 C# 声明文件或声明位置", workflowSkill);
             StringAssert.Contains("aibridge-code-index", workflowSkill);
+            StringAssert.Contains("自行读 `.cs` 文件", workflowSkill);
             StringAssert.Contains("Unity 已导入资源路径查找", workflowSkill);
             StringAssert.Contains("asset search/find --format paths", workflowSkill);
             StringAssert.Contains("宿主自带的文本搜索与文件读取工具", workflowSkill);
@@ -168,6 +171,7 @@ namespace AIBridge.Editor.Tests
             var preferencesPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "project-workflow-preferences.md");
             var preferences = File.ReadAllText(preferencesPath);
             StringAssert.Contains("Code Index 偏好", preferences);
+            StringAssert.Contains("快速 C# 声明文件定位", preferences);
             Assert.Less(
                 preferences.IndexOf("## 启用分支", StringComparison.Ordinal),
                 preferences.IndexOf("- Settings Hash:", StringComparison.Ordinal));
@@ -191,6 +195,7 @@ namespace AIBridge.Editor.Tests
 
             var reviewBranchPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "branches", "review.md");
             var reviewBranch = File.ReadAllText(reviewBranchPath);
+            StringAssert.Contains("C# 声明名/文件定位", reviewBranch);
             StringAssert.Contains("宿主自带的文本搜索与文件读取工具", reviewBranch);
             StringAssert.DoesNotContain("text_index", reviewBranch);
 

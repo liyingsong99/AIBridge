@@ -1,31 +1,27 @@
 ---
 name: aibridge-code-index
-description: Optional read-only AIBridge Code Index semantic lookup for Unity C# code search and source navigation. Use when this Skill is installed, Code Index is enabled, and Codex needs to find C# symbols, definitions, references, implementations, derived types, callers, or diagnostics, including code lookup during development tasks. Do not use for literal text, config, asset, scene, prefab, or non-C# searches; use your host's own search/read tools or regular AIBridge commands instead
+description: Optional read-only AIBridge Code Index lightweight lookup for Unity C# declaration names. Use when this Skill is installed, Code Index is enabled, and Codex needs to quickly map a class, interface, enum, field, property, method, constructor, or delegate name to declaration files or declaration positions. Do not use for references, callers, implementations, derived types, diagnostics, literal text, config, asset, scene, prefab, or non-C# searches
 ---
 
 # AIBridge Code Index Skill
 
-If `code_index status` reports `enabled=false`, `state=disabled`, or `semantic=false`, stop and fall back to your host's own search and file-read tools.
+If `code_index status` reports `enabled=false` or `state=disabled`, stop and use your host's own search and file-read tools.
 
 ## Operating Rules
 
-- `code_index` is CLI-only, read-only, and does not rename, refactor, or write files.
-- Use it for C# symbol lookup and source navigation before broad code edits when semantic lookup is useful.
-- For literal strings, comments, config values, asset paths, scene objects, prefabs, or non-C# files, use your host's own search/read tools or regular AIBridge commands instead.
-- Trust only results marked `semantic=true`; fallback text candidates are explicitly marked `semantic=false`.
-- If disabled or unavailable, do not retry repeatedly. Use your host's own search/read tools and regular AIBridge commands.
+- `code_index` is CLI-only, read-only, and only for fast C# declaration-name lookup.
+- Public query actions are only `symbol` and `definition`.
+- Use it to locate candidate `.cs` files or declaration positions, then read those files yourself for the real analysis.
+- Do not use it for references, callers, implementations, derived types, diagnostics, or any whole-project relationship query.
+- For literal strings, comments, config values, asset paths, scene objects, prefabs, YAML, docs, logs, or non-C# files, use your host's own search/read tools or regular AIBridge commands instead.
+- If disabled, unavailable, stale, or unhealthy, do not keep retrying. Switch to host search and direct file reads.
 
 ## Query Selection
 
-- Find a class, method, property, field, enum, or interface by name: `symbol`.
-- Jump from a source location to its declaration: `definition`.
-- Find usages of a symbol: `references`.
-- Find interface or abstract member implementations: `implementations`.
-- Find derived classes or interfaces: `derived`.
-- Find callers of a method or property: `callers`.
-- Inspect compiler diagnostics for a file or project: `diagnostics`.
+- Find classes, methods, properties, fields, enums, interfaces, constructors, or delegates by name: `symbol`
+- Return the best declaration position for a declaration name: `definition`
 
-Start with `code_index status` when availability is unknown. If the result is disabled, unavailable, empty, or only returns `semantic=false` fallback candidates, switch to your host's own search and direct file reads
+Start with `code_index status` or `code_index doctor` when availability is unknown.
 
 ## Commands
 
@@ -34,11 +30,5 @@ $CLI code_index status
 $CLI code_index doctor
 $CLI code_index warmup
 $CLI code_index symbol --query PlayerController
-$CLI code_index definition --file Assets/Scripts/Foo.cs --line 42 --column 17
-$CLI code_index references --file Assets/Scripts/Foo.cs --line 42 --column 17
-$CLI code_index implementations --type Game.IFoo
-$CLI code_index derived --type Game.BasePanel
-$CLI code_index callers --file Assets/Scripts/Foo.cs --line 42 --column 17
-$CLI code_index diagnostics --file Assets/Scripts/Foo.cs
+$CLI code_index definition --query PlayerController
 ```
-

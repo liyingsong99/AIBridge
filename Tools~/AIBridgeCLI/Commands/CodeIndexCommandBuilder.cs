@@ -5,7 +5,7 @@ namespace AIBridgeCLI.Commands
     public class CodeIndexCommandBuilder : BaseCommandBuilder
     {
         public override string Type => "code_index";
-        public override string Description => "Read-only Unity snapshot code semantic index";
+        public override string Description => "Read-only Unity snapshot C# declaration name index";
 
         public override string[] Actions => new[]
         {
@@ -15,13 +15,7 @@ namespace AIBridgeCLI.Commands
             "warmup",
             "reset",
             "symbol",
-            "definition",
-            "references",
-            "implementations",
-            "derived",
-            "callers",
-            "diagnostics",
-            "batch"
+            "definition"
         };
 
         protected override Dictionary<string, List<ParameterInfo>> ActionParameters => new Dictionary<string, List<ParameterInfo>>
@@ -31,23 +25,14 @@ namespace AIBridgeCLI.Commands
             ["build_snapshot"] = WithBuildSnapshotParameters(),
             ["warmup"] = WithWarmupParameters(),
             ["reset"] = WithResetParameters(),
-            ["symbol"] = WithCommon(new List<ParameterInfo>
+            ["symbol"] = WithQuery(new List<ParameterInfo>
             {
-                new ParameterInfo("query", "Symbol name or partial name", true),
-                new ParameterInfo("fallback", "Fallback to text search when Roslyn is unavailable", false, "true")
+                new ParameterInfo("query", "C# declaration name or partial name", true)
             }),
-            ["definition"] = WithLocation(),
-            ["references"] = WithLocation(),
-            ["implementations"] = WithType(),
-            ["derived"] = WithType(),
-            ["callers"] = WithLocation(),
-            ["diagnostics"] = WithCommon(new List<ParameterInfo>
+            ["definition"] = WithQuery(new List<ParameterInfo>
             {
-                new ParameterInfo("file", "Source file path", false),
-                new ParameterInfo("all", "Run full workspace diagnostics explicitly", false, "false"),
-                new ParameterInfo("fallback", "Fallback to text search when Roslyn is unavailable", false, "true")
-            }),
-            ["batch"] = WithBatchParameters()
+                new ParameterInfo("query", "C# declaration name", true)
+            })
         };
 
         private static List<ParameterInfo> CommonParameters()
@@ -57,7 +42,7 @@ namespace AIBridgeCLI.Commands
                 new ParameterInfo("project-root", "Unity project root. Defaults to current Unity project", false),
                 new ParameterInfo("unity-pid", "Unity Editor process id to monitor. Daemon exits when the process is gone", false),
                 new ParameterInfo("auto-refresh", "Reload the snapshot workspace automatically when snapshot files change", false, "true"),
-                new ParameterInfo("warmup-mode", "Daemon startup warmup mode: semantic or light", false, "semantic")
+                new ParameterInfo("warmup-mode", "Daemon startup warmup mode: names or light", false, "names")
             };
         }
 
@@ -84,42 +69,8 @@ namespace AIBridgeCLI.Commands
             return parameters;
         }
 
-        private static List<ParameterInfo> WithBatchParameters()
+        private static List<ParameterInfo> WithQuery(List<ParameterInfo> parameters)
         {
-            var parameters = CommonParameters();
-            parameters.Add(new ParameterInfo("stdin", "Read batch JSON from standard input", false, "false"));
-            parameters.Add(new ParameterInfo("json", "Batch JSON payload", false));
-            parameters.Add(new ParameterInfo("continue-on-error", "Continue after an item fails", false, "true"));
-            parameters.Add(new ParameterInfo("timing", "Include timing fields for each item", false, "true"));
-            parameters.Add(new ParameterInfo("queue-timeout", "Maximum queue wait timeout in milliseconds before the daemon returns queue_timeout", false, "60000"));
-            parameters.Add(new ParameterInfo("execute-timeout", "Maximum whole batch execution timeout in milliseconds", false, "auto"));
-            return parameters;
-        }
-
-        private static List<ParameterInfo> WithLocation()
-        {
-            return WithCommon(new List<ParameterInfo>
-            {
-                new ParameterInfo("file", "Source file path", true),
-                new ParameterInfo("line", "1-based line number", true),
-                new ParameterInfo("column", "1-based column number", true),
-                new ParameterInfo("fallback", "Fallback to text search when Roslyn is unavailable", false, "true")
-            });
-        }
-
-        private static List<ParameterInfo> WithType()
-        {
-            return WithCommon(new List<ParameterInfo>
-            {
-                new ParameterInfo("type", "Type name or fully-qualified metadata/display name", true),
-                new ParameterInfo("fallback", "Fallback to text search when Roslyn is unavailable", false, "true")
-            });
-        }
-
-        private static List<ParameterInfo> WithCommon(List<ParameterInfo> parameters)
-        {
-            parameters.Add(new ParameterInfo("queue-timeout", "Maximum queue wait timeout in milliseconds before the daemon returns queue_timeout", false, "60000"));
-            parameters.Add(new ParameterInfo("execute-timeout", "Maximum semantic query execution timeout in milliseconds before the daemon returns execute_timeout", false, "action default"));
             parameters.AddRange(CommonParameters());
             return parameters;
         }

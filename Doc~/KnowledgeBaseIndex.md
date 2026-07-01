@@ -3,7 +3,7 @@
 ## 状态
 
 - 状态：当前索引
-- 更新时间：2026-06-26
+- 更新时间：2026-07-01
 - 维护范围：`Packages/cn.lys.aibridge`
 
 ## 目的
@@ -31,7 +31,7 @@
 | CLI | `focus`、`dialog`、`asset`、`batch`、`code`、`code_index`、`compile`、`editor`、`exec`、`gameobject`、`gameview`、`get_logs`、`harness`、`input`、`inspector`、`menu_item`、`multi`、`prefab`、`profiler`、`runtime`、`scene`、`screenshot`、`selection`、`test`、`transform`、`workflow`、`compile dotnet` | 当前 AIBridge CLI 的真实命令面 |
 | Runtime Bridge | `Runtime/AIBridgeRuntime.cs`、`Runtime/Transports/*`、`runtime status/logs/screenshot/perf/handlers/call` | 连接已编译 Player 或 Play Mode 目标，HTTP 为默认控制面，File transport 为 HTTP 未运行时的兼容回退，采集证据和调用白名单 handler |
 | Workflow | `Tools~/AIBridgeCLI/Workflow/*`、`Templates~/Workflows/*.aibridge-workflow.json`、`workflow list/validate/plan/init/begin/status/report/finish/import/export/clean` | 负责 recipes、run manifest、artifact、gate、report 和外部结果导入 |
-| Skills | `Skill~/aibridge-development-workflow`、`Skill~/aibridge-workflow-orchestration`、`Skill~/aibridge-code-index`、`Skill~/aibridge-prefab-patch`、`Skill~/aibridge-batch-script`、`Skill~/unity-yaml-editing` | 分别覆盖 workflow 短入口/分支路由、编排、语义检索、Prefab patch、批处理和 YAML 兜底 |
+| Skills | `Skill~/aibridge-development-workflow`、`Skill~/aibridge-workflow-orchestration`、`Skill~/aibridge-code-index`、`Skill~/aibridge-prefab-patch`、`Skill~/aibridge-batch-script`、`Skill~/unity-yaml-editing` | 分别覆盖 workflow 短入口/分支路由、编排、轻量声明名检索、Prefab patch、批处理和 YAML 兜底 |
 | 文档 | `Doc~/README.md`、`Doc~/WorkflowsPanel.md`、`Doc~/WorkflowGraphPanel.md`、`Doc~/workflow-guide/README.md`、`Doc~/workflow-guide/ContextCompression.md`、`Doc~/workflow-guide/AIBridgeLoopsAnalysis.md` | 功能目录、面板定位、workflow 说明、上下文压缩策略和 FSM 分析 |
 | 模板 | `Templates~/Rules/AIBridge.RootRule.md`、`Templates~/ProjectRules/AGENTS*.md`、`Templates~/Workflows/*.json` | RootRule、项目规则模板和内置 workflow recipes |
 | 生成与缓存 | `.aibridge/harness/capabilities.json`、`.aibridge/test-runs/`、`.aibridge/workflows/active-run.json`、`.aibridge/workflows/runs/`、`.aibridge/code-index/snapshot/`、`.aibridge/code/`、`.aibridge/plan/` | 当前项目的能力快照、测试队列状态、运行产物、代码索引、临时代码和方案底稿 |
@@ -139,7 +139,7 @@
 - `compile dotnet` 只是额外检查，不是 Unity 编译替代品。
 - `test run` 必须在 Editor 处于 Edit Mode 时启动；若当前处于 Play Mode，会直接失败并明确提示先退出 Play Mode。
 - `test run` 在并发请求下会持久化队列到 `.aibridge/test-runs/state.json`；已确认的 run 若后续变成 `unknown`，CLI 会快速失败并提示状态丢失，而不是一直等完整 timeout。
-- `code_index` 仍是默认关闭的只读语义入口；daemon 启动默认执行语义预热，也可用 `warmupMode=light` 保留延迟 Roslyn 构建；默认忽略 `Unity.*` 程序集，以及 `Library/PackageCache/com.unity.*` / `Packages/com.unity.*` 源码路径，被排除源码程序集仍作为 metadata reference 保留。
+- `code_index` 已收缩为默认关闭的只读轻量声明名检索入口；公开查询面只保留 `symbol` 和 `definition`，只负责把 C# 声明名快速定位到声明位置和文件路径，后续分析由 AI 自己读取 `.cs` 文件完成。
 - `workflow run-cli` 不会自动执行 `agent` / `manual`，这些步骤仍需要外部执行器回流。
 - RootRule 必须简洁写明 `$CLI` 指向项目本地 AIBridge CLI 路径，并给出 PowerShell 调用方式。
 - `exec run --stdin` / `exec batch --stdin` 只面向外部 host 工具；`harness status` 这类 AIBridge 命令直接调用。stdin 契约是 JSON 请求，`command` 只放可执行文件名，`args` / `queries` / `globs` / `paths` 承载参数。包含引号、反斜杠或正则等转义敏感内容时，优先用 PowerShell 对象 `ConvertTo-Json` 或 `--request-file`，不要手写 inline JSON 字符串。
@@ -148,6 +148,23 @@
 - Runtime HTTP command 成功、timeout、Runtime not-ready 和 CLI cleanup 都会关闭 pending id，迟到的 HTTP 异步结果不会回落到 file result 落盘。
 - Runtime heartbeat 默认间隔为 2 秒；File heartbeat stale 判定保留 15 秒窗口，不会因默认心跳降频触发误判。
 - Runtime UI snapshot/find 默认不做逐按钮 raycast；需要遮挡诊断时显式传入 `includeRaycastDetails=true`。
+
+## Code Index 收口
+
+- 当前公开动作：`status`、`doctor`、`build_snapshot`、`warmup`、`reset`、`symbol`、`definition`
+- 当前定位：只读、轻量、仅用于 C# 声明名到声明位置/文件路径的快速匹配
+- 推荐使用方式：先用 `symbol` 或 `definition` 找到候选 `.cs` 文件，再由 AI 直接读取文件分析上下文、调用链和真实行为
+- 非目标：引用关系、调用者、继承、实现、诊断聚合、全工程关系图、文本内容搜索、非 C# 查询
+
+### 大型工程中不再公开承诺的能力
+
+- `references`
+- `callers`
+- `implementations`
+- `derived`
+- `diagnostics --all`
+- 首轮完整 Roslyn workspace 语义预热 / 语义建表
+- 基于单队列 daemon 的 `batch` 语义查询
 
 ## 当前已知漂移
 

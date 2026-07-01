@@ -26,6 +26,10 @@ namespace AIBridgeCLI.Tests
                 SelectButton_RejectsAmbiguousChoiceAcrossDialogs();
                 SelectButton_RespectsExplicitDialogId();
                 BatchDialogAutoClickPlan_PreservesTargetKind();
+                CodeIndex_Help_OnlyListsLightweightActions();
+                CodeIndex_UnsupportedAction_ReturnsUnsupportedAction();
+                CodeIndex_DefinitionSourceLocationArguments_RequireQuery();
+                CodeIndex_StatusAndDoctor_DoNotExposeLegacySemanticFields();
                 Console.WriteLine("AIBridgeCLI tests passed.");
                 return 0;
             }
@@ -381,6 +385,100 @@ namespace AIBridgeCLI.Tests
                 AssertEqual("any", target.Kind, "Unqualified alternatives should keep compatibility with both matching modes.");
                 AssertTrue(target.AllowsChoiceMatch(), "Unqualified target should allow choice matching.");
                 AssertTrue(target.AllowsButtonMatch(), "Unqualified target should allow button-text matching.");
+            }
+        }
+
+        private static void CodeIndex_UnsupportedAction_ReturnsUnsupportedAction()
+        {
+            var result = ExecuteCodeIndex("references", new Dictionary<string, string>(), 1000);
+
+            AssertEqual(false, result.Value<bool>("success"), "Unsupported action should fail.");
+            AssertEqual("unsupported_action", result.Value<string>("errorCode"), "Unsupported action should return unsupported_action.");
+        }
+
+        private static void CodeIndex_Help_OnlyListsLightweightActions()
+        {
+            var help = new CodeIndexCommandBuilder().GetHelp();
+
+            AssertContains(help, "  symbol", "Code Index help should include symbol.");
+            AssertContains(help, "  definition", "Code Index help should include definition.");
+            AssertTrue(help.IndexOf("  references", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include references.");
+            AssertTrue(help.IndexOf("  implementations", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include implementations.");
+            AssertTrue(help.IndexOf("  derived", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include derived.");
+            AssertTrue(help.IndexOf("  callers", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include callers.");
+            AssertTrue(help.IndexOf("  diagnostics", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include diagnostics.");
+            AssertTrue(help.IndexOf("  batch", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include batch.");
+        }
+
+        private static void CodeIndex_DefinitionSourceLocationArguments_RequireQuery()
+        {
+            var result = ExecuteCodeIndex(
+                "definition",
+                new Dictionary<string, string>
+                {
+                    ["file"] = "Assets/Scripts/Foo.cs",
+                    ["line"] = "42",
+                    ["column"] = "17"
+                },
+                1000);
+
+            AssertEqual(false, result.Value<bool>("success"), "Definition with source location arguments should fail.");
+            AssertEqual("invalid_arguments", result.Value<string>("errorCode"), "Definition source location arguments should be rejected as invalid arguments.");
+            AssertEqual("definition now requires --query", result.Value<string>("error"), "Definition should require --query.");
+        }
+
+        private static void CodeIndex_StatusAndDoctor_DoNotExposeLegacySemanticFields()
+        {
+            var status = ExecuteCodeIndex("status", new Dictionary<string, string>(), 1000);
+            var doctor = ExecuteCodeIndex("doctor", new Dictionary<string, string>(), 1000);
+
+            AssertTrue(status.Property("semantic") == null, "Code Index status should not expose semantic.");
+            AssertTrue(status.Property("workspaceMode") == null, "Code Index status should not expose workspaceMode.");
+            AssertTrue(doctor.Property("semantic") == null, "Code Index doctor should not expose semantic.");
+            AssertTrue(doctor.Property("workspaceMode") == null, "Code Index doctor should not expose workspaceMode.");
+        }
+
+        private static JObject ExecuteCodeIndex(string action, Dictionary<string, string> options, int timeout)
+        {
+            var previousRoot = Environment.GetEnvironmentVariable("UNITY_PROJECT_ROOT");
+            var previousDirectory = Directory.GetCurrentDirectory();
+            var projectRoot = Path.Combine(Path.GetTempPath(), "AIBridgeCLI.CodeIndex.Tests." + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Directory.CreateDirectory(projectRoot);
+                Environment.SetEnvironmentVariable("UNITY_PROJECT_ROOT", projectRoot);
+                Directory.SetCurrentDirectory(projectRoot);
+                ResetPathHelperCache();
+
+                var writer = new StringWriter();
+                var originalOut = Console.Out;
+                try
+                {
+                    Console.SetOut(writer);
+                    CodeIndexCommand.Execute(action, options, timeout, false, OutputMode.Raw);
+                }
+                finally
+                {
+                    Console.SetOut(originalOut);
+                }
+
+                var output = writer.ToString().Trim();
+                if (string.IsNullOrWhiteSpace(output))
+                {
+                    throw new InvalidOperationException("CodeIndexCommand produced no JSON output.");
+                }
+
+                return JObject.Parse(output);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("UNITY_PROJECT_ROOT", previousRoot);
+                Directory.SetCurrentDirectory(previousDirectory);
+                ResetPathHelperCache();
+                if (Directory.Exists(projectRoot))
+                {
+                    Directory.Delete(projectRoot, true);
+                }
             }
         }
 

@@ -136,11 +136,6 @@ namespace AIBridgeCodeIndex
             {
                 UpdateStatus("loading", null);
                 await workspace.WarmupAsync();
-                if (ShouldWarmupSemanticWorkspace())
-                {
-                    // daemon 首次启动时默认把 Roslyn workspace 预热完，避免首个语义查询承担冷启动编译开销。
-                    await workspace.WarmupSemanticAsync(Array.Empty<string>(), loadAllAssemblies: true);
-                }
 
                 if (_shutdownRequested)
                 {
@@ -222,15 +217,6 @@ namespace AIBridgeCodeIndex
             }
         }
 
-        private bool ShouldWarmupSemanticWorkspace()
-        {
-            var mode = _options == null ? null : _options.WarmupMode;
-            return string.IsNullOrWhiteSpace(mode)
-                   || string.Equals(mode, "semantic", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(mode, "full", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(mode, "true", StringComparison.OrdinalIgnoreCase);
-        }
-
         private async Task HandleClientAsync(TcpClient client)
         {
             using (client)
@@ -270,14 +256,6 @@ namespace AIBridgeCodeIndex
                         return;
                     }
 
-                    if (request.Method == "POST" && request.Path == "/batch")
-                    {
-                        var batch = JsonConvert.DeserializeObject<CodeIndexBatchRequest>(request.BodyText);
-                        var response = await ExecuteBatchAsync(batch);
-                        await WriteResponseAsync(stream, response.success ? 200 : 409, response);
-                        return;
-                    }
-
                     if (request.Method == "POST" && request.Path == "/shutdown")
                     {
                         UpdateStatus("stopping", null);
@@ -307,22 +285,6 @@ namespace AIBridgeCodeIndex
         {
             AttachCurrentGeneration(query);
             return await _queryScheduler.EnqueueAsync(query, CancellationToken.None);
-        }
-
-        private async Task<CodeIndexResponse> ExecuteBatchAsync(CodeIndexBatchRequest batch)
-        {
-            var parameters = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["batch"] = batch
-            };
-            return await _queryScheduler.EnqueueAsync(new CodeIndexRequest
-            {
-                action = "batch",
-                parameters = parameters,
-                queueTimeoutMs = batch == null ? 0 : batch.queueTimeoutMs,
-                executeTimeoutMs = batch == null ? 0 : batch.executeTimeoutMs,
-                generationHash = GetCurrentGenerationHash()
-            }, CancellationToken.None);
         }
 
         private void AttachCurrentGeneration(CodeIndexRequest query)
@@ -378,8 +340,7 @@ namespace AIBridgeCodeIndex
             }
 
             query.action = query.action.Trim().ToLowerInvariant();
-            if (!string.Equals(query.action, "batch", StringComparison.OrdinalIgnoreCase)
-                && !IsSupportedQueryAction(query.action))
+            if (!IsSupportedQueryAction(query.action))
             {
                 return BuildFailure(status, "Unsupported code_index action: " + query.action, "unsupported_action");
             }
@@ -398,9 +359,7 @@ namespace AIBridgeCodeIndex
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            var response = string.Equals(query.action, "batch", StringComparison.OrdinalIgnoreCase)
-                ? await ExecuteBatchCoreAsync(query, workspace, status, cancellationToken)
-                : await ExecuteSingleWorkspaceQueryAsync(query, workspace, status, cancellationToken);
+            var response = await ExecuteSingleWorkspaceQueryAsync(query, workspace, status, cancellationToken);
 
             WriteStatus();
             if (refreshNeeded)
@@ -424,171 +383,21 @@ namespace AIBridgeCodeIndex
             return response;
         }
 
-        private async Task<CodeIndexResponse> ExecuteBatchCoreAsync(
-            CodeIndexRequest query,
-            CodeIndexWorkspace workspace,
-            CodeIndexStatus status,
-            CancellationToken cancellationToken)
-        {
-            var batch = ExtractBatchRequest(query);
-            if (batch == null || batch.items == null || batch.items.Count == 0)
-            {
-                return BuildFailure(status, "Batch request must contain at least one item.", "invalid_batch");
-            }
-
-            if (batch.items.Count > 100)
-            {
-                return BuildFailure(status, "Batch request item count exceeds the 100 item limit.", "batch_too_large");
-            }
-
-            var results = new List<CodeIndexBatchResponseItem>();
-            var allSuccess = true;
-            var continueOnError = batch.continueOnError.HasValue ? batch.continueOnError.Value : true;
-
-            // batch 作为一个调度请求执行；子项只复用当前 worker，不重新进入 daemon 队列。
-            for (var i = 0; i < batch.items.Count; i++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var item = batch.items[i];
-                var itemResult = await ExecuteBatchItemAsync(i, item, workspace, cancellationToken);
-                results.Add(itemResult);
-                if (!itemResult.success)
-                {
-                    allSuccess = false;
-                    if (!continueOnError)
-                    {
-                        break;
-                    }
-                }
-            }
-
-            var response = new CodeIndexResponse
-            {
-                success = allSuccess,
-                semantic = true,
-                source = "unity-snapshot-batch",
-                state = status.state,
-                stale = status.stale,
-                projectRoot = status.projectRoot,
-                results = results,
-                error = allSuccess ? null : "One or more batch items failed.",
-                errorCode = allSuccess ? null : "batch_item_failed"
-            };
-            PopulateWorkspaceResponse(response, workspace, status);
-            UpdateStatusFromWorkspace(workspace);
-            return response;
-        }
-
-        private async Task<CodeIndexBatchResponseItem> ExecuteBatchItemAsync(
-            int index,
-            CodeIndexBatchRequestItem item,
-            CodeIndexWorkspace workspace,
-            CancellationToken cancellationToken)
-        {
-            var action = item == null ? null : item.action;
-            if (string.IsNullOrWhiteSpace(action))
-            {
-                return BuildBatchFailure(index, action, "Missing action.", "missing_action", 0);
-            }
-
-            action = action.Trim().ToLowerInvariant();
-            if (string.Equals(action, "batch", StringComparison.OrdinalIgnoreCase))
-            {
-                return BuildBatchFailure(index, action, "Nested code_index batch requests are not supported.", "nested_batch", 0);
-            }
-
-            if (!IsSupportedQueryAction(action))
-            {
-                return BuildBatchFailure(index, action, "Unsupported code_index action: " + action, "unsupported_action", 0);
-            }
-
-            var stopwatch = Stopwatch.StartNew();
-            try
-            {
-                var response = await workspace.QueryAsync(action, item.parameters);
-                cancellationToken.ThrowIfCancellationRequested();
-                if (response == null || !string.IsNullOrWhiteSpace(response.error))
-                {
-                    return BuildBatchFailure(
-                        index,
-                        action,
-                        response == null ? "Code index query returned an empty response." : response.error,
-                        response == null || string.IsNullOrWhiteSpace(response.errorCode) ? "execute_failed" : response.errorCode,
-                        stopwatch.ElapsedMilliseconds);
-                }
-
-                return new CodeIndexBatchResponseItem
-                {
-                    index = index,
-                    action = action,
-                    success = true,
-                    semantic = true,
-                    source = "unity-snapshot",
-                    warning = response.warning,
-                    queuedMs = 0,
-                    executionMs = stopwatch.ElapsedMilliseconds,
-                    items = response.items
-                };
-            }
-            catch (Exception ex)
-            {
-                return BuildBatchFailure(index, action, ex.Message, "execute_failed", stopwatch.ElapsedMilliseconds);
-            }
-        }
-
         private static bool IsSupportedQueryAction(string action)
         {
             switch ((action ?? string.Empty).Trim().ToLowerInvariant())
             {
                 case "symbol":
                 case "definition":
-                case "references":
-                case "implementations":
-                case "derived":
-                case "callers":
-                case "diagnostics":
                     return true;
                 default:
                     return false;
             }
         }
 
-        private static CodeIndexBatchResponseItem BuildBatchFailure(int index, string action, string error, string errorCode, long executionMs)
-        {
-            return new CodeIndexBatchResponseItem
-            {
-                index = index,
-                action = action,
-                success = false,
-                semantic = false,
-                source = "unity-snapshot",
-                error = error,
-                errorCode = errorCode,
-                queuedMs = 0,
-                executionMs = executionMs
-            };
-        }
-
-        private static CodeIndexBatchRequest ExtractBatchRequest(CodeIndexRequest query)
-        {
-            if (query == null || query.parameters == null)
-            {
-                return null;
-            }
-
-            object value;
-            if (!query.parameters.TryGetValue("batch", out value))
-            {
-                return null;
-            }
-
-            return value as CodeIndexBatchRequest;
-        }
-
         private static void PopulateWorkspaceResponse(CodeIndexResponse response, CodeIndexWorkspace workspace, CodeIndexStatus status)
         {
             response.success = response.error == null;
-            response.semantic = true;
             if (string.IsNullOrWhiteSpace(response.source))
             {
                 response.source = "unity-snapshot";
@@ -647,7 +456,6 @@ namespace AIBridgeCodeIndex
             return new CodeIndexResponse
             {
                 success = false,
-                semantic = false,
                 source = "unity-snapshot",
                 state = status == null ? "unknown" : status.state,
                 stale = true,
@@ -728,23 +536,12 @@ namespace AIBridgeCodeIndex
 
         private async Task RefreshWorkspaceInBackgroundAsync()
         {
-            var currentWorkspaceBeforeRefresh = GetWorkspace();
-            var preserveSemanticWorkspace = ShouldPreserveSemanticWorkspace(currentWorkspaceBeforeRefresh);
-            var preserveAllAssemblies = preserveSemanticWorkspace && currentWorkspaceBeforeRefresh.LoadedAllAssemblies;
-            var preservedAssemblyIds = preserveSemanticWorkspace && !preserveAllAssemblies
-                ? currentWorkspaceBeforeRefresh.GetLoadedAssemblyIds()
-                : Array.Empty<string>();
             var nextWorkspace = new CodeIndexWorkspace(_options.ProjectRoot);
             CodeIndexWorkspace oldWorkspaceToDispose = null;
             var swapped = false;
             try
             {
                 await nextWorkspace.WarmupAsync();
-                if (preserveSemanticWorkspace)
-                {
-                    // 后台刷新继承旧 workspace 的语义热度，避免编译后把已加载的 Roslyn 数据降级成轻量索引。
-                    await nextWorkspace.WarmupSemanticAsync(preservedAssemblyIds, preserveAllAssemblies);
-                }
 
                 if (_shutdownRequested)
                 {
@@ -805,7 +602,7 @@ namespace AIBridgeCodeIndex
                     _queryGate.Release();
                 }
 
-                DisposeWorkspace(oldWorkspaceToDispose, trimWorkingSet: !nextWorkspace.HasSemanticWorkspace);
+                DisposeWorkspace(oldWorkspaceToDispose, trimWorkingSet: true);
                 oldWorkspaceToDispose = null;
             }
             catch (Exception ex)
@@ -846,11 +643,6 @@ namespace AIBridgeCodeIndex
             RefreshStaleState(GetWorkspace());
         }
 
-        private static bool ShouldPreserveSemanticWorkspace(CodeIndexWorkspace workspace)
-        {
-            return workspace != null && workspace.HasSemanticWorkspace;
-        }
-
         private void DisposeWorkspace(CodeIndexWorkspace workspace)
         {
             DisposeWorkspace(workspace, trimWorkingSet: true);
@@ -881,9 +673,7 @@ namespace AIBridgeCodeIndex
         private static bool ShouldCollectReleasedWorkspaceMemory(CodeIndexWorkspace workspace)
         {
             return workspace != null
-                   && (workspace.LoadedProjects > 0
-                       || workspace.LoadedDocuments > 0
-                       || workspace.SourceFileCount >= SourceFileCountForForcedMemoryCollection);
+                   && workspace.SourceFileCount >= SourceFileCountForForcedMemoryCollection;
         }
 
         private void CollectReleasedWorkspaceMemory(bool trimWorkingSet)

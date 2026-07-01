@@ -27,19 +27,17 @@ namespace AIBridgeCLI.Commands
         private const string DaemonLaunchLockFileName = "daemon-launch.lock";
         private const int SnapshotSchemaVersion = 2;
         private const int ManifestFormatKind = 1;
+        private const int TextIndexFormatKind = 3;
         private const int DefaultStatusTimeoutMs = 1500;
         private const int DefaultDoctorTimeoutMs = 5000;
         private const int DefaultWarmupTimeoutMs = 30000;
         private const int DefaultSymbolTimeoutMs = 30000;
         private const int DefaultDefinitionTimeoutMs = 15000;
-        private const int DefaultHeavyQueryTimeoutMs = 30000;
-        private const int DefaultFullDiagnosticsTimeoutMs = 60000;
         private const int DefaultQueryQueueTimeoutMs = 60000;
         private const int QueryTransportPaddingMs = 1000;
         private const int ExistingDaemonReachabilityWaitMs = 5000;
         private const int ExistingDaemonRetryDelayMs = 150;
         private const int MaxCodeIndexTimeoutMs = 600000;
-        private const int MaxBatchItems = 100;
         private const string SnapshotMagic = "AIBCI";
         private const string DisabledMessage = "Code Index is disabled in AIBridge settings. Enable AIBridge > Settings > Code Index > Enable Code Index, or use rg and normal file reads.";
         private static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings
@@ -70,6 +68,24 @@ namespace AIBridgeCLI.Commands
         private static async Task<JObject> ExecuteAsync(string action, Dictionary<string, string> options, int timeout, bool noWait)
         {
             var normalizedAction = NormalizeAction(action);
+            if (!IsSupportedAction(normalizedAction))
+            {
+                return BuildFailure(null, "Unsupported code_index action: " + action, "unsupported_action");
+            }
+
+            if (string.Equals(normalizedAction, "symbol", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "definition", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    ValidateQueryArguments(normalizedAction, options);
+                }
+                catch (ArgumentException ex)
+                {
+                    return BuildFailure(null, ex.Message, "invalid_arguments");
+                }
+            }
+
             var context = CodeIndexContext.Resolve(options);
             TouchCodeIndexLastUsed(context);
             if (!context.Enabled)
@@ -91,16 +107,26 @@ namespace AIBridgeCLI.Commands
                     return await ResetAsync(context, timeout);
                 case "symbol":
                 case "definition":
-                case "references":
-                case "implementations":
-                case "derived":
-                case "callers":
-                case "diagnostics":
                     return await QueryAsync(context, normalizedAction, options, timeout);
-                case "batch":
-                    return await BatchAsync(context, options, timeout);
                 default:
-                    return BuildFailure(context, "Unsupported code_index action: " + action);
+                    return BuildFailure(context, "Unsupported code_index action: " + action, "unsupported_action");
+            }
+        }
+
+        private static bool IsSupportedAction(string action)
+        {
+            switch (action)
+            {
+                case "status":
+                case "doctor":
+                case "build_snapshot":
+                case "warmup":
+                case "reset":
+                case "symbol":
+                case "definition":
+                    return true;
+                default:
+                    return false;
             }
         }
 
@@ -143,17 +169,6 @@ namespace AIBridgeCLI.Commands
                     return DefaultSymbolTimeoutMs;
                 case "definition":
                     return DefaultDefinitionTimeoutMs;
-                case "references":
-                case "implementations":
-                case "derived":
-                case "callers":
-                    return DefaultHeavyQueryTimeoutMs;
-                case "diagnostics":
-                    return ResolveOptionBool(options, "all", false)
-                        ? DefaultFullDiagnosticsTimeoutMs
-                        : DefaultHeavyQueryTimeoutMs;
-                case "batch":
-                    return DefaultHeavyQueryTimeoutMs;
                 default:
                     return ClampTimeout(timeout);
             }
@@ -176,8 +191,6 @@ namespace AIBridgeCLI.Commands
 
         private static async Task<JObject> QueryAsync(CodeIndexContext context, string action, Dictionary<string, string> options, int timeout)
         {
-            ValidateQueryArguments(action, options);
-
             var status = await EnsureDaemonAsync(context, timeout, false);
             if (IsDaemonTransportFailure(status))
             {
@@ -223,35 +236,26 @@ namespace AIBridgeCLI.Commands
 
                 if (response.Value<bool>("success"))
                 {
+                    SanitizeQueryResponse(response);
+                    response["source"] = "name-index";
                     response["enabled"] = true;
                     return response;
                 }
 
-                if (!IsFallbackEnabled(context, options)
-                    || string.Equals(action, "diagnostics", StringComparison.OrdinalIgnoreCase)
-                    || !ShouldFallbackForResponse(response))
-                {
-                    response["enabled"] = context.Enabled;
-                    return response;
-                }
-
-                return BuildFallback(context, action, options, response.Value<string>("error"));
+                SanitizeQueryResponse(response);
+                response["enabled"] = context.Enabled;
+                return response;
             }
 
-            if (!IsFallbackEnabled(context, options) || string.Equals(action, "diagnostics", StringComparison.OrdinalIgnoreCase))
-            {
-                return BuildFailure(context, "Unity snapshot workspace is not ready.", "workspace_not_ready");
-            }
-
-            return BuildFallback(context, action, options, "Unity snapshot workspace is not ready. Returned text-search candidates only.");
+            return BuildFailure(context, "Unity snapshot workspace is not ready.", "workspace_not_ready");
         }
 
         private static CodeIndexQueryTimeouts ResolveQueryTimeouts(string action, Dictionary<string, string> options, int timeout)
         {
             var explicitTimeout = options != null && options.ContainsKey("timeout");
             var defaultQueueTimeout = explicitTimeout ? timeout : DefaultQueryQueueTimeoutMs;
-            var queueTimeout = ClampTimeout(ResolveOptionInt(options, "queue-timeout", defaultQueueTimeout));
-            var executeTimeout = ClampTimeout(ResolveOptionInt(options, "execute-timeout", timeout));
+            var queueTimeout = ClampTimeout(defaultQueueTimeout);
+            var executeTimeout = ClampTimeout(timeout);
             var transportTimeout = Math.Max(timeout, queueTimeout + executeTimeout + QueryTransportPaddingMs);
 
             return new CodeIndexQueryTimeouts
@@ -260,28 +264,6 @@ namespace AIBridgeCLI.Commands
                 ExecuteTimeoutMs = executeTimeout,
                 TransportTimeoutMs = ClampTimeout(transportTimeout)
             };
-        }
-
-        private static bool ShouldFallbackForResponse(JObject response)
-        {
-            var errorCode = response == null ? null : response.Value<string>("errorCode");
-            if (string.IsNullOrWhiteSpace(errorCode))
-            {
-                return true;
-            }
-
-            switch (errorCode)
-            {
-                case "queue_timeout":
-                case "queue_full":
-                case "execute_timeout":
-                case "client_cancelled":
-                case "http_timeout":
-                case "daemon_unreachable":
-                    return false;
-                default:
-                    return true;
-            }
         }
 
         private static bool IsDaemonTransportFailure(JObject response)
@@ -289,192 +271,6 @@ namespace AIBridgeCLI.Commands
             return response != null
                 && response.Value<bool?>("success") == false
                 && string.Equals(response.Value<string>("errorCode"), "daemon_unreachable", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static async Task<JObject> BatchAsync(CodeIndexContext context, Dictionary<string, string> options, int timeout)
-        {
-            var payload = ReadBatchPayload(context, options);
-            if (payload.Value<bool?>("success") == false)
-            {
-                return payload;
-            }
-
-            var items = payload["items"] as JArray;
-            if (items == null || items.Count == 0)
-            {
-                return BuildFailure(context, "Batch request must contain a non-empty items array.", "invalid_batch");
-            }
-
-            if (items.Count > MaxBatchItems)
-            {
-                return BuildFailure(context, "Batch request item count exceeds the " + MaxBatchItems.ToString(CultureInfo.InvariantCulture) + " item limit.", "batch_too_large");
-            }
-
-            var status = await EnsureDaemonAsync(context, timeout, false);
-            if (IsDaemonTransportFailure(status))
-            {
-                status["enabled"] = context.Enabled;
-                return status;
-            }
-
-            if (!IsReady(context, status))
-            {
-                return BuildFailure(context, "Unity snapshot workspace is not ready.", "workspace_not_ready");
-            }
-
-            var batchTimeouts = ResolveBatchTimeouts(payload, options, timeout);
-            PrepareBatchPayload(payload, items, options, batchTimeouts);
-
-            try
-            {
-                var response = await PostJsonAsync(
-                    status.Value<string>("endpoint"),
-                    "batch",
-                    status.Value<string>("token"),
-                    payload,
-                    batchTimeouts.TransportTimeoutMs);
-                response["enabled"] = context.Enabled;
-                return response;
-            }
-            catch (TaskCanceledException)
-            {
-                return BuildFailure(
-                    context,
-                    "code_index batch timed out after " + batchTimeouts.TransportTimeoutMs.ToString(CultureInfo.InvariantCulture)
-                    + "ms before the daemon returned a batch result.",
-                    "http_timeout");
-            }
-            catch (HttpRequestException ex)
-            {
-                return BuildFailure(context, "Code index daemon is not reachable: " + ex.Message, "daemon_unreachable");
-            }
-            catch (JsonException ex)
-            {
-                return BuildFailure(context, "Code index daemon returned invalid JSON: " + ex.Message, "invalid_daemon_response");
-            }
-        }
-
-        private static JObject ReadBatchPayload(CodeIndexContext context, Dictionary<string, string> options)
-        {
-            var json = ResolveStringOption(options, "json", null);
-            if (string.IsNullOrWhiteSpace(json) && options != null && options.ContainsKey("stdin"))
-            {
-                json = Console.In.ReadToEnd();
-            }
-
-            if (string.IsNullOrWhiteSpace(json))
-            {
-                return BuildFailure(context, "Missing batch payload. Pass --stdin with JSON input or --json.", "missing_batch_payload");
-            }
-
-            try
-            {
-                var payload = JObject.Parse(json);
-                return payload;
-            }
-            catch (JsonException ex)
-            {
-                return BuildFailure(context, "Invalid batch JSON: " + ex.Message, "invalid_batch_json");
-            }
-        }
-
-        private static void PrepareBatchPayload(
-            JObject payload,
-            JArray items,
-            Dictionary<string, string> options,
-            CodeIndexQueryTimeouts batchTimeouts)
-        {
-            if (payload["continueOnError"] == null)
-            {
-                payload["continueOnError"] = ResolveOptionBool(options, "continue-on-error", true);
-            }
-
-            if (payload["timing"] == null)
-            {
-                payload["timing"] = ResolveOptionBool(options, "timing", true);
-            }
-
-            for (var i = 0; i < items.Count; i++)
-            {
-                var item = items[i] as JObject;
-                if (item == null)
-                {
-                    continue;
-                }
-
-                item.Remove("executeTimeoutMs");
-            }
-
-            payload["queueTimeoutMs"] = batchTimeouts.QueueTimeoutMs;
-            payload["executeTimeoutMs"] = batchTimeouts.ExecuteTimeoutMs;
-        }
-
-        private static CodeIndexQueryTimeouts ResolveBatchTimeouts(JObject payload, Dictionary<string, string> options, int timeout)
-        {
-            var items = payload["items"] as JArray;
-            var childTimeoutSum = 0L;
-            if (items != null)
-            {
-                for (var i = 0; i < items.Count; i++)
-                {
-                    var item = items[i] as JObject;
-                    childTimeoutSum += ResolveBatchItemTimeout(item);
-                }
-            }
-
-            var payloadQueueTimeout = payload.Value<int?>("queueTimeoutMs") ?? DefaultQueryQueueTimeoutMs;
-            var payloadExecuteTimeout = payload.Value<int?>("executeTimeoutMs")
-                ?? (int)Math.Min(MaxCodeIndexTimeoutMs, Math.Max(DefaultHeavyQueryTimeoutMs, childTimeoutSum));
-            var explicitTimeout = options != null && options.ContainsKey("timeout");
-            var queueDefault = explicitTimeout ? timeout : payloadQueueTimeout;
-            var executeDefault = explicitTimeout ? timeout : payloadExecuteTimeout;
-            var queueTimeout = ClampTimeout(ResolveOptionInt(options, "queue-timeout", queueDefault));
-            var executeTimeout = ClampTimeout(ResolveOptionInt(options, "execute-timeout", executeDefault));
-            var transportTimeout = Math.Max(timeout, queueTimeout + executeTimeout + QueryTransportPaddingMs);
-
-            return new CodeIndexQueryTimeouts
-            {
-                QueueTimeoutMs = queueTimeout,
-                ExecuteTimeoutMs = executeTimeout,
-                TransportTimeoutMs = ClampTimeout(transportTimeout)
-            };
-        }
-
-        private static int ResolveBatchItemTimeout(JObject item)
-        {
-            if (item == null)
-            {
-                return DefaultHeavyQueryTimeoutMs;
-            }
-
-            var explicitTimeout = item.Value<int?>("executeTimeoutMs");
-            if (explicitTimeout.HasValue && explicitTimeout.Value > 0)
-            {
-                return ClampTimeout(explicitTimeout.Value);
-            }
-
-            var action = NormalizeAction(item.Value<string>("action"));
-            if (string.Equals(action, "diagnostics", StringComparison.OrdinalIgnoreCase))
-            {
-                var parameters = item["parameters"] as JObject;
-                var all = parameters != null && parameters.Value<bool?>("all") == true;
-                return all ? DefaultFullDiagnosticsTimeoutMs : DefaultHeavyQueryTimeoutMs;
-            }
-
-            switch (action)
-            {
-                case "symbol":
-                    return DefaultSymbolTimeoutMs;
-                case "definition":
-                    return DefaultDefinitionTimeoutMs;
-                case "references":
-                case "implementations":
-                case "derived":
-                case "callers":
-                    return DefaultHeavyQueryTimeoutMs;
-                default:
-                    return DefaultHeavyQueryTimeoutMs;
-            }
         }
 
         private static async Task<JObject> WarmupAsync(CodeIndexContext context, int timeout, bool noWait)
@@ -487,7 +283,6 @@ namespace AIBridgeCLI.Commands
 
             var result = BuildStatusResult(context, status, status != null && status.Value<bool>("reachable"));
             result["success"] = true;
-            result["semantic"] = IsReady(context, status);
             result["source"] = "unity-snapshot";
             if (status != null && string.Equals(status.Value<string>("state"), "failed", StringComparison.OrdinalIgnoreCase))
             {
@@ -530,13 +325,11 @@ namespace AIBridgeCLI.Commands
             {
                 ["success"] = true,
                 ["enabled"] = context.Enabled,
-                ["semantic"] = false,
                 ["source"] = "reset",
                 ["state"] = "reset",
                 ["stale"] = true,
                 ["projectRoot"] = context.ProjectRoot,
                 ["solution"] = context.SolutionPath,
-                ["workspaceMode"] = "unity-snapshot",
                 ["snapshotExists"] = Directory.Exists(context.SnapshotDirectory),
                 ["message"] = context.IncludeSnapshotOnReset
                     ? "code_index cache, daemon state, and Unity snapshot were reset."
@@ -701,12 +494,10 @@ namespace AIBridgeCLI.Commands
                 {
                     ["success"] = true,
                     ["enabled"] = context.Enabled,
-                    ["semantic"] = false,
                     ["source"] = "snapshot-worker",
                     ["state"] = "running",
                     ["stale"] = true,
                     ["projectRoot"] = context.ProjectRoot,
-                    ["workspaceMode"] = "unity-snapshot",
                     ["snapshotExists"] = File.Exists(context.SnapshotManifestPath),
                     ["inputPath"] = inputPath,
                     ["workerPid"] = pid
@@ -752,12 +543,10 @@ namespace AIBridgeCLI.Commands
 
             result["success"] = result.Value<bool?>("success") ?? true;
             result["enabled"] = context.Enabled;
-            result["semantic"] = false;
             result["source"] = "snapshot-worker";
             result["state"] = result.Value<bool>("success") ? "snapshotGenerated" : "failed";
             result["stale"] = !result.Value<bool>("success");
             result["projectRoot"] = context.ProjectRoot;
-            result["workspaceMode"] = "unity-snapshot";
             result["snapshotExists"] = File.Exists(context.SnapshotManifestPath);
             result["snapshotPath"] = context.SnapshotManifestPath;
             result["inputPath"] = inputPath;
@@ -846,7 +635,9 @@ namespace AIBridgeCLI.Commands
 
             var currentStatus = remote ?? status;
             var snapshotCounts = ReadSnapshotSemanticCounts(context);
+            var nameIndexHealth = ReadSnapshotNameIndexHealth(context);
             var snapshotHasSemanticContent = !snapshotCounts.Exists || snapshotCounts.HasSemanticContent;
+            var nameIndexReady = !nameIndexHealth.Exists || nameIndexHealth.HasUsableNameIndexes;
             if (snapshotCounts.Exists && snapshotCounts.Unreadable)
             {
                 issues.Add("Unity compilation snapshot manifest is unreadable.");
@@ -858,24 +649,40 @@ namespace AIBridgeCLI.Commands
                 suggestions.Add("Regenerate the Code Index snapshot from AIBridge settings, then run code_index warmup.");
             }
 
+            if (nameIndexHealth.Exists && nameIndexHealth.ManifestUnreadable)
+            {
+                issues.Add("Unity compilation snapshot manifest is unreadable, so name index files cannot be verified.");
+                suggestions.Add("Regenerate the Code Index snapshot from AIBridge settings, then run code_index warmup.");
+            }
+            else if (nameIndexHealth.Exists && nameIndexHealth.MissingNameIndexFileCount > 0)
+            {
+                issues.Add("One or more Code Index name index files are missing.");
+                suggestions.Add("Refresh the Code Index snapshot so all name index files are rebuilt, then run code_index warmup.");
+            }
+            else if (nameIndexHealth.Exists && nameIndexHealth.CorruptNameIndexFileCount > 0)
+            {
+                issues.Add("One or more Code Index name index files are unreadable or corrupt.");
+                suggestions.Add("Refresh the Code Index snapshot so all name index files are rebuilt, then run code_index warmup.");
+            }
+
             var manifestStale = IsSnapshotStale(context, currentStatus);
             var snapshotStaleReason = snapshotCounts.Unreadable
                 ? "snapshotUnreadable"
+                : !nameIndexReady
+                    ? nameIndexHealth.StaleReason
                 : snapshotCounts.Exists && !snapshotCounts.HasSemanticContent
                     ? "emptySnapshot"
                     : manifestStale ? "snapshotContentChanged" : currentStatus?.Value<string>("staleReason");
             var result = new JObject
             {
                 ["success"] = true,
-                ["healthy"] = issues.Count == 0 && snapshotHasSemanticContent,
+                ["healthy"] = issues.Count == 0 && snapshotHasSemanticContent && nameIndexReady,
                 ["enabled"] = true,
-                ["semantic"] = reachable && IsReady(context, currentStatus),
                 ["source"] = "doctor",
                 ["state"] = remote == null ? (status == null ? "missing" : status.Value<string>("state")) : remote.Value<string>("state"),
                 ["stale"] = !reachable || !IsReady(context, currentStatus) || manifestStale,
                 ["projectRoot"] = context.ProjectRoot,
                 ["solution"] = context.SolutionPath,
-                ["workspaceMode"] = "unity-snapshot",
                 ["snapshotExists"] = File.Exists(context.SnapshotManifestPath),
                 ["snapshotPath"] = context.SnapshotManifestPath,
                 ["snapshotVersion"] = currentStatus?.Value<int?>("snapshotVersion") ?? 0,
@@ -885,6 +692,11 @@ namespace AIBridgeCLI.Commands
                 ["sourceFileCount"] = ResolveSourceFileCount(currentStatus, snapshotCounts),
                 ["excludedAssemblyCount"] = currentStatus?.Value<int?>("excludedAssemblyCount") ?? 0,
                 ["excludedSourceFileCount"] = currentStatus?.Value<int?>("excludedSourceFileCount") ?? 0,
+                ["nameIndexState"] = nameIndexHealth.State,
+                ["nameIndexReady"] = nameIndexHealth.HasUsableNameIndexes,
+                ["nameIndexFileCount"] = nameIndexHealth.NameIndexFileCount,
+                ["missingNameIndexFileCount"] = nameIndexHealth.MissingNameIndexFileCount,
+                ["corruptNameIndexFileCount"] = nameIndexHealth.CorruptNameIndexFileCount,
                 ["includePackageCacheSourceAssemblies"] = currentStatus?.Value<bool?>("includePackageCacheSourceAssemblies") ?? false,
                 ["buildTarget"] = currentStatus?.Value<string>("buildTarget"),
                 ["unityVersion"] = currentStatus?.Value<string>("unityVersion"),
@@ -899,20 +711,24 @@ namespace AIBridgeCLI.Commands
 
         private static JObject BuildDisabledDoctor(CodeIndexContext context)
         {
+            var nameIndexHealth = ReadSnapshotNameIndexHealth(context);
             return new JObject
             {
                 ["success"] = true,
                 ["healthy"] = false,
                 ["enabled"] = false,
-                ["semantic"] = false,
                 ["source"] = "settings",
                 ["state"] = "disabled",
                 ["stale"] = true,
                 ["projectRoot"] = context.ProjectRoot,
                 ["solution"] = context.SolutionPath,
-                ["workspaceMode"] = "unity-snapshot",
                 ["snapshotExists"] = File.Exists(context.SnapshotManifestPath),
                 ["snapshotPath"] = context.SnapshotManifestPath,
+                ["nameIndexState"] = nameIndexHealth.State,
+                ["nameIndexReady"] = nameIndexHealth.HasUsableNameIndexes,
+                ["nameIndexFileCount"] = nameIndexHealth.NameIndexFileCount,
+                ["missingNameIndexFileCount"] = nameIndexHealth.MissingNameIndexFileCount,
+                ["corruptNameIndexFileCount"] = nameIndexHealth.CorruptNameIndexFileCount,
                 ["statusPath"] = context.StatusPath,
                 ["issues"] = new JArray("Code Index is disabled in AIBridge settings."),
                 ["suggestions"] = new JArray("Enable AIBridge > Settings > Code Index > Enable Code Index, or use rg and normal file reads.")
@@ -1401,6 +1217,7 @@ namespace AIBridgeCLI.Commands
         {
             var daemon = CodeIndexDaemonExecutable.Resolve();
             var snapshotCounts = ReadSnapshotSemanticCounts(context);
+            var nameIndexHealth = ReadSnapshotNameIndexHealth(context);
             if (status == null)
             {
                 var missingStatusEmptySnapshot = snapshotCounts.Exists && !snapshotCounts.HasSemanticContent;
@@ -1408,19 +1225,24 @@ namespace AIBridgeCLI.Commands
                 {
                     ["success"] = true,
                     ["enabled"] = context.Enabled,
-                    ["semantic"] = false,
                     ["source"] = "status-file",
                     ["state"] = "missing",
                     ["stale"] = true,
                     ["projectRoot"] = context.ProjectRoot,
                     ["solution"] = context.SolutionPath,
-                    ["workspaceMode"] = "unity-snapshot",
                     ["snapshotExists"] = File.Exists(context.SnapshotManifestPath),
                     ["snapshotPath"] = context.SnapshotManifestPath,
                     ["assemblyCount"] = ResolveAssemblyCount(null, snapshotCounts),
                     ["sourceFileCount"] = ResolveSourceFileCount(null, snapshotCounts),
+                    ["nameIndexState"] = nameIndexHealth.State,
+                    ["nameIndexReady"] = nameIndexHealth.HasUsableNameIndexes,
+                    ["nameIndexFileCount"] = nameIndexHealth.NameIndexFileCount,
+                    ["missingNameIndexFileCount"] = nameIndexHealth.MissingNameIndexFileCount,
+                    ["corruptNameIndexFileCount"] = nameIndexHealth.CorruptNameIndexFileCount,
                     ["staleReason"] = snapshotCounts.Unreadable
                         ? "snapshotUnreadable"
+                        : !nameIndexHealth.HasUsableNameIndexes
+                            ? nameIndexHealth.StaleReason
                         : missingStatusEmptySnapshot ? "emptySnapshot" : "statusMissing",
                     ["statusPath"] = context.StatusPath,
                     ["reachable"] = false,
@@ -1435,19 +1257,17 @@ namespace AIBridgeCLI.Commands
             }
 
             var manifestStale = IsSnapshotStale(context, status);
-            var semanticReady = IsReady(context, status);
             var emptySnapshot = snapshotCounts.Exists && !snapshotCounts.HasSemanticContent;
+            var nameIndexReady = nameIndexHealth.HasUsableNameIndexes;
             var result = new JObject
             {
                 ["success"] = true,
                 ["enabled"] = context.Enabled,
-                ["semantic"] = semanticReady,
                 ["source"] = "status-file",
                 ["state"] = status.Value<string>("state"),
-                ["stale"] = !reachable || status.Value<bool?>("stale") == true || manifestStale || emptySnapshot,
+                ["stale"] = !reachable || status.Value<bool?>("stale") == true || manifestStale || emptySnapshot || !nameIndexReady,
                 ["projectRoot"] = status.Value<string>("projectRoot") ?? context.ProjectRoot,
                 ["solution"] = status.Value<string>("solution") ?? context.SolutionPath,
-                ["workspaceMode"] = status.Value<string>("workspaceMode") ?? "unity-snapshot",
                 ["snapshotExists"] = status.Value<bool?>("snapshotExists") ?? File.Exists(context.SnapshotManifestPath),
                 ["snapshotPath"] = context.SnapshotManifestPath,
                 ["snapshotVersion"] = status.Value<int?>("snapshotVersion") ?? 0,
@@ -1457,16 +1277,21 @@ namespace AIBridgeCLI.Commands
                 ["sourceFileCount"] = ResolveSourceFileCount(status, snapshotCounts),
                 ["excludedAssemblyCount"] = status.Value<int?>("excludedAssemblyCount") ?? 0,
                 ["excludedSourceFileCount"] = status.Value<int?>("excludedSourceFileCount") ?? 0,
+                ["nameIndexState"] = nameIndexHealth.State,
+                ["nameIndexReady"] = nameIndexReady,
+                ["nameIndexFileCount"] = nameIndexHealth.NameIndexFileCount,
+                ["missingNameIndexFileCount"] = nameIndexHealth.MissingNameIndexFileCount,
+                ["corruptNameIndexFileCount"] = nameIndexHealth.CorruptNameIndexFileCount,
                 ["includePackageCacheSourceAssemblies"] = status.Value<bool?>("includePackageCacheSourceAssemblies") ?? false,
                 ["buildTarget"] = status.Value<string>("buildTarget"),
                 ["unityVersion"] = status.Value<string>("unityVersion"),
                 ["staleReason"] = snapshotCounts.Unreadable
                     ? "snapshotUnreadable"
+                    : !nameIndexReady
+                        ? nameIndexHealth.StaleReason
                     : emptySnapshot
                         ? "emptySnapshot"
                         : manifestStale ? "snapshotContentChanged" : status.Value<string>("staleReason"),
-                ["loadedProjects"] = status.Value<int?>("loadedProjects") ?? 0,
-                ["loadedDocuments"] = status.Value<int?>("loadedDocuments") ?? 0,
                 ["endpoint"] = status.Value<string>("endpoint"),
                 ["daemonPid"] = status.Value<int?>("daemonPid") ?? 0,
                 ["ownerPid"] = status.Value<int?>("ownerPid") ?? 0,
@@ -1497,19 +1322,23 @@ namespace AIBridgeCLI.Commands
 
         private static JObject BuildDisabledStatus(CodeIndexContext context)
         {
+            var nameIndexHealth = ReadSnapshotNameIndexHealth(context);
             return new JObject
             {
                 ["success"] = true,
                 ["enabled"] = false,
-                ["semantic"] = false,
                 ["source"] = "settings",
                 ["state"] = "disabled",
                 ["stale"] = true,
                 ["projectRoot"] = context.ProjectRoot,
                 ["solution"] = context.SolutionPath,
-                ["workspaceMode"] = "unity-snapshot",
                 ["snapshotExists"] = File.Exists(context.SnapshotManifestPath),
                 ["snapshotPath"] = context.SnapshotManifestPath,
+                ["nameIndexState"] = nameIndexHealth.State,
+                ["nameIndexReady"] = nameIndexHealth.HasUsableNameIndexes,
+                ["nameIndexFileCount"] = nameIndexHealth.NameIndexFileCount,
+                ["missingNameIndexFileCount"] = nameIndexHealth.MissingNameIndexFileCount,
+                ["corruptNameIndexFileCount"] = nameIndexHealth.CorruptNameIndexFileCount,
                 ["statusPath"] = context.StatusPath,
                 ["reachable"] = false,
                 ["message"] = DisabledMessage
@@ -1518,18 +1347,19 @@ namespace AIBridgeCLI.Commands
 
         private static JObject BuildDisabledFailure(CodeIndexContext context)
         {
+            var nameIndexHealth = ReadSnapshotNameIndexHealth(context);
             return new JObject
             {
                 ["success"] = false,
                 ["enabled"] = false,
-                ["semantic"] = false,
                 ["source"] = "settings",
                 ["state"] = "disabled",
                 ["stale"] = true,
                 ["projectRoot"] = context.ProjectRoot,
                 ["solution"] = context.SolutionPath,
-                ["workspaceMode"] = "unity-snapshot",
                 ["snapshotExists"] = File.Exists(context.SnapshotManifestPath),
+                ["nameIndexState"] = nameIndexHealth.State,
+                ["nameIndexReady"] = nameIndexHealth.HasUsableNameIndexes,
                 ["error"] = DisabledMessage
             };
         }
@@ -1724,351 +1554,6 @@ namespace AIBridgeCLI.Commands
             }
         }
 
-        private static JObject BuildFallback(CodeIndexContext context, string action, Dictionary<string, string> options, string warning)
-        {
-            var query = ResolveFallbackQuery(context, action, options);
-            if (string.IsNullOrWhiteSpace(query))
-            {
-                return BuildFailure(context, "Unable to determine fallback text query.");
-            }
-
-            string source;
-            var items = TryRunRg(context.ProjectRoot, query, out source);
-            if (items == null)
-            {
-                source = "text-fallback";
-                items = RunTextFallback(context.ProjectRoot, query);
-            }
-
-            return new JObject
-            {
-                ["success"] = true,
-                ["enabled"] = context.Enabled,
-                ["semantic"] = false,
-                ["source"] = source,
-                ["state"] = "fallback",
-                ["stale"] = true,
-                ["projectRoot"] = context.ProjectRoot,
-                ["solution"] = context.SolutionPath,
-                ["workspaceMode"] = "unity-snapshot",
-                ["snapshotExists"] = File.Exists(context.SnapshotManifestPath),
-                ["warning"] = string.IsNullOrWhiteSpace(warning) ? "Unity snapshot workspace is not ready. Returned text-search candidates only." : warning,
-                ["items"] = JArray.FromObject(items, JsonSerializer.Create(JsonSettings))
-            };
-        }
-
-        private static List<CodeIndexTextItem> TryRunRg(string projectRoot, string query, out string source)
-        {
-            source = "rg-fallback";
-            try
-            {
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = "rg",
-                    WorkingDirectory = projectRoot,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
-                };
-                startInfo.ArgumentList.Add("--line-number");
-                startInfo.ArgumentList.Add("--column");
-                startInfo.ArgumentList.Add("--no-messages");
-                startInfo.ArgumentList.Add("--glob");
-                startInfo.ArgumentList.Add("*.cs");
-                startInfo.ArgumentList.Add("--fixed-strings");
-                startInfo.ArgumentList.Add("--");
-                startInfo.ArgumentList.Add(query);
-                startInfo.ArgumentList.Add(".");
-
-                var process = Process.Start(startInfo);
-                if (process == null)
-                {
-                    return null;
-                }
-
-                var items = new List<CodeIndexTextItem>();
-                while (items.Count < 100 && !process.StandardOutput.EndOfStream)
-                {
-                    CodeIndexTextItem item;
-                    if (TryParseRgLine(process.StandardOutput.ReadLine(), query, out item))
-                    {
-                        items.Add(item);
-                    }
-                }
-
-                if (items.Count >= 100 && !process.HasExited)
-                {
-                    process.Kill();
-                }
-
-                var exited = process.WaitForExit(5000);
-                if (!exited && !process.HasExited)
-                {
-                    process.Kill();
-                    process.WaitForExit(1000);
-                }
-
-                var exitCode = process.HasExited ? process.ExitCode : -1;
-                if (exitCode != 0 && items.Count == 0)
-                {
-                    process.Dispose();
-                    return new List<CodeIndexTextItem>();
-                }
-
-                process.Dispose();
-                return items;
-            }
-            catch
-            {
-                source = "text-fallback";
-                return null;
-            }
-        }
-
-        private static List<CodeIndexTextItem> ParseRgOutput(string output, string query)
-        {
-            var items = new List<CodeIndexTextItem>();
-            if (string.IsNullOrEmpty(output))
-            {
-                return items;
-            }
-
-            var lines = output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
-            foreach (var line in lines)
-            {
-                if (items.Count >= 100)
-                {
-                    break;
-                }
-
-                CodeIndexTextItem item;
-                if (TryParseRgLine(line, query, out item))
-                {
-                    items.Add(item);
-                }
-            }
-
-            return items;
-        }
-
-        private static bool TryParseRgLine(string line, string query, out CodeIndexTextItem item)
-        {
-            item = null;
-            if (string.IsNullOrEmpty(line))
-            {
-                return false;
-            }
-
-            var first = line.IndexOf(':');
-            var second = first < 0 ? -1 : line.IndexOf(':', first + 1);
-            var third = second < 0 ? -1 : line.IndexOf(':', second + 1);
-            if (first <= 0 || second <= first || third <= second)
-            {
-                return false;
-            }
-
-            int row;
-            int column;
-            int.TryParse(line.Substring(first + 1, second - first - 1), out row);
-            int.TryParse(line.Substring(second + 1, third - second - 1), out column);
-            item = new CodeIndexTextItem
-            {
-                kind = "text",
-                name = query,
-                file = NormalizePath(line.Substring(0, first)),
-                line = row,
-                column = column,
-                preview = TrimPreview(line.Substring(third + 1))
-            };
-            return true;
-        }
-
-        private static List<CodeIndexTextItem> RunTextFallback(string projectRoot, string query)
-        {
-            var items = new List<CodeIndexTextItem>();
-            foreach (var file in EnumerateFallbackFiles(projectRoot))
-            {
-                if (items.Count >= 100)
-                {
-                    break;
-                }
-
-                if (ShouldSkipFallbackFile(projectRoot, file))
-                {
-                    continue;
-                }
-
-                var lineNumber = 0;
-                foreach (var line in File.ReadLines(file))
-                {
-                    lineNumber++;
-                    var column = line.IndexOf(query, StringComparison.OrdinalIgnoreCase);
-                    if (column < 0)
-                    {
-                        continue;
-                    }
-
-                    items.Add(new CodeIndexTextItem
-                    {
-                        kind = "text",
-                        name = query,
-                        file = NormalizePath(MakeRelativePath(projectRoot, file)),
-                        line = lineNumber,
-                        column = column + 1,
-                        preview = TrimPreview(line)
-                    });
-
-                    if (items.Count >= 100)
-                    {
-                        break;
-                    }
-                }
-            }
-
-            return items;
-        }
-
-        private static IEnumerable<string> EnumerateFallbackFiles(string projectRoot)
-        {
-            var pending = new Stack<string>();
-            pending.Push(projectRoot);
-            while (pending.Count > 0)
-            {
-                var directory = pending.Pop();
-                if (ShouldSkipFallbackDirectory(projectRoot, directory))
-                {
-                    continue;
-                }
-
-                IEnumerable<string> files;
-                try
-                {
-                    files = Directory.EnumerateFiles(directory, "*.cs", SearchOption.TopDirectoryOnly);
-                }
-                catch
-                {
-                    files = Array.Empty<string>();
-                }
-
-                foreach (var file in files)
-                {
-                    yield return file;
-                }
-
-                IEnumerable<string> directories;
-                try
-                {
-                    directories = Directory.EnumerateDirectories(directory, "*", SearchOption.TopDirectoryOnly);
-                }
-                catch
-                {
-                    directories = Array.Empty<string>();
-                }
-
-                foreach (var child in directories)
-                {
-                    if (!ShouldSkipFallbackDirectory(projectRoot, child))
-                    {
-                        pending.Push(child);
-                    }
-                }
-            }
-        }
-
-        private static bool ShouldSkipFallbackFile(string projectRoot, string file)
-        {
-            var relative = MakeRelativePath(projectRoot, file).Replace('\\', '/');
-            return relative.StartsWith(".git/", StringComparison.OrdinalIgnoreCase)
-                || relative.StartsWith("Library/", StringComparison.OrdinalIgnoreCase)
-                || relative.StartsWith("Temp/", StringComparison.OrdinalIgnoreCase)
-                || relative.StartsWith("obj/", StringComparison.OrdinalIgnoreCase)
-                || relative.StartsWith("bin/", StringComparison.OrdinalIgnoreCase)
-                || relative.StartsWith(".aibridge/code-index/", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool ShouldSkipFallbackDirectory(string projectRoot, string directory)
-        {
-            var relative = MakeRelativePath(projectRoot, directory).Replace('\\', '/').TrimEnd('/');
-            return string.Equals(relative, ".git", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(relative, "Library", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(relative, "Temp", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(relative, "obj", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(relative, "bin", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(relative, ".aibridge/code-index", StringComparison.OrdinalIgnoreCase)
-                || relative.StartsWith(".git/", StringComparison.OrdinalIgnoreCase)
-                || relative.StartsWith("Library/", StringComparison.OrdinalIgnoreCase)
-                || relative.StartsWith("Temp/", StringComparison.OrdinalIgnoreCase)
-                || relative.StartsWith("obj/", StringComparison.OrdinalIgnoreCase)
-                || relative.StartsWith("bin/", StringComparison.OrdinalIgnoreCase)
-                || relative.StartsWith(".aibridge/code-index/", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static string ResolveFallbackQuery(CodeIndexContext context, string action, Dictionary<string, string> options)
-        {
-            if (string.Equals(action, "symbol", StringComparison.OrdinalIgnoreCase)
-                && options.TryGetValue("query", out var query))
-            {
-                return query;
-            }
-
-            if ((string.Equals(action, "implementations", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(action, "derived", StringComparison.OrdinalIgnoreCase))
-                && options.TryGetValue("type", out var type))
-            {
-                var trimmedType = type == null ? null : type.Trim();
-                var lastDot = string.IsNullOrEmpty(trimmedType) ? -1 : trimmedType.LastIndexOf('.');
-                return lastDot >= 0 && lastDot + 1 < trimmedType.Length
-                    ? trimmedType.Substring(lastDot + 1)
-                    : trimmedType;
-            }
-
-            if (!options.TryGetValue("file", out var file)
-                || !options.TryGetValue("line", out var lineText)
-                || !options.TryGetValue("column", out var columnText)
-                || !int.TryParse(lineText, out var line)
-                || !int.TryParse(columnText, out var column))
-            {
-                return null;
-            }
-
-            var fullPath = Path.IsPathRooted(file) ? file : Path.Combine(context.ProjectRoot, file);
-            if (!File.Exists(fullPath))
-            {
-                return null;
-            }
-
-            var sourceLine = File.ReadLines(fullPath).Skip(Math.Max(0, line - 1)).FirstOrDefault();
-            if (string.IsNullOrEmpty(sourceLine))
-            {
-                return null;
-            }
-
-            var index = Math.Max(0, Math.Min(column - 1, Math.Max(0, sourceLine.Length - 1)));
-            if (!IsIdentifierChar(sourceLine[index]))
-            {
-                return null;
-            }
-
-            var start = index;
-            while (start > 0 && IsIdentifierChar(sourceLine[start - 1]))
-            {
-                start--;
-            }
-
-            var end = index;
-            while (end + 1 < sourceLine.Length && IsIdentifierChar(sourceLine[end + 1]))
-            {
-                end++;
-            }
-
-            return sourceLine.Substring(start, end - start + 1);
-        }
-
-        private static bool IsIdentifierChar(char value)
-        {
-            return char.IsLetterOrDigit(value) || value == '_';
-        }
 
         private static async Task<JObject> TryGetRemoteStatusAsync(JObject status, int timeout)
         {
@@ -2170,7 +1655,8 @@ namespace AIBridgeCLI.Commands
         {
             return status != null
                    && string.Equals(status.Value<string>("state"), "ready", StringComparison.OrdinalIgnoreCase)
-                   && HasSemanticSnapshotContent(context, status);
+                   && HasSemanticSnapshotContent(context, status)
+                   && ReadSnapshotNameIndexHealth(context).HasUsableNameIndexes;
         }
 
         private static bool HasSemanticSnapshotContent(CodeIndexContext context, JObject status)
@@ -2235,6 +1721,16 @@ namespace AIBridgeCLI.Commands
             }
 
             return binaryCounts.Exists ? binaryCounts : jsonCounts;
+        }
+
+        private static SnapshotNameIndexHealth ReadSnapshotNameIndexHealth(CodeIndexContext context)
+        {
+            if (context == null || !File.Exists(context.SnapshotManifestPath))
+            {
+                return SnapshotNameIndexHealth.Missing;
+            }
+
+            return TryReadSnapshotNameIndexHealthBinary(context.SnapshotManifestPath);
         }
 
         private static SnapshotSemanticCounts TryReadSnapshotSemanticCountsJson(string manifestJsonPath)
@@ -2313,6 +1809,128 @@ namespace AIBridgeCLI.Commands
             }
         }
 
+        private static SnapshotNameIndexHealth TryReadSnapshotNameIndexHealthBinary(string manifestPath)
+        {
+            try
+            {
+                var snapshotDirectory = Path.GetDirectoryName(manifestPath);
+                using (var stream = new FileStream(manifestPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var reader = new BinaryReader(stream, Encoding.UTF8))
+                {
+                    var magic = Encoding.ASCII.GetString(reader.ReadBytes(SnapshotMagic.Length));
+                    var headerSchema = reader.ReadInt32();
+                    var formatKind = reader.ReadInt32();
+                    reader.ReadInt64();
+                    if (!string.Equals(magic, SnapshotMagic, StringComparison.Ordinal)
+                        || headerSchema != SnapshotSchemaVersion
+                        || formatKind != ManifestFormatKind)
+                    {
+                        return SnapshotNameIndexHealth.UnreadableManifest;
+                    }
+
+                    var schemaVersion = reader.ReadInt32();
+                    ReadSnapshotString(reader);
+                    ReadSnapshotString(reader);
+                    ReadSnapshotString(reader);
+                    ReadSnapshotString(reader);
+                    reader.ReadBoolean();
+                    ReadSnapshotStringList(reader);
+                    ReadSnapshotStringList(reader);
+                    ReadSnapshotString(reader);
+                    reader.ReadInt32();
+                    reader.ReadInt32();
+                    if (schemaVersion != SnapshotSchemaVersion)
+                    {
+                        return SnapshotNameIndexHealth.UnreadableManifest;
+                    }
+
+                    var nameIndexFileCount = 0;
+                    var missingNameIndexFileCount = 0;
+                    var corruptNameIndexFileCount = 0;
+                    var assemblyCount = reader.ReadInt32();
+                    for (var i = 0; i < assemblyCount; i++)
+                    {
+                        ReadSnapshotString(reader);
+                        ReadSnapshotString(reader);
+                        ReadSnapshotString(reader);
+                        var relativeNameIndexFile = ReadSnapshotString(reader);
+                        ReadSnapshotString(reader);
+                        ReadSnapshotString(reader);
+                        ReadSnapshotString(reader);
+                        ReadSnapshotString(reader);
+                        reader.ReadBoolean();
+                        reader.ReadInt32();
+                        reader.ReadInt32();
+                        ReadSnapshotString(reader);
+                        ReadSnapshotString(reader);
+                        ReadSnapshotString(reader);
+                        ReadSnapshotString(reader);
+                        ReadSnapshotString(reader);
+                        reader.ReadInt64();
+                        ReadSnapshotStringList(reader);
+                        ReadSnapshotStringList(reader);
+
+                        var candidate = relativeNameIndexFile;
+                        if (string.IsNullOrWhiteSpace(candidate))
+                        {
+                            missingNameIndexFileCount++;
+                            continue;
+                        }
+
+                        nameIndexFileCount++;
+                        var fullPath = Path.Combine(snapshotDirectory ?? string.Empty, candidate);
+                        if (!File.Exists(fullPath))
+                        {
+                            missingNameIndexFileCount++;
+                            continue;
+                        }
+
+                        if (!CanReadNameIndexFile(fullPath))
+                        {
+                            corruptNameIndexFileCount++;
+                        }
+                    }
+
+                    return SnapshotNameIndexHealth.FromCounts(nameIndexFileCount, missingNameIndexFileCount, corruptNameIndexFileCount);
+                }
+            }
+            catch
+            {
+                return SnapshotNameIndexHealth.UnreadableManifest;
+            }
+        }
+
+        private static bool CanReadNameIndexFile(string path)
+        {
+            try
+            {
+                using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var reader = new BinaryReader(stream, Encoding.UTF8))
+                {
+                    var magic = Encoding.ASCII.GetString(reader.ReadBytes(SnapshotMagic.Length));
+                    var headerSchema = reader.ReadInt32();
+                    var formatKind = reader.ReadInt32();
+                    reader.ReadInt64();
+                    if (!string.Equals(magic, SnapshotMagic, StringComparison.Ordinal)
+                        || headerSchema != SnapshotSchemaVersion
+                        || formatKind != TextIndexFormatKind)
+                    {
+                        return false;
+                    }
+
+                    ReadSnapshotString(reader);
+                    ReadSnapshotString(reader);
+                    reader.ReadBoolean();
+                    var count = reader.ReadInt32();
+                    return count >= 0;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private static void SkipSnapshotAssemblyRecord(BinaryReader reader, out int sourceFileCount)
         {
             ReadSnapshotString(reader);
@@ -2364,15 +1982,149 @@ namespace AIBridgeCLI.Commands
             }
         }
 
-        private static bool IsFallbackEnabled(CodeIndexContext context, Dictionary<string, string> options)
+        private sealed class SnapshotNameIndexHealth
         {
-            if (options.TryGetValue("fallback", out var value))
+            public static readonly SnapshotNameIndexHealth Missing = new SnapshotNameIndexHealth(false, false, 0, 0, 0);
+            public static readonly SnapshotNameIndexHealth UnreadableManifest = new SnapshotNameIndexHealth(true, true, 0, 0, 0);
+
+            private SnapshotNameIndexHealth(bool exists, bool manifestUnreadable, int nameIndexFileCount, int missingNameIndexFileCount, int corruptNameIndexFileCount)
             {
-                return !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase)
-                       && !string.Equals(value, "0", StringComparison.OrdinalIgnoreCase);
+                Exists = exists;
+                ManifestUnreadable = manifestUnreadable;
+                NameIndexFileCount = nameIndexFileCount;
+                MissingNameIndexFileCount = missingNameIndexFileCount;
+                CorruptNameIndexFileCount = corruptNameIndexFileCount;
             }
 
-            return context == null || context.FallbackToTextSearch;
+            public bool Exists { get; private set; }
+            public bool ManifestUnreadable { get; private set; }
+            public int NameIndexFileCount { get; private set; }
+            public int MissingNameIndexFileCount { get; private set; }
+            public int CorruptNameIndexFileCount { get; private set; }
+            public bool HasUsableNameIndexes
+            {
+                get
+                {
+                    return Exists
+                           && !ManifestUnreadable
+                           && NameIndexFileCount > 0
+                           && MissingNameIndexFileCount == 0
+                           && CorruptNameIndexFileCount == 0;
+                }
+            }
+
+            public string State
+            {
+                get
+                {
+                    if (!Exists)
+                    {
+                        return "manifest_missing";
+                    }
+
+                    if (ManifestUnreadable)
+                    {
+                        return "manifest_unreadable";
+                    }
+
+                    if (NameIndexFileCount <= 0)
+                    {
+                        return "missing";
+                    }
+
+                    if (MissingNameIndexFileCount > 0)
+                    {
+                        return "missing_files";
+                    }
+
+                    if (CorruptNameIndexFileCount > 0)
+                    {
+                        return "corrupt";
+                    }
+
+                    return "ready";
+                }
+            }
+
+            public string StaleReason
+            {
+                get
+                {
+                    if (!Exists)
+                    {
+                        return "nameIndexManifestMissing";
+                    }
+
+                    if (ManifestUnreadable)
+                    {
+                        return "nameIndexManifestUnreadable";
+                    }
+
+                    if (NameIndexFileCount <= 0 || MissingNameIndexFileCount > 0)
+                    {
+                        return "nameIndexMissing";
+                    }
+
+                    if (CorruptNameIndexFileCount > 0)
+                    {
+                        return "nameIndexCorrupt";
+                    }
+
+                    return null;
+                }
+            }
+
+            public static SnapshotNameIndexHealth FromCounts(int nameIndexFileCount, int missingNameIndexFileCount, int corruptNameIndexFileCount)
+            {
+                return new SnapshotNameIndexHealth(true, false, nameIndexFileCount, missingNameIndexFileCount, corruptNameIndexFileCount);
+            }
+        }
+
+        private static void SanitizeQueryResponse(JObject response)
+        {
+            if (response == null)
+            {
+                return;
+            }
+
+            response.Remove("semantic");
+            response.Remove("workspaceMode");
+            response.Remove("loadedProjects");
+            response.Remove("loadedDocuments");
+
+            var items = response["items"] as JArray;
+            if (items == null)
+            {
+                return;
+            }
+
+            var sanitized = new JArray();
+            for (var i = 0; i < items.Count; i++)
+            {
+                if (!(items[i] is JObject item))
+                {
+                    continue;
+                }
+
+                var sanitizedItem = new JObject
+                {
+                    ["kind"] = item["kind"],
+                    ["name"] = item["name"],
+                    ["container"] = item["container"],
+                    ["file"] = item["file"],
+                    ["line"] = item["line"],
+                    ["column"] = item["column"]
+                };
+
+                if (item.TryGetValue("signature", out var signature) && signature != null && signature.Type != JTokenType.Null)
+                {
+                    sanitizedItem["signature"] = signature;
+                }
+
+                sanitized.Add(sanitizedItem);
+            }
+
+            response["items"] = sanitized;
         }
 
         private static bool ResolveOptionBool(Dictionary<string, string> options, string key, bool defaultValue)
@@ -2413,79 +2165,34 @@ namespace AIBridgeCLI.Commands
 
         private static Dictionary<string, object> BuildQueryParameters(string action, Dictionary<string, string> options)
         {
-            var result = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-            if (string.Equals(action, "symbol", StringComparison.OrdinalIgnoreCase))
+            return new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
             {
-                result["query"] = options["query"];
-                return result;
-            }
-
-            if (string.Equals(action, "implementations", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(action, "derived", StringComparison.OrdinalIgnoreCase))
-            {
-                result["type"] = options["type"];
-                return result;
-            }
-
-            if (string.Equals(action, "diagnostics", StringComparison.OrdinalIgnoreCase))
-            {
-                if (options.TryGetValue("file", out var file) && !string.IsNullOrWhiteSpace(file))
-                {
-                    result["file"] = file;
-                }
-
-                result["all"] = ResolveOptionBool(options, "all", false);
-                return result;
-            }
-
-            result["file"] = options["file"];
-            result["line"] = int.Parse(options["line"]);
-            result["column"] = int.Parse(options["column"]);
-            return result;
+                ["query"] = options["query"]
+            };
         }
 
         private static void ValidateQueryArguments(string action, Dictionary<string, string> options)
         {
-            if (string.Equals(action, "symbol", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(action, "symbol", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(action, "definition", StringComparison.OrdinalIgnoreCase))
             {
                 if (!options.TryGetValue("query", out var query) || string.IsNullOrWhiteSpace(query))
                 {
+                    if (string.Equals(action, "definition", StringComparison.OrdinalIgnoreCase)
+                        && ((options.TryGetValue("file", out var file) && !string.IsNullOrWhiteSpace(file))
+                            || (options.TryGetValue("line", out var line) && !string.IsNullOrWhiteSpace(line))
+                            || (options.TryGetValue("column", out var column) && !string.IsNullOrWhiteSpace(column))))
+                    {
+                        throw new ArgumentException("definition now requires --query");
+                    }
+
                     throw new ArgumentException("Missing required parameter: --query");
                 }
 
                 return;
             }
 
-            if (string.Equals(action, "implementations", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(action, "derived", StringComparison.OrdinalIgnoreCase))
-            {
-                if (!options.TryGetValue("type", out var type) || string.IsNullOrWhiteSpace(type))
-                {
-                    throw new ArgumentException("Missing required parameter: --type");
-                }
-
-                return;
-            }
-
-            if (string.Equals(action, "diagnostics", StringComparison.OrdinalIgnoreCase))
-            {
-                var hasFile = options.TryGetValue("file", out var file) && !string.IsNullOrWhiteSpace(file);
-                var all = ResolveOptionBool(options, "all", false);
-                if (!hasFile && !all)
-                {
-                    throw new ArgumentException("Missing required parameter: --file. Use --all true to run full workspace diagnostics.");
-                }
-
-                return;
-            }
-
-            foreach (var key in new[] { "file", "line", "column" })
-            {
-                if (!options.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
-                {
-                    throw new ArgumentException("Missing required parameter: --" + key);
-                }
-            }
+            throw new ArgumentException("Unsupported code_index action: " + action);
         }
 
         private static JObject BuildFailure(CodeIndexContext context, string error)
@@ -2540,13 +2247,11 @@ namespace AIBridgeCLI.Commands
             var result = new JObject
             {
                 ["success"] = false,
-                ["semantic"] = false,
                 ["source"] = "code_index",
                 ["state"] = "failed",
                 ["stale"] = true,
                 ["projectRoot"] = context == null ? null : context.ProjectRoot,
                 ["solution"] = context == null ? null : context.SolutionPath,
-                ["workspaceMode"] = "unity-snapshot",
                 ["snapshotExists"] = context != null && File.Exists(context.SnapshotManifestPath),
                 ["error"] = error
             };
@@ -2630,7 +2335,6 @@ namespace AIBridgeCLI.Commands
             public bool AutoRefresh { get; private set; }
             public string WarmupMode { get; private set; }
             public string ProcessPriority { get; private set; }
-            public bool FallbackToTextSearch { get; private set; }
             public bool IncludeSnapshotOnReset { get; private set; }
 
             public static CodeIndexContext Resolve(Dictionary<string, string> options)
@@ -2665,9 +2369,8 @@ namespace AIBridgeCLI.Commands
                     OwnerStartTicks = ownerStartTicks,
                     Enabled = GetConfigBool(config, "enableCodeIndex", false),
                     AutoRefresh = ResolveBool(options, "auto-refresh", GetConfigBool(config, "autoRefreshOnFileChange", true)),
-                    WarmupMode = ResolveString(options, "warmup-mode", GetConfigString(config, "warmupMode", "semantic")),
+                    WarmupMode = ResolveString(options, "warmup-mode", GetConfigString(config, "warmupMode", "names")),
                     ProcessPriority = ResolveString(options, "priority", "normal"),
-                    FallbackToTextSearch = ResolveBool(options, "fallback", GetConfigBool(config, "fallbackToTextSearch", true)),
                     IncludeSnapshotOnReset = ResolveBool(options, "include-snapshot", false),
                     HasUnityProjectMarkers = Directory.Exists(Path.Combine(projectRoot, "Assets"))
                                              && File.Exists(Path.Combine(projectRoot, "ProjectSettings", "ProjectSettings.asset"))
@@ -2944,7 +2647,7 @@ namespace AIBridgeCLI.Commands
                 startInfo.ArgumentList.Add("--auto-refresh");
                 startInfo.ArgumentList.Add(context.AutoRefresh ? "true" : "false");
                 startInfo.ArgumentList.Add("--warmup-mode");
-                startInfo.ArgumentList.Add(string.IsNullOrWhiteSpace(context.WarmupMode) ? "semantic" : context.WarmupMode);
+                startInfo.ArgumentList.Add(string.IsNullOrWhiteSpace(context.WarmupMode) ? "names" : context.WarmupMode);
             }
 
             public void AddSnapshotWorkerArguments(ProcessStartInfo startInfo, CodeIndexContext context, string inputPath, int workers)
@@ -3027,16 +2730,6 @@ namespace AIBridgeCLI.Commands
 
                 return missing.ToArray();
             }
-        }
-
-        private sealed class CodeIndexTextItem
-        {
-            public string kind { get; set; }
-            public string name { get; set; }
-            public string file { get; set; }
-            public int line { get; set; }
-            public int column { get; set; }
-            public string preview { get; set; }
         }
 
         private sealed class CodeIndexQueryTimeouts

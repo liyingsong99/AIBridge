@@ -21,7 +21,7 @@
       "default": false
     },
     "requiresCodeIndex": {
-      "description": "Whether this task needs semantic C# symbol/source navigation.",
+      "description": "Whether this task needs fast C# declaration-name lookup or declaration-file location.",
       "default": false
     }
   },

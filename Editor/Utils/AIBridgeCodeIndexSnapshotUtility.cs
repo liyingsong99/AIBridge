@@ -1126,6 +1126,7 @@ namespace AIBridge.Editor
                     continue;
                 }
 
+                CollectDeclarationNameEntries(fullPath, record.Sources[i].Path, names);
                 var lineNumber = 0;
                 var fileTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var line in File.ReadLines(fullPath))
@@ -1136,11 +1137,6 @@ namespace AIBridge.Editor
                     {
                         var value = matches[j].Value;
                         fileTokens.Add(value);
-                        if (LooksLikeDeclarationName(line, value))
-                        {
-                            var entry = value + "|" + record.Sources[i].Path + "|" + lineNumber.ToString(CultureInfo.InvariantCulture);
-                            names.Add(entry);
-                        }
                     }
                 }
 
@@ -1157,30 +1153,404 @@ namespace AIBridge.Editor
             tokenEntries.Sort(StringComparer.OrdinalIgnoreCase);
         }
 
-        private static bool LooksLikeDeclarationName(string line, string value)
+        private static void CollectDeclarationNameEntries(string fullPath, string relativePath, HashSet<string> names)
         {
-            if (string.IsNullOrEmpty(line) || string.IsNullOrEmpty(value))
+            if (string.IsNullOrWhiteSpace(fullPath) || string.IsNullOrWhiteSpace(relativePath) || names == null)
+            {
+                return;
+            }
+
+            if (TryCollectDeclarationNameEntriesWithRoslyn(fullPath, relativePath, names))
+            {
+                return;
+            }
+
+            var braceDepth = 0;
+            foreach (var rawLine in File.ReadLines(fullPath))
+            {
+                var line = RemoveLineComment(rawLine);
+                CollectDeclarationNameEntriesFromLine(line, relativePath, braceDepth, names);
+
+                for (var i = 0; i < line.Length; i++)
+                {
+                    var current = line[i];
+                    if (current == '{')
+                    {
+                        braceDepth++;
+                    }
+                    else if (current == '}' && braceDepth > 0)
+                    {
+                        braceDepth--;
+                    }
+                }
+            }
+        }
+
+        private static bool TryCollectDeclarationNameEntriesWithRoslyn(string fullPath, string relativePath, HashSet<string> names)
+        {
+            try
+            {
+                var syntaxTreeType = Type.GetType("Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree, Microsoft.CodeAnalysis.CSharp");
+                var syntaxNodeType = Type.GetType("Microsoft.CodeAnalysis.SyntaxNode, Microsoft.CodeAnalysis");
+                var syntaxTokenType = Type.GetType("Microsoft.CodeAnalysis.SyntaxToken, Microsoft.CodeAnalysis");
+                if (syntaxTreeType == null || syntaxNodeType == null || syntaxTokenType == null)
+                {
+                    return false;
+                }
+
+                var parseTextMethod = syntaxTreeType.GetMethod("ParseText", new[] { typeof(string) });
+                if (parseTextMethod == null)
+                {
+                    return false;
+                }
+
+                var sourceText = File.ReadAllText(fullPath, Encoding.UTF8);
+                if (string.IsNullOrWhiteSpace(sourceText))
+                {
+                    return true;
+                }
+
+                var syntaxTree = parseTextMethod.Invoke(null, new object[] { sourceText });
+                if (syntaxTree == null)
+                {
+                    return false;
+                }
+
+                var getRootMethod = syntaxTree.GetType().GetMethod("GetRoot", Type.EmptyTypes);
+                var getTextMethod = syntaxTree.GetType().GetMethod("GetText", Type.EmptyTypes);
+                var root = getRootMethod == null ? null : getRootMethod.Invoke(syntaxTree, null);
+                var text = getTextMethod == null ? null : getTextMethod.Invoke(syntaxTree, null);
+                if (root == null || text == null)
+                {
+                    return false;
+                }
+
+                var descendantNodesMethod = syntaxNodeType.GetMethod("DescendantNodes", Type.EmptyTypes);
+                if (descendantNodesMethod == null)
+                {
+                    return false;
+                }
+
+                var nodes = descendantNodesMethod.Invoke(root, null) as System.Collections.IEnumerable;
+                if (nodes == null)
+                {
+                    return false;
+                }
+
+                var textLinesProperty = text.GetType().GetProperty("Lines");
+                var getLinePositionMethod = textLinesProperty == null ? null : textLinesProperty.PropertyType.GetMethod("GetLinePosition");
+                if (textLinesProperty == null || getLinePositionMethod == null)
+                {
+                    return false;
+                }
+
+                var rawKindProperty = syntaxTokenType.GetProperty("RawKind");
+                var valueTextProperty = syntaxTokenType.GetProperty("ValueText");
+                var spanStartProperty = syntaxTokenType.GetProperty("SpanStart");
+                if (rawKindProperty == null || valueTextProperty == null || spanStartProperty == null)
+                {
+                    return false;
+                }
+
+                foreach (var node in nodes)
+                {
+                    if (node == null)
+                    {
+                        continue;
+                    }
+
+                    var identifier = GetDeclarationIdentifierReflection(node);
+                    if (identifier == null)
+                    {
+                        continue;
+                    }
+
+                    var rawKind = (int)rawKindProperty.GetValue(identifier, null);
+                    var valueText = valueTextProperty.GetValue(identifier, null) as string;
+                    if (rawKind == 0 || string.IsNullOrWhiteSpace(valueText))
+                    {
+                        continue;
+                    }
+
+                    var spanStart = (int)spanStartProperty.GetValue(identifier, null);
+                    var lines = textLinesProperty.GetValue(text, null);
+                    var linePosition = getLinePositionMethod.Invoke(lines, new object[] { spanStart });
+                    var lineProperty = linePosition.GetType().GetProperty("Line");
+                    var line = lineProperty == null ? 0 : (int)lineProperty.GetValue(linePosition, null);
+                    names.Add(valueText + "|" + relativePath + "|" + (line + 1).ToString(CultureInfo.InvariantCulture));
+                }
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static void CollectDeclarationNameEntriesFromLine(string line, string relativePath, int braceDepth, HashSet<string> names)
+        {
+            if (string.IsNullOrWhiteSpace(line) || names == null)
+            {
+                return;
+            }
+
+            var trimmed = line.Trim();
+            if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("[", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            string name;
+            if (TryMatchTypeDeclaration(trimmed, out name)
+                || TryMatchDelegateDeclaration(trimmed, out name)
+                || TryMatchMethodDeclaration(trimmed, braceDepth, out name)
+                || TryMatchPropertyDeclaration(trimmed, braceDepth, out name)
+                || TryMatchFieldDeclaration(trimmed, braceDepth, out name))
+            {
+                names.Add(name + "|" + relativePath + "|0");
+            }
+        }
+
+        private static bool TryMatchTypeDeclaration(string line, out string name)
+        {
+            return TryMatchKeywordIdentifier(line, "class", out name)
+                   || TryMatchKeywordIdentifier(line, "struct", out name)
+                   || TryMatchKeywordIdentifier(line, "interface", out name)
+                   || TryMatchKeywordIdentifier(line, "enum", out name);
+        }
+
+        private static bool TryMatchDelegateDeclaration(string line, out string name)
+        {
+            name = null;
+            var delegateIndex = line.IndexOf("delegate", StringComparison.Ordinal);
+            if (delegateIndex < 0)
             {
                 return false;
             }
 
-            var index = line.IndexOf(value, StringComparison.Ordinal);
-            if (index <= 0)
+            var parenIndex = line.IndexOf('(');
+            if (parenIndex <= delegateIndex)
             {
                 return false;
             }
 
-            var prefix = line.Substring(0, index);
-            return prefix.IndexOf("class ", StringComparison.Ordinal) >= 0
-                   || prefix.IndexOf("struct ", StringComparison.Ordinal) >= 0
-                   || prefix.IndexOf("interface ", StringComparison.Ordinal) >= 0
-                   || prefix.IndexOf("enum ", StringComparison.Ordinal) >= 0
-                   || prefix.IndexOf("delegate ", StringComparison.Ordinal) >= 0
-                   || prefix.IndexOf("void ", StringComparison.Ordinal) >= 0
-                   || prefix.IndexOf("public ", StringComparison.Ordinal) >= 0
-                   || prefix.IndexOf("private ", StringComparison.Ordinal) >= 0
-                   || prefix.IndexOf("protected ", StringComparison.Ordinal) >= 0
-                   || prefix.IndexOf("internal ", StringComparison.Ordinal) >= 0;
+            var prefix = line.Substring(delegateIndex + "delegate".Length, parenIndex - delegateIndex - "delegate".Length).Trim();
+            if (string.IsNullOrEmpty(prefix))
+            {
+                return false;
+            }
+
+            var lastSpace = prefix.LastIndexOf(' ');
+            name = lastSpace >= 0 ? prefix.Substring(lastSpace + 1).Trim() : prefix;
+            return IsIdentifier(name);
+        }
+
+        private static bool TryMatchMethodDeclaration(string line, int braceDepth, out string name)
+        {
+            name = null;
+            if (braceDepth <= 0)
+            {
+                return false;
+            }
+
+            if (line.IndexOf('(') < 0 || line.IndexOf(')') < 0 || line.IndexOf(';') >= 0)
+            {
+                return false;
+            }
+
+            if (line.StartsWith("if ", StringComparison.Ordinal)
+                || line.StartsWith("for ", StringComparison.Ordinal)
+                || line.StartsWith("foreach ", StringComparison.Ordinal)
+                || line.StartsWith("while ", StringComparison.Ordinal)
+                || line.StartsWith("switch ", StringComparison.Ordinal)
+                || line.StartsWith("using ", StringComparison.Ordinal)
+                || line.StartsWith("return ", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var parenIndex = line.IndexOf('(');
+            var prefix = line.Substring(0, parenIndex).TrimEnd();
+            var lastSpace = prefix.LastIndexOf(' ');
+            if (lastSpace < 0)
+            {
+                return false;
+            }
+
+            name = prefix.Substring(lastSpace + 1).Trim();
+            return IsIdentifier(name);
+        }
+
+        private static bool TryMatchPropertyDeclaration(string line, int braceDepth, out string name)
+        {
+            name = null;
+            if (braceDepth <= 0)
+            {
+                return false;
+            }
+
+            if (line.IndexOf("{ get;", StringComparison.Ordinal) < 0
+                && line.IndexOf("{get;", StringComparison.Ordinal) < 0
+                && line.IndexOf("=>", StringComparison.Ordinal) < 0)
+            {
+                return false;
+            }
+
+            if (line.IndexOf('(') >= 0)
+            {
+                return false;
+            }
+
+            var bodyIndex = line.IndexOf('{');
+            if (bodyIndex < 0)
+            {
+                bodyIndex = line.IndexOf("=>", StringComparison.Ordinal);
+            }
+
+            if (bodyIndex <= 0)
+            {
+                return false;
+            }
+
+            var prefix = line.Substring(0, bodyIndex).TrimEnd();
+            var lastSpace = prefix.LastIndexOf(' ');
+            if (lastSpace < 0)
+            {
+                return false;
+            }
+
+            name = prefix.Substring(lastSpace + 1).Trim();
+            return IsIdentifier(name);
+        }
+
+        private static bool TryMatchFieldDeclaration(string line, int braceDepth, out string name)
+        {
+            name = null;
+            if (braceDepth <= 0)
+            {
+                return false;
+            }
+
+            if (!line.EndsWith(";", StringComparison.Ordinal)
+                || line.IndexOf('(') >= 0
+                || line.IndexOf("=>", StringComparison.Ordinal) >= 0
+                || line.IndexOf(" event ", StringComparison.Ordinal) >= 0)
+            {
+                return false;
+            }
+
+            var equalsIndex = line.IndexOf('=');
+            var declarationPart = equalsIndex >= 0 ? line.Substring(0, equalsIndex) : line.Substring(0, line.Length - 1);
+            var commaIndex = declarationPart.LastIndexOf(',');
+            if (commaIndex >= 0)
+            {
+                declarationPart = declarationPart.Substring(commaIndex + 1);
+            }
+
+            declarationPart = declarationPart.Trim();
+            var lastSpace = declarationPart.LastIndexOf(' ');
+            if (lastSpace < 0)
+            {
+                return false;
+            }
+
+            name = declarationPart.Substring(lastSpace + 1).Trim();
+            return IsIdentifier(name);
+        }
+
+        private static bool TryMatchKeywordIdentifier(string line, string keyword, out string name)
+        {
+            name = null;
+            var keywordIndex = line.IndexOf(keyword + " ", StringComparison.Ordinal);
+            if (keywordIndex < 0)
+            {
+                return false;
+            }
+
+            var afterKeyword = line.Substring(keywordIndex + keyword.Length + 1).TrimStart();
+            if (string.IsNullOrEmpty(afterKeyword))
+            {
+                return false;
+            }
+
+            var endIndex = 0;
+            while (endIndex < afterKeyword.Length && (char.IsLetterOrDigit(afterKeyword[endIndex]) || afterKeyword[endIndex] == '_'))
+            {
+                endIndex++;
+            }
+
+            if (endIndex <= 0)
+            {
+                return false;
+            }
+
+            name = afterKeyword.Substring(0, endIndex);
+            return IsIdentifier(name);
+        }
+
+        private static string RemoveLineComment(string line)
+        {
+            if (string.IsNullOrEmpty(line))
+            {
+                return string.Empty;
+            }
+
+            var commentIndex = line.IndexOf("//", StringComparison.Ordinal);
+            return commentIndex >= 0 ? line.Substring(0, commentIndex) : line;
+        }
+
+        private static bool IsIdentifier(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value) || (!char.IsLetter(value[0]) && value[0] != '_'))
+            {
+                return false;
+            }
+
+            for (var i = 1; i < value.Length; i++)
+            {
+                if (!char.IsLetterOrDigit(value[i]) && value[i] != '_')
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static object GetDeclarationIdentifierReflection(object node)
+        {
+            if (node == null)
+            {
+                return null;
+            }
+
+            var nodeType = node.GetType();
+            var typeName = nodeType.FullName ?? string.Empty;
+            var identifierProperty = nodeType.GetProperty("Identifier");
+            if (identifierProperty == null)
+            {
+                return null;
+            }
+
+            if (typeName.EndsWith(".BaseTypeDeclarationSyntax", StringComparison.Ordinal)
+                || typeName.EndsWith(".ClassDeclarationSyntax", StringComparison.Ordinal)
+                || typeName.EndsWith(".StructDeclarationSyntax", StringComparison.Ordinal)
+                || typeName.EndsWith(".InterfaceDeclarationSyntax", StringComparison.Ordinal)
+                || typeName.EndsWith(".EnumDeclarationSyntax", StringComparison.Ordinal)
+                || typeName.EndsWith(".DelegateDeclarationSyntax", StringComparison.Ordinal)
+                || typeName.EndsWith(".MethodDeclarationSyntax", StringComparison.Ordinal)
+                || typeName.EndsWith(".ConstructorDeclarationSyntax", StringComparison.Ordinal)
+                || typeName.EndsWith(".DestructorDeclarationSyntax", StringComparison.Ordinal)
+                || typeName.EndsWith(".PropertyDeclarationSyntax", StringComparison.Ordinal)
+                || typeName.EndsWith(".EventDeclarationSyntax", StringComparison.Ordinal)
+                || typeName.EndsWith(".VariableDeclaratorSyntax", StringComparison.Ordinal)
+                || typeName.EndsWith(".EnumMemberDeclarationSyntax", StringComparison.Ordinal))
+            {
+                return identifierProperty.GetValue(node, null);
+            }
+
+            return null;
         }
 
         private static void WriteManifestJson(string path, SnapshotManifest manifest)
