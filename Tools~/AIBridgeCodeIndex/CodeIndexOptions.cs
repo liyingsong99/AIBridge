@@ -13,7 +13,6 @@ namespace AIBridgeCodeIndex
         public int OwnerPid { get; set; }
         public long OwnerStartTicks { get; set; }
         public bool AutoRefresh { get; set; }
-        public string WarmupMode { get; set; }
         public string Worker { get; set; }
         public string InputPath { get; set; }
         public string Priority { get; set; }
@@ -48,7 +47,6 @@ namespace AIBridgeCodeIndex
             values.TryGetValue("worker", out var worker);
             values.TryGetValue("input", out var inputPath);
             values.TryGetValue("priority", out var priority);
-            values.TryGetValue("warmup-mode", out var warmupMode);
 
             var unityPid = 0;
             if (values.TryGetValue("unity-pid", out var unityPidText))
@@ -100,32 +98,11 @@ namespace AIBridgeCodeIndex
                 OwnerPid = ownerPid,
                 OwnerStartTicks = ownerStartTicks,
                 AutoRefresh = autoRefresh,
-                WarmupMode = NormalizeWarmupMode(warmupMode),
                 Worker = worker,
                 InputPath = inputPath,
                 Priority = string.IsNullOrWhiteSpace(priority) ? "normal" : priority,
                 WorkerCount = workerCount
             };
-        }
-
-        private static string NormalizeWarmupMode(string warmupMode)
-        {
-            if (string.IsNullOrWhiteSpace(warmupMode))
-            {
-                return "names";
-            }
-
-            if (string.Equals(warmupMode, "light", StringComparison.OrdinalIgnoreCase))
-            {
-                return "light";
-            }
-
-            if (string.Equals(warmupMode, "names", StringComparison.OrdinalIgnoreCase))
-            {
-                return "names";
-            }
-
-            return "names";
         }
     }
 }

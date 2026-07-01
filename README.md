@@ -7,7 +7,7 @@
 English | [中文](./README_CN.md)
 
 ![Unity 2019.4+ ~ 6000.x](https://img.shields.io/badge/Unity-2019.4%2B%20~%206000.x-black?style=flat-square&logo=unity)
-![Package 1.5.5](https://img.shields.io/badge/Package-1.5.5-5b6cff?style=flat-square)
+![Package 1.5.6](https://img.shields.io/badge/Package-1.5.6-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
@@ -440,7 +440,7 @@ $CLI code_index definition --query PlayerController
 
 The command is intentionally read-only: it does not rename, refactor, auto-fix, or write files. `symbol` returns declaration candidates and `definition` returns the best declaration position by name. After you get the path, read the returned `.cs` files directly for real analysis. `doctor` reports missing, empty, stale, or broken snapshot/name-index state directly. `compile unity` remains the final validation authority.
 
-After Code Index is enabled, Unity Editor can generate the snapshot and prewarm the daemon from `AIBridge > Settings > Code Index` after startup idle time. The same panel still controls snapshot auto refresh, warmup mode, PackageCache source inclusion, ignored assembly/source-path patterns, and quit cleanup. In the lightweight model, `warmup` only ensures snapshot metadata and name indexes are ready for fast declaration-name lookup. `status` and `doctor` focus on snapshot existence, name-index readability, assembly count, source-file count, and stale state.
+After Code Index is enabled, Unity Editor can generate the snapshot and prewarm the daemon from `AIBridge > Settings > Code Index` after startup idle time. The same panel still controls snapshot auto refresh, PackageCache source inclusion, ignored assembly/source-path patterns, and quit cleanup. In the lightweight model, `warmup` only ensures snapshot metadata and name indexes are ready for fast declaration-name lookup. `status` and `doctor` focus on snapshot existence, name-index readability, assembly count, source-file count, and stale state.
 
 The following capabilities were intentionally removed from the public `code_index` surface because they are often too slow, too noisy, or too fragile in large projects:
 

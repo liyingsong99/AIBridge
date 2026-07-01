@@ -65,13 +65,6 @@ namespace AIBridge.Editor
                     0,
                     60);
 
-                using (new EditorGUI.DisabledScope(true))
-                {
-                    settings.WarmupMode = EditorGUILayout.TextField(
-                        AIBridgeEditorText.T("Warmup Mode", "预热模式"),
-                        string.IsNullOrEmpty(settings.WarmupMode) ? AIBridgeProjectSettings.DefaultCodeIndexWarmupMode : settings.WarmupMode);
-                }
-
                 settings.AutoRefreshOnFileChange = EditorGUILayout.Toggle(
                     AIBridgeEditorText.T("Auto Refresh On File Change", "文件变化后自动刷新"),
                     settings.AutoRefreshOnFileChange);
@@ -120,7 +113,6 @@ namespace AIBridge.Editor
             if (settingsChanged)
             {
                 settings.WarmupDelaySeconds = Mathf.Max(0, settings.WarmupDelaySeconds);
-                settings.WarmupMode = AIBridgeProjectSettings.DefaultCodeIndexWarmupMode;
                 settings.CleanupModeOnQuit = AIBridgeProjectSettings.NormalizeCodeIndexCleanupMode(settings.CleanupModeOnQuit);
                 settings.IgnoredAssemblyPatterns = settings.IgnoredAssemblyPatterns ?? AIBridgeProjectSettings.DefaultCodeIndexIgnoredAssemblyPatterns;
                 settings.IgnoredSourcePathPatterns = settings.IgnoredSourcePathPatterns ?? AIBridgeProjectSettings.DefaultCodeIndexIgnoredSourcePathPatterns;

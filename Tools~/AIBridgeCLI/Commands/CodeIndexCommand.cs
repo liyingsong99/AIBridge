@@ -1475,7 +1475,8 @@ namespace AIBridgeCLI.Commands
             AddContentPart(parts, "assembly[" + index + "].assemblyId", ReadSnapshotString(reader));
             AddContentPart(parts, "assembly[" + index + "].snapshotFile", ReadSnapshotString(reader));
             AddContentPart(parts, "assembly[" + index + "].nameIndexFile", ReadSnapshotString(reader));
-            AddContentPart(parts, "assembly[" + index + "].tokenIndexFile", ReadSnapshotString(reader));
+            // 兼容旧 snapshot 二进制结构，跳过遗留的 tokenIndexFile 槽位。
+            ReadSnapshotString(reader);
             AddContentPart(parts, "assembly[" + index + "].outputPath", ReadSnapshotString(reader));
             AddContentPart(parts, "assembly[" + index + "].asmdefPath", ReadSnapshotString(reader));
             AddContentPart(parts, "assembly[" + index + "].languageVersion", ReadSnapshotString(reader));
@@ -2333,7 +2334,6 @@ namespace AIBridgeCLI.Commands
             public long OwnerStartTicks { get; private set; }
             public bool Enabled { get; private set; }
             public bool AutoRefresh { get; private set; }
-            public string WarmupMode { get; private set; }
             public string ProcessPriority { get; private set; }
             public bool IncludeSnapshotOnReset { get; private set; }
 
@@ -2369,7 +2369,6 @@ namespace AIBridgeCLI.Commands
                     OwnerStartTicks = ownerStartTicks,
                     Enabled = GetConfigBool(config, "enableCodeIndex", false),
                     AutoRefresh = ResolveBool(options, "auto-refresh", GetConfigBool(config, "autoRefreshOnFileChange", true)),
-                    WarmupMode = ResolveString(options, "warmup-mode", GetConfigString(config, "warmupMode", "names")),
                     ProcessPriority = ResolveString(options, "priority", "normal"),
                     IncludeSnapshotOnReset = ResolveBool(options, "include-snapshot", false),
                     HasUnityProjectMarkers = Directory.Exists(Path.Combine(projectRoot, "Assets"))
@@ -2646,8 +2645,6 @@ namespace AIBridgeCLI.Commands
 
                 startInfo.ArgumentList.Add("--auto-refresh");
                 startInfo.ArgumentList.Add(context.AutoRefresh ? "true" : "false");
-                startInfo.ArgumentList.Add("--warmup-mode");
-                startInfo.ArgumentList.Add(string.IsNullOrWhiteSpace(context.WarmupMode) ? "names" : context.WarmupMode);
             }
 
             public void AddSnapshotWorkerArguments(ProcessStartInfo startInfo, CodeIndexContext context, string inputPath, int workers)

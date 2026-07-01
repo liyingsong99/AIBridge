@@ -18,7 +18,6 @@ namespace AIBridgeCodeIndex
     internal sealed class CodeIndexWorkspace : IDisposable
     {
         private const int MaxSymbolResults = 50;
-        private const int MaxTokenDocumentCacheEntries = 256;
         private const int SchemaVersion = 2;
         private const int ManifestFormatKind = 1;
         private const int AssemblyFormatKind = 2;
@@ -1607,13 +1606,14 @@ namespace AIBridgeCodeIndex
 
         private static AssemblySnapshot ReadAssemblyRecord(BinaryReader reader)
         {
+            // 兼容旧 snapshot 的 tokenIndexFile 槽位；当前实现不再消费 token 索引。
+            ReadString(reader);
             return new AssemblySnapshot
             {
                 AssemblyName = ReadString(reader),
                 AssemblyId = ReadString(reader),
                 SnapshotFile = ReadString(reader),
                 NameIndexFile = ReadString(reader),
-                TokenIndexFile = ReadString(reader),
                 OutputPath = ReadString(reader),
                 AsmdefPath = ReadString(reader),
                 LanguageVersion = ReadString(reader),
@@ -1727,7 +1727,6 @@ namespace AIBridgeCodeIndex
             AddContentPart(parts, "assembly[" + index + "].assemblyId", record.AssemblyId);
             AddContentPart(parts, "assembly[" + index + "].snapshotFile", record.SnapshotFile);
             AddContentPart(parts, "assembly[" + index + "].nameIndexFile", record.NameIndexFile);
-            AddContentPart(parts, "assembly[" + index + "].tokenIndexFile", record.TokenIndexFile);
             AddContentPart(parts, "assembly[" + index + "].outputPath", record.OutputPath);
             AddContentPart(parts, "assembly[" + index + "].asmdefPath", record.AsmdefPath);
             AddContentPart(parts, "assembly[" + index + "].languageVersion", record.LanguageVersion);
@@ -1969,7 +1968,6 @@ namespace AIBridgeCodeIndex
             public string AssemblyId;
             public string SnapshotFile;
             public string NameIndexFile;
-            public string TokenIndexFile;
             public string OutputPath;
             public string AsmdefPath;
             public string LanguageVersion;

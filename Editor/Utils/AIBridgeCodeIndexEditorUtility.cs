@@ -299,14 +299,12 @@ namespace AIBridge.Editor
             try
             {
                 var settings = AIBridgeProjectSettings.Instance.CodeIndex;
-                var warmupMode = AIBridgeProjectSettings.NormalizeCodeIndexWarmupMode(settings.WarmupMode);
                 var directory = GetIndexDirectory();
                 Directory.CreateDirectory(directory);
                 var json = "{\n"
                            + "  \"enableCodeIndex\": " + ToJsonBool(settings.EnableCodeIndex) + ",\n"
                            + "  \"prewarmOnUnityStartup\": " + ToJsonBool(settings.PrewarmOnUnityStartup) + ",\n"
                            + "  \"warmupDelaySeconds\": " + Mathf.Max(0, settings.WarmupDelaySeconds) + ",\n"
-                           + "  \"warmupMode\": \"" + EscapeJson(warmupMode) + "\",\n"
                            + "  \"autoRefreshOnFileChange\": " + ToJsonBool(settings.AutoRefreshOnFileChange) + ",\n"
                            + "  \"cleanupModeOnQuit\": \"" + EscapeJson(settings.CleanupModeOnQuit) + "\",\n"
                            + "  \"includePackageCacheSourceAssemblies\": " + ToJsonBool(settings.IncludePackageCacheSourceAssemblies) + ",\n"

@@ -402,6 +402,7 @@ namespace AIBridgeCLI.Tests
 
             AssertContains(help, "  symbol", "Code Index help should include symbol.");
             AssertContains(help, "  definition", "Code Index help should include definition.");
+            AssertTrue(help.IndexOf("warmup-mode", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not expose warmup-mode.");
             AssertTrue(help.IndexOf("  references", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include references.");
             AssertTrue(help.IndexOf("  implementations", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include implementations.");
             AssertTrue(help.IndexOf("  derived", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include derived.");

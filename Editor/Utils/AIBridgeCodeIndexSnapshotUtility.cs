@@ -30,7 +30,6 @@ namespace AIBridge.Editor
         private const string AssembliesDirectoryName = "assemblies";
         private const string IndexDirectoryName = "index";
         private const string NamesDirectoryName = "names";
-        private const string TokensDirectoryName = "tokens";
         private const string ManifestBinFileName = "manifest.bin";
         private const string ManifestJsonFileName = "manifest.json";
         private const string AssemblySnapshotExtension = ".bin";
@@ -40,7 +39,6 @@ namespace AIBridge.Editor
         private const int StartupMaxWorkerCount = 2;
         private const int ManualMaxWorkerCount = 4;
         private const int SnapshotWorkerTimeoutMs = 600000;
-        private static readonly Regex TokenRegex = new Regex("[A-Za-z_][A-Za-z0-9_]*", RegexOptions.Compiled);
 
 #if UNITY_EDITOR
         public static string GetSnapshotDirectory()
@@ -216,7 +214,6 @@ namespace AIBridge.Editor
             AppendJsonProperty(builder, "assemblyId", input.AssemblyId, true, 6);
             AppendJsonProperty(builder, "snapshotFile", input.SnapshotFile, true, 6);
             AppendJsonProperty(builder, "nameIndexFile", input.NameIndexFile, true, 6);
-            AppendJsonProperty(builder, "tokenIndexFile", input.TokenIndexFile, true, 6);
             AppendJsonProperty(builder, "outputPath", input.OutputPath, true, 6);
             AppendJsonProperty(builder, "asmdefPath", input.AsmdefPath, true, 6);
             AppendJsonProperty(builder, "languageVersion", input.LanguageVersion, true, 6);
@@ -409,7 +406,6 @@ namespace AIBridge.Editor
                     AssemblyId = assemblyId,
                     SnapshotFile = AssembliesDirectoryName + "/" + assemblyId + AssemblySnapshotExtension,
                     NameIndexFile = IndexDirectoryName + "/" + NamesDirectoryName + "/" + assemblyId + IndexExtension,
-                    TokenIndexFile = IndexDirectoryName + "/" + TokensDirectoryName + "/" + assemblyId + IndexExtension,
                     OutputPath = ReadString(assembly, "outputPath"),
                     AsmdefPath = ReadFirstString(assembly, new[] { "definitionFilePath", "asmdefPath" }),
                     LanguageVersion = DetermineLanguageVersion(assembly, unityVersion),
@@ -442,10 +438,9 @@ namespace AIBridge.Editor
                 var snapshotDirectory = request.SnapshotDirectory;
                 var assembliesDirectory = Path.Combine(snapshotDirectory, AssembliesDirectoryName);
                 var nameIndexDirectory = Path.Combine(snapshotDirectory, IndexDirectoryName, NamesDirectoryName);
-                var tokenIndexDirectory = Path.Combine(snapshotDirectory, IndexDirectoryName, TokensDirectoryName);
                 Directory.CreateDirectory(assembliesDirectory);
                 Directory.CreateDirectory(nameIndexDirectory);
-                Directory.CreateDirectory(tokenIndexDirectory);
+                CleanupLegacyTokenIndexDirectory(snapshotDirectory);
 
                 var previousState = ReadPreviousSnapshotState(snapshotDirectory);
                 var fileHashCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -459,8 +454,7 @@ namespace AIBridge.Editor
                     var unchanged = previousState.AssemblyHashes.TryGetValue(record.AssemblyId, out previousHash)
                                     && string.Equals(previousHash, record.AssemblyHash, StringComparison.OrdinalIgnoreCase)
                                     && File.Exists(Path.Combine(snapshotDirectory, record.SnapshotFile))
-                                    && File.Exists(Path.Combine(snapshotDirectory, record.NameIndexFile))
-                                    && File.Exists(Path.Combine(snapshotDirectory, record.TokenIndexFile));
+                                    && File.Exists(Path.Combine(snapshotDirectory, record.NameIndexFile));
                     if (!unchanged)
                     {
                         changedRecords.Add(record);
@@ -478,7 +472,7 @@ namespace AIBridge.Editor
                         RunWithSnapshotThreadPriority(request.Manual, () =>
                         {
                             WriteAssemblySnapshot(Path.Combine(snapshotDirectory, record.SnapshotFile), record);
-                            WriteTokenIndexes(request.ProjectRoot, snapshotDirectory, record);
+                            WriteNameIndex(request.ProjectRoot, snapshotDirectory, record);
                             Interlocked.Increment(ref rewritten);
                         });
                     });
@@ -707,7 +701,6 @@ namespace AIBridge.Editor
                 AssemblyId = input.AssemblyId,
                 SnapshotFile = input.SnapshotFile,
                 NameIndexFile = input.NameIndexFile,
-                TokenIndexFile = input.TokenIndexFile,
                 OutputPath = NormalizePath(projectRoot, input.OutputPath),
                 AsmdefPath = NormalizePath(projectRoot, input.AsmdefPath),
                 LanguageVersion = input.LanguageVersion,
@@ -1014,7 +1007,7 @@ namespace AIBridge.Editor
             WriteString(writer, record.AssemblyId);
             WriteString(writer, record.SnapshotFile);
             WriteString(writer, record.NameIndexFile);
-            WriteString(writer, record.TokenIndexFile);
+            WriteString(writer, string.Empty);
             WriteString(writer, record.OutputPath);
             WriteString(writer, record.AsmdefPath);
             WriteString(writer, record.LanguageVersion);
@@ -1081,13 +1074,10 @@ namespace AIBridge.Editor
             }
         }
 
-        private static void WriteTokenIndexes(string projectRoot, string snapshotDirectory, AssemblyRecord record)
+        private static void WriteNameIndex(string projectRoot, string snapshotDirectory, AssemblyRecord record)
         {
-            List<string> nameEntries;
-            List<string> tokenEntries;
-            BuildTokenEntries(projectRoot, record, out nameEntries, out tokenEntries);
+            var nameEntries = BuildNameEntries(projectRoot, record);
             WriteTextIndex(Path.Combine(snapshotDirectory, record.NameIndexFile), record, namesOnly: true, entries: nameEntries);
-            WriteTextIndex(Path.Combine(snapshotDirectory, record.TokenIndexFile), record, namesOnly: false, entries: tokenEntries);
         }
 
         private static void WriteTextIndex(string path, AssemblyRecord record, bool namesOnly, List<string> entries)
@@ -1110,14 +1100,9 @@ namespace AIBridge.Editor
             AtomicReplace(tempPath, path);
         }
 
-        private static void BuildTokenEntries(
-            string projectRoot,
-            AssemblyRecord record,
-            out List<string> nameEntries,
-            out List<string> tokenEntries)
+        private static List<string> BuildNameEntries(string projectRoot, AssemblyRecord record)
         {
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var tokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             for (var i = 0; i < record.Sources.Count; i++)
             {
                 var fullPath = ResolveSnapshotPath(projectRoot, record.Sources[i].Path);
@@ -1127,30 +1112,11 @@ namespace AIBridge.Editor
                 }
 
                 CollectDeclarationNameEntries(fullPath, record.Sources[i].Path, names);
-                var lineNumber = 0;
-                var fileTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var line in File.ReadLines(fullPath))
-                {
-                    lineNumber++;
-                    var matches = TokenRegex.Matches(line);
-                    for (var j = 0; j < matches.Count; j++)
-                    {
-                        var value = matches[j].Value;
-                        fileTokens.Add(value);
-                    }
-                }
-
-                foreach (var value in fileTokens)
-                {
-                    // references 查询只需要 token -> file 候选集合，行号写 0 保持旧解析格式兼容。
-                    tokens.Add(value + "|" + record.Sources[i].Path + "|0");
-                }
             }
 
-            nameEntries = new List<string>(names);
+            var nameEntries = new List<string>(names);
             nameEntries.Sort(StringComparer.OrdinalIgnoreCase);
-            tokenEntries = new List<string>(tokens);
-            tokenEntries.Sort(StringComparer.OrdinalIgnoreCase);
+            return nameEntries;
         }
 
         private static void CollectDeclarationNameEntries(string fullPath, string relativePath, HashSet<string> names)
@@ -1582,7 +1548,6 @@ namespace AIBridge.Editor
                 AppendJsonProperty(builder, "assemblyId", record.AssemblyId, true, 6);
                 AppendJsonProperty(builder, "snapshotFile", record.SnapshotFile, true, 6);
                 AppendJsonProperty(builder, "nameIndexFile", record.NameIndexFile, true, 6);
-                AppendJsonProperty(builder, "tokenIndexFile", record.TokenIndexFile, true, 6);
                 AppendJsonProperty(builder, "sourceFileCount", record.Sources.Count, true, 6);
                 AppendJsonProperty(builder, "referenceCount", record.References.Count, true, 6);
                 AppendJsonProperty(builder, "definesHash", record.DefinesHash, true, 6);
@@ -1770,13 +1735,14 @@ namespace AIBridge.Editor
 
         private static AssemblyRecord ReadBinaryAssemblyRecord(BinaryReader reader)
         {
+            // 兼容旧 snapshot 的 tokenIndexFile 槽位；当前实现仅保留 name index。
+            ReadBinaryString(reader);
             var record = new AssemblyRecord
             {
                 AssemblyName = ReadBinaryString(reader),
                 AssemblyId = ReadBinaryString(reader),
                 SnapshotFile = ReadBinaryString(reader),
                 NameIndexFile = ReadBinaryString(reader),
-                TokenIndexFile = ReadBinaryString(reader),
                 OutputPath = ReadBinaryString(reader),
                 AsmdefPath = ReadBinaryString(reader),
                 LanguageVersion = ReadBinaryString(reader),
@@ -2191,7 +2157,6 @@ namespace AIBridge.Editor
             AddContentPart(parts, "assembly[" + index + "].assemblyId", record.AssemblyId);
             AddContentPart(parts, "assembly[" + index + "].snapshotFile", record.SnapshotFile);
             AddContentPart(parts, "assembly[" + index + "].nameIndexFile", record.NameIndexFile);
-            AddContentPart(parts, "assembly[" + index + "].tokenIndexFile", record.TokenIndexFile);
             AddContentPart(parts, "assembly[" + index + "].outputPath", record.OutputPath);
             AddContentPart(parts, "assembly[" + index + "].asmdefPath", record.AsmdefPath);
             AddContentPart(parts, "assembly[" + index + "].languageVersion", record.LanguageVersion);
@@ -2557,7 +2522,6 @@ namespace AIBridge.Editor
             public string AssemblyId;
             public string SnapshotFile;
             public string NameIndexFile;
-            public string TokenIndexFile;
             public string OutputPath;
             public string AsmdefPath;
             public string LanguageVersion;
@@ -2617,7 +2581,6 @@ namespace AIBridge.Editor
             public string AssemblyId;
             public string SnapshotFile;
             public string NameIndexFile;
-            public string TokenIndexFile;
             public string OutputPath;
             public string AsmdefPath;
             public string LanguageVersion;
@@ -2638,6 +2601,29 @@ namespace AIBridge.Editor
             public string AssemblyHash;
             public long LastWriteTimeTicks;
             public string ExcludeReason;
+        }
+
+        private static void CleanupLegacyTokenIndexDirectory(string snapshotDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(snapshotDirectory))
+            {
+                return;
+            }
+
+            var path = Path.Combine(snapshotDirectory, IndexDirectoryName, "tokens");
+            if (!Directory.Exists(path))
+            {
+                return;
+            }
+
+            try
+            {
+                Directory.Delete(path, true);
+            }
+            catch
+            {
+                // 旧 token 索引目录只是清理项，删除失败时不阻塞新的 name index 生成。
+            }
         }
 
         public sealed class FileState

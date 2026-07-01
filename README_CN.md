@@ -7,7 +7,7 @@
 [English](./README.md) | 中文
 
 ![Unity 2019.4+ ~ 6000.x](https://img.shields.io/badge/Unity-2019.4%2B%20~%206000.x-black?style=flat-square&logo=unity)
-![Package 1.5.5](https://img.shields.io/badge/Package-1.5.5-5b6cff?style=flat-square)
+![Package 1.5.6](https://img.shields.io/badge/Package-1.5.6-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
@@ -440,7 +440,7 @@ $CLI code_index definition --query PlayerController
 
 该命令刻意保持只读：不做 rename、重构、自动修复或文件写入。`symbol` 只返回声明候选，`definition` 只按名称返回最佳声明位置。查到路径后，由 AI 继续直接读取 `.cs` 文件做真实分析。`doctor` 会直接报告快照缺失、空快照、过期或 name index 缺失/损坏问题。最终编译权威仍然是 `compile unity`。
 
-启用 Code Index 后，Unity Editor 可在 `AIBridge > Settings > Code Index` 中生成快照、配置启动后空闲预热、预热模式、快照自动刷新、PackageCache 源码是否纳入索引、忽略程序集/源码路径规则和退出清理策略。轻量模式下，`warmup` 只保证 snapshot 元数据和 name index 已就绪，用于快速声明名匹配。`status` 和 `doctor` 主要聚焦快照是否存在、name index 是否完整可读、程序集数、源码文件数与 stale 状态。
+启用 Code Index 后，Unity Editor 可在 `AIBridge > Settings > Code Index` 中生成快照、配置启动后空闲预热、快照自动刷新、PackageCache 源码是否纳入索引、忽略程序集/源码路径规则和退出清理策略。轻量模式下，`warmup` 只保证 snapshot 元数据和 name index 已就绪，用于快速声明名匹配。`status` 和 `doctor` 主要聚焦快照是否存在、name index 是否完整可读、程序集数、源码文件数与 stale 状态。
 
 以下能力已明确从公开 `code_index` 能力面移除，因为它们在大型工程里通常过慢、噪音太大，或可靠性不够稳定：
 
