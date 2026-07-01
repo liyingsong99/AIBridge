@@ -1391,14 +1391,14 @@ namespace AIBridge.Editor
             {
                 return AIBridgeEditorText.For(
                     language,
-                    "Code Index: enabled. Use `aibridge-code-index` only for fast C# declaration-name lookup when the query can be expressed as `symbol` or `definition`. Treat it as a path and declaration locator for class, interface, enum, field, property, method, constructor, or delegate names, then read the returned `.cs` files yourself for follow-up analysis. For Unity imported asset or script asset name/type lookup, use `asset search/find --format paths` when AIBridge and the Editor are available. For plain file content search (literal strings, comments, configs, YAML, Prefab/Scene text, docs, non-C# content), use your host's own text-search and file-read tools (for example ripgrep `rg -n`).",
-                    "Code Index：已启用。`aibridge-code-index` 只用于快速 C# 声明名检索，查询面仅限 `symbol` 和 `definition`。它的职责是把类、接口、枚举、字段、属性、方法、构造器、delegate 等声明名快速定位到声明位置和 `.cs` 文件；拿到路径后继续由 AI 自己读取文件分析。Unity 已导入资源或脚本资源的名称/类型查找中，当 AIBridge 和 Editor 可用时使用 `asset search/find --format paths`。普通文件内容搜索（字面量、注释、配置、YAML、Prefab/Scene 文本、文档、非 C# 内容）使用宿主自带的文本搜索与文件读取工具（如 ripgrep `rg -n`）。");
+                    "Code Index: enabled. Use `aibridge-code-index` only for fast C# declaration-name lookup when the query can be expressed as `symbol` or `definition`. Treat it as a path and declaration locator for class, interface, enum, field, property, method, constructor, or delegate names, then read the returned `.cs` files yourself for follow-up analysis. For Unity imported asset or script asset name/type lookup, use `asset search/find --format paths` when AIBridge and the Editor are available.",
+                    "Code Index：已启用。`aibridge-code-index` 只用于快速 C# 声明名检索，查询面仅限 `symbol` 和 `definition`。它的职责是把类、接口、枚举、字段、属性、方法、构造器、delegate 等声明名快速定位到声明位置和 `.cs` 文件；拿到路径后继续由 AI 自己读取文件分析。Unity 已导入资源或脚本资源的名称/类型查找中，当 AIBridge 和 Editor 可用时使用 `asset search/find --format paths`。");
             }
 
             return AIBridgeEditorText.For(
                 language,
-                "Code Index: disabled. Do not call `code_index`; use `asset search/find --format paths` for Unity imported asset name/type lookup when AIBridge and the Editor are available; for file content search (literal strings, comments, configs, YAML, Prefab/Scene text, docs, non-C# content), use your host's own text-search and file-read tools (for example ripgrep `rg -n`).",
-                "Code Index：已关闭。不要调用 `code_index`；当 AIBridge 和 Editor 可用时，Unity 已导入资源的名称/类型查找使用 `asset search/find --format paths`；文件内容搜索（字面量、注释、配置、YAML、Prefab/Scene 文本、文档、非 C# 内容）使用宿主自带的文本搜索与文件读取工具（如 ripgrep `rg -n`）。");
+                "Code Index: disabled. Do not call `code_index`; use `asset search/find --format paths` for Unity imported asset name/type lookup when AIBridge and the Editor are available.",
+                "Code Index：已关闭。不要调用 `code_index`；当 AIBridge 和 Editor 可用时，Unity 已导入资源的名称/类型查找使用 `asset search/find --format paths`。");
         }
 
         private static bool ShouldInstallSkillDirectory(string sourceSkillDir)

@@ -124,7 +124,7 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("skipped_requires_external_executor", exporter);
             StringAssert.Contains("workflow status --run <runId>", exporter);
             StringAssert.Contains("Skill Routing And Scope", exporter);
-            StringAssert.Contains("emit short visible status blocks", exporter);
+            StringAssert.Contains("Treat Preflight / Skill Routing as internal routing", exporter);
             StringAssert.Contains("Skill listing policy", exporter);
             StringAssert.Contains("`【模式：...】`", exporter);
             StringAssert.Contains("`-> ...`", exporter);

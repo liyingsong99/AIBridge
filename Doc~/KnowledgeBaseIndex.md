@@ -139,11 +139,11 @@
 - `compile dotnet` 只是额外检查，不是 Unity 编译替代品。
 - `test run` 必须在 Editor 处于 Edit Mode 时启动；若当前处于 Play Mode，会直接失败并明确提示先退出 Play Mode。
 - `test run` 在并发请求下会持久化队列到 `.aibridge/test-runs/state.json`；已确认的 run 若后续变成 `unknown`，CLI 会快速失败并提示状态丢失，而不是一直等完整 timeout。
-- `code_index` 已收缩为默认关闭的只读轻量声明名检索入口；公开查询面只保留 `symbol` 和 `definition`，只负责把 C# 声明名快速定位到声明位置和文件路径，后续分析由 AI 自己读取 `.cs` 文件完成。
+- `code_index` 已收缩为默认关闭的只读轻量声明名检索入口；公开查询面只保留 `symbol` 和 `definition`，只负责把 C# 声明名快速定位到声明位置和文件路径，后续分析由 AI 自己读取 `.cs` 文件完成；Unity 已导入资源名称/类型查找继续使用 `asset search/find --format paths`。
 - `workflow run-cli` 不会自动执行 `agent` / `manual`，这些步骤仍需要外部执行器回流。
 - RootRule 必须简洁写明 `$CLI` 指向项目本地 AIBridge CLI 路径，并给出 PowerShell 调用方式。
 - `exec run --stdin` / `exec batch --stdin` 只面向外部 host 工具；`harness status` 这类 AIBridge 命令直接调用。stdin 契约是 JSON 请求，`command` 只放可执行文件名，`args` / `queries` / `globs` / `paths` 承载参数。包含引号、反斜杠或正则等转义敏感内容时，优先用 PowerShell 对象 `ConvertTo-Json` 或 `--request-file`，不要手写 inline JSON 字符串。
-- `aibridge-development-workflow` 使用短入口，Harness 采用 compact gate；完整探测矩阵、fallback、resume 和证据 schema 移入 `harness-readiness-detail.md` 按需加载。
+- `aibridge-development-workflow` 使用短入口，Harness 采用 compact gate；Preflight / Skill Routing 只作为内部选路步骤，对外默认直接进入业务分支输出；完整探测矩阵、fallback、resume 和证据 schema 移入 `harness-readiness-detail.md` 按需加载。
 - Runtime HTTP transport 正常运行时不再轮询 file command 目录，也不为 HTTP command 默认写 result 文件；旧 File transport 仅作为 HTTP 未运行时的兼容回退路径。
 - Runtime HTTP command 成功、timeout、Runtime not-ready 和 CLI cleanup 都会关闭 pending id，迟到的 HTTP 异步结果不会回落到 file result 落盘。
 - Runtime heartbeat 默认间隔为 2 秒；File heartbeat stale 判定保留 15 秒窗口，不会因默认心跳降频触发误判。

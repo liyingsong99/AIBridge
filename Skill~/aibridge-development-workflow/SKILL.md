@@ -29,28 +29,21 @@ description: "AIBridge/Unity 多分支开发工作流入口。Use when a task re
 
 - Harness Preflight gate 走 compact-first：优先 RootRule 摘要或 `$CLI harness status` 默认输出；fresh 且不影响当前工具选择时默认不单独输出，也不读取完整 snapshot。
 - 不把 stale snapshot、静态检查、`dotnet build` 或推断说成当前能力或 Unity 验证通过；`compile dotnet` 只能作为额外检查，不能替代 `$CLI compile unity`。
-- 只有在需要快速定位 C# 声明文件或声明位置时，才在 `aibridge-code-index` 已安装且项目规则启用 Code Index 的前提下加载该 Skill；其余代码分析直接使用宿主搜索/读取工具并自行读 `.cs` 文件。
-- Unity 已导入资源路径查找优先 `$CLI asset search/find --format paths`（经 Unity 资源数据库解析）；普通仓库文件和路径正则用宿主自带的文件列举/搜索工具（如 `rg --files`）。
-- 字面量、注释、配置、YAML、Prefab/Scene 文本和非 C# 内容搜索使用宿主自带的文本搜索与文件读取工具（如 ripgrep `rg -n`）。
+- 只有在需要快速定位 C# 声明文件或声明位置时，才在 `aibridge-code-index` 已安装且项目规则启用 Code Index 的前提下加载该 Skill；其余代码分析直接自行读 `.cs` 文件。
+- Unity 已导入资源路径查找优先 `$CLI asset search/find --format paths`（经 Unity 资源数据库解析）。
 - `agent` / `manual` step 需要当前 AI harness、外部执行器或人工完成，并用 `workflow import` 回传结构化结果；AIBridge CLI 不会自动执行这些步骤。
 
 ## 输出策略
 
-进入 workflow 时输出一个入口块；进入业务模式时输出一个模式块。active Skills 没变化时不要反复列。
+Preflight / Skill Routing 只做内部选路，对外默认直接进入当前业务分支块。active Skills 没变化时不要反复列。
 
 ```text
-【入口：Preflight / Skill 路由】
-baselineSkills：aibridge-development-workflow
-activeSkills：<当前分支 Skills>
-主分支：<启用分支之一>
-理由：<进入依据>
-
 【模式：<分支>】
 Skills：<当前模式 Skills>
 已加载规范：<当前 reference>
 输出目标：<本模式验收目标>
 ```
 
-执行进度、检查清单、Mode Exit 和最终用户回复不列 `使用 Skills`、已释放 Skills 或下一步建议 Skills。只有跨模式续跑、外部 agent 交接或 `workflow import` 需要结构化结果时，才在 `SkillHandoff` 数据中记录 releasedSkills / nextRecommendedSkills。
+若 harness 缺失、过期、降级、阻塞，或能力状态改变工具选择，把必要的工具策略或阻塞原因内联到当前业务分支输出，不单独输出入口块。执行进度、检查清单、Mode Exit 和最终用户回复不列 `使用 Skills`、已释放 Skills 或下一步建议 Skills。只有跨模式续跑、外部 agent 交接或 `workflow import` 需要结构化结果时，才在 `SkillHandoff` 数据中记录 releasedSkills / nextRecommendedSkills。
 
 最终回复只报告实际改动、验证结果、失败/阻塞项、未验证原因和剩余风险；不重复完整流程表。

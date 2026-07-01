@@ -11,7 +11,7 @@
 3. **生成版分流为安装事实**：安装到 assistant Skill 目录后的 `branch-selection.md` 由 `WorkflowPreferenceRenderer` 根据项目偏好生成。source fallback 只保留与生成版一致的通用口径，不能写旧的 released/next Skills 面向用户输出规则。
 4. **Harness compact gate**：默认使用 RootRule 摘要或 `$CLI harness status` compact 输出。snapshot `fresh` 且不影响工具选择时不读取完整 snapshot，不输出泛化可用性宣告。
 5. **细节后置**：只有 snapshot 缺失、过期、无效、resume、外部 executor，或任务需要未确认能力时，才读取 `harness-readiness-detail.md`。
-6. **输出收敛**：入口块和模式块列当前 Skills；执行进度、Mode Exit 和最终回复不反复列 `使用 Skills`、已释放 Skills 或下一步建议 Skills。结构化续跑信息只放入 `SkillHandoff`。
+6. **输出收敛**：Preflight 只做内部选路，对外默认直接进入模式块；执行进度、Mode Exit 和最终回复不反复列 `使用 Skills`、已释放 Skills 或下一步建议 Skills。结构化续跑信息只放入 `SkillHandoff`。
 
 ## Drift Canary
 
@@ -21,7 +21,7 @@
 - compact `harness-readiness.md` 不包含完整探测矩阵、fallback 或 resume 细节。
 - detail 文件包含 `最小探测矩阵`、`Fallback 规则`、`Resume 规则`、`EvidenceRef` 和 `CommandEvidence`。
 - source fallback `branch-selection.md` 的静态分流/Skill 列出策略与生成版保持一致。
-- 安装生成版 `branch-selection.md` 不要求最终回复列 `使用 Skills`、已释放 Skills 或下一步建议 Skills。
+- 安装生成版 `branch-selection.md` 不要求对外展示 Preflight 入口块，也不要求最终回复列 `使用 Skills`、已释放 Skills 或下一步建议 Skills。
 - `compile dotnet` 不能替代 `$CLI compile unity`。
 
 ## 维护入口

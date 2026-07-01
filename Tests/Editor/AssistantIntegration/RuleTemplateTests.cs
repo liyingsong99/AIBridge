@@ -60,6 +60,7 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("read the returned `.cs` files yourself", rootRule);
             StringAssert.Contains("asset search/find --format paths", rootRule);
             StringAssert.Contains("Unity imported asset", rootRule);
+            StringAssert.DoesNotContain("plain file content search", rootRule);
             StringAssert.Contains("this root rule or the workflow", rootRule);
             StringAssert.Contains("probes harness readiness", rootRule);
             StringAssert.Contains("Harness capability snapshot", rootRule);
@@ -96,6 +97,7 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("Code Index: disabled", rootRule);
             StringAssert.Contains("Do not call `code_index`", rootRule);
             StringAssert.Contains("asset search/find --format paths", rootRule);
+            StringAssert.DoesNotContain("file content search", rootRule);
         }
 
         [Test]
@@ -157,7 +159,7 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("自行读 `.cs` 文件", workflowSkill);
             StringAssert.Contains("Unity 已导入资源路径查找", workflowSkill);
             StringAssert.Contains("asset search/find --format paths", workflowSkill);
-            StringAssert.Contains("宿主自带的文本搜索与文件读取工具", workflowSkill);
+            StringAssert.DoesNotContain("宿主自带的文本搜索与文件读取工具", workflowSkill);
             StringAssert.DoesNotContain("text_index", workflowSkill);
             StringAssert.Contains("$CLI compile unity", workflowSkill);
             StringAssert.Contains("compile dotnet", workflowSkill);
@@ -178,11 +180,11 @@ namespace AIBridge.Editor.Tests
 
             var branchSelectionPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "branch-selection.md");
             var branchSelection = File.ReadAllText(branchSelectionPath);
-            StringAssert.Contains("【入口：Preflight / Skill 路由】", branchSelection);
             StringAssert.Contains("【模式：<启用分支之一>】", branchSelection);
-            StringAssert.Contains("aibridge-code-index、宿主搜索/读取工具", branchSelection);
+            StringAssert.Contains("aibridge-code-index、按需 aibridge-workflow-orchestration", branchSelection);
             StringAssert.Contains("Harness 判定是 Preflight gate", branchSelection);
             StringAssert.Contains("fresh 且不影响工具选择时不单独输出", branchSelection);
+            StringAssert.Contains("Preflight / Skill 路由` 只做内部选路", branchSelection);
             StringAssert.Contains("需求讨论分支", branchSelection);
             StringAssert.DoesNotContain("需求讨论模式", branchSelection);
             StringAssert.DoesNotContain("-> <当前步骤>", branchSelection);
@@ -190,13 +192,14 @@ namespace AIBridge.Editor.Tests
             Assert.IsFalse(branchSelection.Contains("【任务分流步骤】"));
             Assert.IsFalse(branchSelection.Contains("【分支模式】"));
             Assert.IsFalse(branchSelection.Contains("【模式：Harness"));
+            Assert.IsFalse(branchSelection.Contains("【入口：Preflight / Skill 路由】"));
             Assert.IsFalse(branchSelection.Contains("说明：<当前步骤正在收集或产出的内容>"));
             Assert.IsFalse(branchSelection.Contains("使用 Skills："));
 
             var reviewBranchPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "branches", "review.md");
             var reviewBranch = File.ReadAllText(reviewBranchPath);
             StringAssert.Contains("C# 声明名/文件定位", reviewBranch);
-            StringAssert.Contains("宿主自带的文本搜索与文件读取工具", reviewBranch);
+            StringAssert.DoesNotContain("宿主自带的文本搜索与文件读取工具", reviewBranch);
             StringAssert.DoesNotContain("text_index", reviewBranch);
 
             var sourceBranchSelectionPath = Path.Combine(GetPackageRoot(), "Skill~", "aibridge-development-workflow", "references", "branch-selection.md");

@@ -186,8 +186,8 @@ namespace AIBridgeCLI.Workflow
             }
 
             sb.AppendLine("- Treat Skill routing as preflight, not as a business phase.");
-            sb.AppendLine("- When executing a phase or step, emit short visible status blocks: use `【入口：...】` only for routing, `【模式：...】` for business modes, and `-> ...` for phase/step progress. Put expected output, handoff, and gate status on separate lines.");
-            sb.AppendLine("- Skill listing policy: list active Skills only in routing/mode-enter status blocks or when active Skills change. Omit used/released/next Skills from progress updates, Mode Exit summaries, and final user-facing reports.");
+            sb.AppendLine("- Treat Preflight / Skill Routing as internal routing. User-visible status should normally start from `【模式：...】` business-mode blocks, and `-> ...` is only for phase/step progress when useful.");
+            sb.AppendLine("- Skill listing policy: list active Skills only in mode-enter status blocks or when active Skills change. Omit used/released/next Skills from progress updates, Mode Exit summaries, and final user-facing reports.");
             sb.AppendLine("- Keep releasedSkills/nextRecommendedSkills in structured SkillHandoff data for continuation, workflow import, or external-agent handoff.");
             sb.AppendLine();
         }

@@ -23,7 +23,7 @@ namespace AIBridge.Editor
         {
             new BranchInfo(ImplementationId, "实施分支", "创建、修改、修复、重构、生成、迁移、提交", "改动当前工作树并验证", "references/branches/implementation.md", "aibridge、aibridge-code-index、aibridge-prefab-patch、unity-yaml-editing、aibridge-batch-script"),
             new BranchInfo(DebugId, "调试诊断分支", "排查、诊断、复现、为什么、追踪、日志、Runtime、Player、Play Mode、性能、UI 异常", "收集证据并给出根因判断", "references/branches/debug.md", "aibridge、aibridge-code-index、aibridge-workflow-orchestration、aibridge-batch-script"),
-            new BranchInfo(ReviewId, "审查分支", "review、audit、检查风险、设计评审、只读分析", "输出 confirmed findings 和剩余风险", "references/branches/review.md", "aibridge-code-index、宿主搜索/读取工具、按需 aibridge-workflow-orchestration"),
+            new BranchInfo(ReviewId, "审查分支", "review、audit、检查风险、设计评审、只读分析", "输出 confirmed findings 和剩余风险", "references/branches/review.md", "aibridge-code-index、按需 aibridge-workflow-orchestration"),
             new BranchInfo(ValidationId, "验证分支", "编译、日志、截图、测试、Runtime/UI 验证、回归确认", "给出可重复验证结果", "references/branches/validation.md", "aibridge、现有 workflow recipe"),
             new BranchInfo(OrchestrationId, "编排分支", "workflow recipe、多 Agent、并行 sweep、对抗验证、结构化 artifact", "设计或执行结构化 workflow", "references/branches/orchestration.md", "aibridge-workflow-orchestration")
         };
@@ -55,7 +55,7 @@ namespace AIBridge.Editor
             builder.AppendLine();
             builder.AppendLine("- 默认验证级别：" + GetValidationLevelText(workflowUi.DefaultValidationLevel) + " (`" + AIBridgeProjectSettings.NormalizeWorkflowValidationLevel(workflowUi.DefaultValidationLevel) + "`)");
             builder.AppendLine("- Runtime 证据偏好：" + (workflowUi.PreferRuntimeEvidence ? "优先收集可用 Runtime 证据" : "仅在任务明确需要时收集 Runtime 证据"));
-            builder.AppendLine("- Code Index 偏好：" + (workflowUi.PreferCodeIndexGuidance ? "Code Index 可用时优先用于快速 C# 声明文件定位" : "默认使用宿主自带的搜索/文件读取工具；只有明确需要快速定位 C# 声明文件时才使用 Code Index"));
+            builder.AppendLine("- Code Index 偏好：" + (workflowUi.PreferCodeIndexGuidance ? "Code Index 可用时优先用于快速 C# 声明文件定位" : "只有明确需要快速定位 C# 声明文件时才使用 Code Index"));
             builder.AppendLine();
 
             builder.AppendLine("## 附加提示词");
@@ -99,7 +99,7 @@ namespace AIBridge.Editor
             builder.AppendLine();
             builder.AppendLine("- Preflight / Skill Routing 是入口步骤，不是业务模式；它只选择主分支并计算 Skill 状态。");
             builder.AppendLine("- Harness 判定是 Preflight gate，不是业务分支固定步骤；fresh 且不影响工具选择时不单独输出。");
-            builder.AppendLine("- 只有缺失、过期、降级、阻塞、用户要求说明，或能力状态改变工具选择时，才在入口块简短展开 Harness 状态。");
+            builder.AppendLine("- 只有缺失、过期、降级、阻塞、用户要求说明，或能力状态改变工具选择时，才在当前业务分支输出中简短补充 Harness 状态或工具策略。");
             builder.AppendLine("- 如果需求边界、验收标准或方案方向不清晰，先进入需求讨论分支，确认后再继续正式分支选择。");
             builder.AppendLine("- Mode Enter 只激活当前分支真正需要的 Skill，并读取该分支文档。");
             builder.AppendLine("- Mode Exit 生成 `SkillHandoff`，并释放下一模式不需要的模式专用 Skill。");
@@ -150,7 +150,7 @@ namespace AIBridge.Editor
 
             builder.AppendLine("## Skill 列出策略");
             builder.AppendLine();
-            builder.AppendLine("- `【入口：Preflight / Skill 路由】` 列 `baselineSkills`、`activeSkills`，必要时列 `deferredSkills` / `guardedSkills`。");
+            builder.AppendLine("- `Preflight / Skill 路由` 只做内部选路，不要求对用户显式输出 `baselineSkills`、`activeSkills`、`deferredSkills` 或 `guardedSkills`。");
             builder.AppendLine("- `【模式：...】` 进入时列当前 `Skills`，仅在 active Skills 变化时重新列。");
             builder.AppendLine("- 执行进度、检查清单、Mode Exit 和面向用户的最终回复不列 `使用 Skills`、已释放 Skills 或下一步建议 Skills。");
             builder.AppendLine("- 只有跨模式续跑、外部 agent 交接或 `workflow import` 需要结构化结果时，才在 `SkillHandoff` 数据中记录 releasedSkills / nextRecommendedSkills。");
@@ -159,12 +159,6 @@ namespace AIBridge.Editor
             builder.AppendLine("## 输出格式");
             builder.AppendLine();
             builder.AppendLine("```text");
-            builder.AppendLine("【入口：Preflight / Skill 路由】");
-            builder.AppendLine("baselineSkills：aibridge-development-workflow");
-            builder.AppendLine("activeSkills：<当前分支 Skills>");
-            builder.AppendLine("主分支：<启用分支之一>");
-            builder.AppendLine("理由：<进入该分支的依据>");
-            builder.AppendLine();
             builder.AppendLine("【模式：需求讨论分支】");
             builder.AppendLine("Skills：aibridge-development-workflow");
             builder.AppendLine("已加载规范：requirements.md、risk-gates.md");

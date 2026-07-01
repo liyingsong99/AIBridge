@@ -484,9 +484,8 @@ $CLI code cancel
 4. 执行 `compile unity`。
 5. 读取 `get_logs --logType Error`。
 6. 涉及运行时 UI 时，进入 Play Mode 后用 `input`、日志和截图/GIF 验证交互。
-7. 字面量、配置、YAML、Prefab/Scene 文本、文档和其他非 C# 内容搜索使用宿主自带的文本搜索与文件读取工具（如 ripgrep `rg -n`）。
-8. 只有需要快速做 C# 声明名定位时才启用 `code_index`，并仅使用 `symbol` / `definition`；拿到路径后直接读 `.cs` 文件，不把引用/调用者/继承分析继续压在 Code Index 上。
-9. 只有在声明式命令不足以表达复杂一次性 Editor 或 Player 调试任务时，才启用并使用 `code execute` 或 HybridCLR 支持的 `code runtime_execute`。
+7. 只有需要快速做 C# 声明名定位时才启用 `code_index`，并仅使用 `symbol` / `definition`；拿到路径后直接读 `.cs` 文件，不把引用/调用者/继承分析继续压在 Code Index 上。
+8. 只有在声明式命令不足以表达复杂一次性 Editor 或 Player 调试任务时，才启用并使用 `code execute` 或 HybridCLR 支持的 `code runtime_execute`。
 
 ## 仓库结构
 

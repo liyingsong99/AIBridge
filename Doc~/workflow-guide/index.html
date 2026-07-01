@@ -509,7 +509,7 @@
             目标是让查阅者一眼分清：AI 先怎么路由、在哪些地方执行、什么时候交接，以及什么证据才算真正成立。
           </p>
           <div class="chips" aria-label="阅读提示">
-            <span class="chip">入口：Preflight / Skill 路由</span>
+            <span class="chip">Preflight 内部选路</span>
             <span class="chip">执行：Mode Enter / Mode Execute</span>
             <span class="chip">收尾：Mode Exit / SkillHandoff</span>
           </div>
@@ -531,7 +531,7 @@
         <h2>整体链路</h2>
         <p class="section-lead">
           workflow 的主线不是“把所有概念一次讲完”，而是先路由，再执行，再交接，再重新路由。
-          <span class="inline-code">Preflight / Skill 路由</span> 只负责选路和收缩上下文，不是业务模式。
+          <span class="inline-code">Preflight / Skill 路由</span> 只负责选路和收缩上下文，不是业务模式，也不要求对用户单独输出入口块。
         </p>
 
         <div class="flow" aria-label="workflow 流程图">

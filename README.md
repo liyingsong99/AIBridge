@@ -484,9 +484,8 @@ $CLI code cancel
 4. Run `compile unity`.
 5. Read `get_logs --logType Error`.
 6. For runtime UI, enter Play Mode and verify interaction with `input`, logs, and screenshots or GIFs.
-7. For literal, config, YAML, Prefab/Scene text, docs, and other non-C# content search, use your host's own text-search and file-read tools (for example ripgrep `rg -n`).
-8. Enable `code_index` only when fast C# declaration-name lookup is needed, then use it for `symbol` or `definition`, read the returned `.cs` files directly, and keep reference/caller/relationship analysis out of Code Index.
-9. Use `code execute` or HybridCLR-backed `code runtime_execute` only when declarative commands cannot express a complex one-off Editor or Player debugging task.
+7. Enable `code_index` only when fast C# declaration-name lookup is needed, then use it for `symbol` or `definition`, read the returned `.cs` files directly, and keep reference/caller/relationship analysis out of Code Index.
+8. Use `code execute` or HybridCLR-backed `code runtime_execute` only when declarative commands cannot express a complex one-off Editor or Player debugging task.
 
 ## Repository Layout
 

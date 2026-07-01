@@ -5,7 +5,7 @@ description: Optional read-only AIBridge Code Index lightweight lookup for Unity
 
 # AIBridge Code Index Skill
 
-If `code_index status` reports `enabled=false` or `state=disabled`, stop and use your host's own search and file-read tools.
+If `code_index status` reports `enabled=false` or `state=disabled`, stop and inspect the relevant files directly.
 
 ## Operating Rules
 
@@ -13,8 +13,7 @@ If `code_index status` reports `enabled=false` or `state=disabled`, stop and use
 - Public query actions are only `symbol` and `definition`.
 - Use it to locate candidate `.cs` files or declaration positions, then read those files yourself for the real analysis.
 - Do not use it for references, callers, implementations, derived types, diagnostics, or any whole-project relationship query.
-- For literal strings, comments, config values, asset paths, scene objects, prefabs, YAML, docs, logs, or non-C# files, use your host's own search/read tools or regular AIBridge commands instead.
-- If disabled, unavailable, stale, or unhealthy, do not keep retrying. Switch to host search and direct file reads.
+- If disabled, unavailable, stale, or unhealthy, do not keep retrying. Switch to direct file inspection and regular AIBridge commands.
 
 ## Query Selection
 
