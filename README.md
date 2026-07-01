@@ -430,17 +430,13 @@ Runtime Bridge does not include an in-game LLM and does not expose an unrestrict
 `code_index` is a CLI-only, read-only lightweight query surface. It is disabled by default; enable `AIBridge > Settings > Code Index > Enable Code Index` only for projects that need fast C# declaration-name lookup. It does not require Rider, VS Code, Cursor, Visual Studio, Build Tools, or a Unity-generated solution. Unity Editor writes a compilation snapshot under `.aibridge/code-index/snapshot/`; the project-local `AIBridgeCodeIndex` daemon reads that snapshot and uses the snapshot name index for lightweight lookup.
 
 ```bash
-$CLI code_index status
-$CLI code_index doctor
-$CLI code_index warmup
-$CLI code_index reset
 $CLI code_index symbol --query PlayerController
 $CLI code_index definition --query PlayerController
 ```
 
-The command is intentionally read-only: it does not rename, refactor, auto-fix, or write files. `symbol` returns declaration candidates and `definition` returns the best declaration position by name. After you get the path, read the returned `.cs` files directly for real analysis. `doctor` reports missing, empty, stale, or broken snapshot/name-index state directly. `compile unity` remains the final validation authority.
+The command is intentionally read-only: it does not rename, refactor, auto-fix, or write files. `symbol` returns declaration candidates and `definition` returns the best declaration position by name. After you get the path, read the returned `.cs` files directly for real analysis. Daemon lifecycle, snapshot build, warmup, and recovery are internal implementation details rather than part of the public AI-facing CLI contract. `compile unity` remains the final validation authority.
 
-After Code Index is enabled, Unity Editor can generate the snapshot and prewarm the daemon from `AIBridge > Settings > Code Index` after startup idle time. The same panel still controls snapshot auto refresh, PackageCache source inclusion, ignored assembly/source-path patterns, and quit cleanup. In the lightweight model, `warmup` only ensures snapshot metadata and name indexes are ready for fast declaration-name lookup. `status` and `doctor` focus on snapshot existence, name-index readability, assembly count, source-file count, and stale state.
+After Code Index is enabled, Unity Editor can generate the snapshot and prewarm the daemon from `AIBridge > Settings > Code Index` after startup idle time. The same panel still controls snapshot auto refresh, PackageCache source inclusion, ignored assembly/source-path patterns, and quit cleanup. Public usage stays intentionally narrow: ask for declaration-name lookup through `symbol` / `definition`, and let the internal lifecycle manage daemon startup, recovery, and snapshot refresh.
 
 The following capabilities were intentionally removed from the public `code_index` surface because they are often too slow, too noisy, or too fragile in large projects:
 

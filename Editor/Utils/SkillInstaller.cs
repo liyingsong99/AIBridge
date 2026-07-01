@@ -479,6 +479,7 @@ namespace AIBridge.Editor
                 return true;
             }
 
+            // CodeIndex 发布目录与项目缓存目录必须严格同步；哪怕完整，也不能接受静默漂移。
             return IsDirectoryCopyNeeded(sourceDir, targetDir);
         }
 

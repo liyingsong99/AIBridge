@@ -182,10 +182,10 @@ namespace AIBridge.Editor
                 AIBridgeCodeIndexEditorUtility.OpenIndexDirectory();
             }
 
-            if (GUILayout.Button(AIBridgeEditorText.T("Copy Status CLI", "复制状态命令"), GUILayout.Height(24)))
+            if (GUILayout.Button(AIBridgeEditorText.T("Copy Query CLI", "复制查询命令"), GUILayout.Height(24)))
             {
-                EditorGUIUtility.systemCopyBuffer = AIBridgeCodeIndexEditorUtility.BuildCliCommand("code_index status");
-                Debug.Log(AIBridgeEditorText.T("[AIBridge] Code Index status CLI command copied.", "[AIBridge] Code Index 状态命令已复制。"));
+                EditorGUIUtility.systemCopyBuffer = AIBridgeCodeIndexEditorUtility.BuildCliCommand("code_index symbol --query PlayerController");
+                Debug.Log(AIBridgeEditorText.T("[AIBridge] Code Index query CLI command copied.", "[AIBridge] Code Index 查询命令已复制。"));
             }
             EditorGUILayout.EndHorizontal();
         }

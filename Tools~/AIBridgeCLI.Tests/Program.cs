@@ -29,7 +29,7 @@ namespace AIBridgeCLI.Tests
                 CodeIndex_Help_OnlyListsLightweightActions();
                 CodeIndex_UnsupportedAction_ReturnsUnsupportedAction();
                 CodeIndex_DefinitionSourceLocationArguments_RequireQuery();
-                CodeIndex_StatusAndDoctor_DoNotExposeLegacySemanticFields();
+                CodeIndex_InternalActions_AreNotShownInHelp();
                 Console.WriteLine("AIBridgeCLI tests passed.");
                 return 0;
             }
@@ -402,6 +402,11 @@ namespace AIBridgeCLI.Tests
 
             AssertContains(help, "  symbol", "Code Index help should include symbol.");
             AssertContains(help, "  definition", "Code Index help should include definition.");
+            AssertTrue(help.IndexOf("  status", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include status.");
+            AssertTrue(help.IndexOf("  doctor", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include doctor.");
+            AssertTrue(help.IndexOf("  warmup", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include warmup.");
+            AssertTrue(help.IndexOf("  reset", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include reset.");
+            AssertTrue(help.IndexOf("  build_snapshot", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include build_snapshot.");
             AssertTrue(help.IndexOf("warmup-mode", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not expose warmup-mode.");
             AssertTrue(help.IndexOf("  references", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include references.");
             AssertTrue(help.IndexOf("  implementations", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include implementations.");
@@ -428,15 +433,15 @@ namespace AIBridgeCLI.Tests
             AssertEqual("definition now requires --query", result.Value<string>("error"), "Definition should require --query.");
         }
 
-        private static void CodeIndex_StatusAndDoctor_DoNotExposeLegacySemanticFields()
+        private static void CodeIndex_InternalActions_AreNotShownInHelp()
         {
-            var status = ExecuteCodeIndex("status", new Dictionary<string, string>(), 1000);
-            var doctor = ExecuteCodeIndex("doctor", new Dictionary<string, string>(), 1000);
+            var builder = new CodeIndexCommandBuilder();
 
-            AssertTrue(status.Property("semantic") == null, "Code Index status should not expose semantic.");
-            AssertTrue(status.Property("workspaceMode") == null, "Code Index status should not expose workspaceMode.");
-            AssertTrue(doctor.Property("semantic") == null, "Code Index doctor should not expose semantic.");
-            AssertTrue(doctor.Property("workspaceMode") == null, "Code Index doctor should not expose workspaceMode.");
+            AssertEqual(builder.GetHelp(), builder.GetHelp("status"), "Internal status help should fall back to public help.");
+            AssertEqual(builder.GetHelp(), builder.GetHelp("doctor"), "Internal doctor help should fall back to public help.");
+            AssertEqual(builder.GetHelp(), builder.GetHelp("warmup"), "Internal warmup help should fall back to public help.");
+            AssertEqual(builder.GetHelp(), builder.GetHelp("reset"), "Internal reset help should fall back to public help.");
+            AssertEqual(builder.GetHelp(), builder.GetHelp("build_snapshot"), "Internal build_snapshot help should fall back to public help.");
         }
 
         private static JObject ExecuteCodeIndex(string action, Dictionary<string, string> options, int timeout)

@@ -151,9 +151,10 @@
 
 ## Code Index 收口
 
-- 当前公开动作：`status`、`doctor`、`build_snapshot`、`warmup`、`reset`、`symbol`、`definition`
+- 当前公开动作：`symbol`、`definition`
 - 当前定位：只读、轻量、仅用于 C# 声明名到声明位置/文件路径的快速匹配
 - 推荐使用方式：先用 `symbol` 或 `definition` 找到候选 `.cs` 文件，再由 AI 直接读取文件分析上下文、调用链和真实行为
+- 内部生命周期：daemon 探活、恢复、snapshot 构建、warmup、reset 继续保留为 Editor/内部流程实现细节，不作为 AI / 普通用户公开契约
 - 非目标：引用关系、调用者、继承、实现、诊断聚合、全工程关系图、文本内容搜索、非 C# 查询
 
 ### 大型工程中不再公开承诺的能力

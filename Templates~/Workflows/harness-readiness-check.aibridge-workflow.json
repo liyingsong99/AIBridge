@@ -124,7 +124,7 @@
           "id": "record-optional-capabilities",
           "kind": "manual",
           "role": "main-agent",
-          "description": "When required by inputs, run compile unity, get_logs, code_index status, runtime list_targets, or harness sub-agent checks and import CommandEvidence/EvidenceRef.",
+          "description": "When required by inputs, run compile unity, get_logs, code_index symbol/definition when declaration lookup is needed, runtime list_targets, or harness sub-agent checks and import CommandEvidence/EvidenceRef.",
           "requiredSkills": [
             "aibridge",
             "aibridge-workflow-orchestration"

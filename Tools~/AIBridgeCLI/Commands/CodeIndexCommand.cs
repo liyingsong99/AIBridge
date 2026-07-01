@@ -33,10 +33,11 @@ namespace AIBridgeCLI.Commands
         private const int DefaultWarmupTimeoutMs = 30000;
         private const int DefaultSymbolTimeoutMs = 30000;
         private const int DefaultDefinitionTimeoutMs = 15000;
+        private const int DaemonFastProbeTimeoutMs = 250;
         private const int DefaultQueryQueueTimeoutMs = 60000;
         private const int QueryTransportPaddingMs = 1000;
-        private const int ExistingDaemonReachabilityWaitMs = 5000;
-        private const int ExistingDaemonRetryDelayMs = 150;
+        private const int ExistingDaemonReachabilityWaitMs = 1200;
+        private const int ExistingDaemonRetryDelayMs = 100;
         private const int MaxCodeIndexTimeoutMs = 600000;
         private const string SnapshotMagic = "AIBCI";
         private const string DisabledMessage = "Code Index is disabled in AIBridge settings. Enable AIBridge > Settings > Code Index > Enable Code Index, or use rg and normal file reads.";
@@ -146,7 +147,7 @@ namespace AIBridgeCLI.Commands
 
         private static string NormalizeAction(string action)
         {
-            return string.IsNullOrWhiteSpace(action) ? "status" : action.Trim().ToLowerInvariant();
+            return string.IsNullOrWhiteSpace(action) ? string.Empty : action.Trim().ToLowerInvariant();
         }
 
         private static int ResolveActionTimeout(string normalizedAction, Dictionary<string, string> options, int timeout)
@@ -625,12 +626,12 @@ namespace AIBridgeCLI.Commands
             var reachable = remote != null;
             if (status == null)
             {
-                suggestions.Add("Run code_index warmup to start the daemon.");
+                suggestions.Add("Trigger Code Index warmup from AIBridge > Settings > Code Index.");
             }
             else if (!reachable)
             {
                 issues.Add("status.json exists but daemon endpoint is not reachable.");
-                suggestions.Add("Run code_index reset, then code_index warmup.");
+                suggestions.Add("Use AIBridge > Settings > Code Index to shutdown/rebuild the daemon state, then warm up again.");
             }
 
             var currentStatus = remote ?? status;
@@ -641,28 +642,28 @@ namespace AIBridgeCLI.Commands
             if (snapshotCounts.Exists && snapshotCounts.Unreadable)
             {
                 issues.Add("Unity compilation snapshot manifest is unreadable.");
-                suggestions.Add("Regenerate the Code Index snapshot from AIBridge settings, then run code_index warmup.");
+                suggestions.Add("Regenerate the Code Index snapshot from AIBridge settings, then trigger warmup there.");
             }
             else if (snapshotCounts.Exists && !snapshotHasSemanticContent)
             {
                 issues.Add("Unity compilation snapshot contains no assemblies or source files.");
-                suggestions.Add("Regenerate the Code Index snapshot from AIBridge settings, then run code_index warmup.");
+                suggestions.Add("Regenerate the Code Index snapshot from AIBridge settings, then trigger warmup there.");
             }
 
             if (nameIndexHealth.Exists && nameIndexHealth.ManifestUnreadable)
             {
                 issues.Add("Unity compilation snapshot manifest is unreadable, so name index files cannot be verified.");
-                suggestions.Add("Regenerate the Code Index snapshot from AIBridge settings, then run code_index warmup.");
+                suggestions.Add("Regenerate the Code Index snapshot from AIBridge settings, then trigger warmup there.");
             }
             else if (nameIndexHealth.Exists && nameIndexHealth.MissingNameIndexFileCount > 0)
             {
                 issues.Add("One or more Code Index name index files are missing.");
-                suggestions.Add("Refresh the Code Index snapshot so all name index files are rebuilt, then run code_index warmup.");
+                suggestions.Add("Refresh the Code Index snapshot from AIBridge settings so all name index files are rebuilt, then trigger warmup there.");
             }
             else if (nameIndexHealth.Exists && nameIndexHealth.CorruptNameIndexFileCount > 0)
             {
                 issues.Add("One or more Code Index name index files are unreadable or corrupt.");
-                suggestions.Add("Refresh the Code Index snapshot so all name index files are rebuilt, then run code_index warmup.");
+                suggestions.Add("Refresh the Code Index snapshot from AIBridge settings so all name index files are rebuilt, then trigger warmup there.");
             }
 
             var manifestStale = IsSnapshotStale(context, currentStatus);
@@ -756,11 +757,7 @@ namespace AIBridgeCLI.Commands
                 return BuildFailure(context, "No Unity compilation snapshot found. Open the Unity project once or run Code Index prewarm from AIBridge settings.");
             }
 
-            var existingStatus = await WaitForReachableExistingDaemonAsync(context, status, timeout);
-            if (existingStatus != null)
-            {
-                return existingStatus;
-            }
+            status = await RecoverStaleDaemonStateAsync(context, status, timeout);
 
             var startedStatus = await EnsureDaemonStartedUnderLockAsync(context, timeout);
             if (startedStatus == null)
@@ -802,10 +799,13 @@ namespace AIBridgeCLI.Commands
                     return remote;
                 }
 
-                var existingStatus = await WaitForReachableExistingDaemonAsync(context, status, timeout);
-                if (existingStatus != null)
+                status = await RecoverStaleDaemonStateAsync(context, status, timeout);
+                remote = status == null ? null : await TryGetRemoteStatusAsync(status, timeout);
+                if (remote != null)
                 {
-                    return existingStatus;
+                    CopyStatusRuntimeFields(status, remote);
+                    remote["reachable"] = true;
+                    return remote;
                 }
 
                 CleanupOrphanDaemons(context, 0);
@@ -821,6 +821,28 @@ namespace AIBridgeCLI.Commands
                 StartDaemon(context, daemon);
                 return await WaitForStatusFileAsync(context, timeout);
             }
+        }
+
+        private static async Task<JObject> RecoverStaleDaemonStateAsync(CodeIndexContext context, JObject status, int timeout)
+        {
+            if (status == null)
+            {
+                return null;
+            }
+
+            var existingStatus = await WaitForReachableExistingDaemonAsync(context, status, timeout);
+            if (existingStatus != null)
+            {
+                if (existingStatus.Value<bool?>("success") == false)
+                {
+                    return null;
+                }
+
+                return existingStatus;
+            }
+
+            CleanupTrackedDaemonState(context, status);
+            return null;
         }
 
         private static async Task<JObject> WaitForReachableExistingDaemonAsync(CodeIndexContext context, JObject status, int timeout)
@@ -857,6 +879,33 @@ namespace AIBridgeCLI.Commands
                 + waitMs.ToString(CultureInfo.InvariantCulture)
                 + "ms. Automatic restart was skipped to avoid interrupting in-flight queries.",
                 "daemon_unreachable");
+        }
+
+        private static void CleanupTrackedDaemonState(CodeIndexContext context, JObject status)
+        {
+            if (context == null)
+            {
+                return;
+            }
+
+            var daemonPid = status == null ? 0 : status.Value<int?>("daemonPid") ?? 0;
+            if (daemonPid > 0)
+            {
+                var markerPath = GetDaemonProcessMarkerPath(context, daemonPid);
+                if (TryGetCodeIndexProcess(daemonPid, File.Exists(markerPath) ? markerPath : context.DaemonProcessPath, out var process))
+                {
+                    using (process)
+                    {
+                        KillCodeIndexProcess(process);
+                    }
+                }
+
+                DeleteFileIfExists(markerPath);
+            }
+
+            DeleteFileIfExists(context.StatusPath);
+            DeleteFileIfExists(context.DaemonProcessPath);
+            DeleteFileIfExists(Path.Combine(context.IndexDirectory, "lock.json"));
         }
 
         private static bool IsStatusDaemonProcessAlive(CodeIndexContext context, JObject status)
@@ -1247,9 +1296,9 @@ namespace AIBridgeCLI.Commands
                     ["statusPath"] = context.StatusPath,
                     ["reachable"] = false,
                     ["message"] = snapshotCounts.Unreadable
-                        ? "Unity compilation snapshot manifest is unreadable. Regenerate the Code Index snapshot from AIBridge settings, then run code_index warmup."
+                        ? "Unity compilation snapshot manifest is unreadable. Regenerate the Code Index snapshot from AIBridge settings, then trigger warmup there."
                         : missingStatusEmptySnapshot
-                            ? "Unity compilation snapshot contains no assemblies or source files. Regenerate the Code Index snapshot from AIBridge settings, then run code_index warmup."
+                            ? "Unity compilation snapshot contains no assemblies or source files. Regenerate the Code Index snapshot from AIBridge settings, then trigger warmup there."
                             : null
                 };
                 AddDaemonDiagnosticFields(missingStatus, daemon);
@@ -1571,7 +1620,7 @@ namespace AIBridgeCLI.Commands
 
             try
             {
-                return await GetJsonAsync(endpoint, "status", status.Value<string>("token"), Math.Min(timeout, 1500));
+                return await GetJsonAsync(endpoint, "status", status.Value<string>("token"), Math.Min(timeout, DaemonFastProbeTimeoutMs));
             }
             catch
             {

@@ -9,22 +9,12 @@ namespace AIBridgeCLI.Commands
 
         public override string[] Actions => new[]
         {
-            "status",
-            "doctor",
-            "build_snapshot",
-            "warmup",
-            "reset",
             "symbol",
             "definition"
         };
 
         protected override Dictionary<string, List<ParameterInfo>> ActionParameters => new Dictionary<string, List<ParameterInfo>>
         {
-            ["status"] = CommonParameters(),
-            ["doctor"] = CommonParameters(),
-            ["build_snapshot"] = WithBuildSnapshotParameters(),
-            ["warmup"] = WithWarmupParameters(),
-            ["reset"] = WithResetParameters(),
             ["symbol"] = WithQuery(new List<ParameterInfo>
             {
                 new ParameterInfo("query", "C# declaration name or partial name", true)
@@ -72,6 +62,22 @@ namespace AIBridgeCLI.Commands
         {
             parameters.AddRange(CommonParameters());
             return parameters;
+        }
+
+        public override string GetHelp(string action = null)
+        {
+            if (string.IsNullOrWhiteSpace(action))
+            {
+                return base.GetHelp(null);
+            }
+
+            var normalized = action.Trim().ToLowerInvariant();
+            if (normalized == "symbol" || normalized == "definition")
+            {
+                return base.GetHelp(normalized);
+            }
+
+            return base.GetHelp(null);
         }
     }
 }

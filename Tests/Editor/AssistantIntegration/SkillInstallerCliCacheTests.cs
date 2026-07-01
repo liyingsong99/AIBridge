@@ -89,6 +89,18 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
+        public void CodeIndexCopyCheckRequiresRefreshWhenCompleteDirectoriesDrift()
+        {
+            var sourceCliDir = Path.Combine(ProjectRoot, "source-cli");
+            var targetCliDir = Path.Combine(ProjectRoot, "target-cli");
+            WriteCompleteCodeIndexDirectory(Path.Combine(sourceCliDir, "CodeIndex"), "source");
+            WriteCompleteCodeIndexDirectory(Path.Combine(targetCliDir, "CodeIndex"), "source");
+            File.WriteAllText(Path.Combine(targetCliDir, "CodeIndex", "AIBridgeCodeIndex.runtimeconfig.json"), "drifted:AIBridgeCodeIndex.runtimeconfig.json");
+
+            Assert.IsTrue(SkillInstaller.IsCodeIndexCopyNeeded(sourceCliDir, targetCliDir));
+        }
+
+        [Test]
         public void CodeIndexCopyKeepsExistingTargetWhenSourceIsIncomplete()
         {
             var sourceCliDir = Path.Combine(ProjectRoot, "source-cli");
