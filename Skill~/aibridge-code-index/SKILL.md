@@ -7,11 +7,11 @@ description: Optional read-only AIBridge Code Index lightweight lookup for Unity
 
 ## Operating Rules
 
-- `code_index` is CLI-only, read-only, and only for fast C# declaration-name lookup.
-- Public query actions are only `symbol` and `definition`.
-- Use it to locate candidate `.cs` files or declaration positions, then read those files yourself for the real analysis.
-- Do not use it for references, callers, implementations, derived types, diagnostics, or any whole-project relationship query.
-- If it fails or is unavailable, do not keep retrying lifecycle/status commands. Switch to direct file inspection and regular AIBridge commands.
+- `code_index` is CLI-only, read-only, and only for fast C# declaration-name lookup
+- Public query actions are only `symbol` and `definition`
+- Use it to locate candidate `.cs` files or declaration positions, then read those files yourself for the real analysis
+- Do not use it for references, callers, implementations, derived types, diagnostics, or any whole-project relationship query
+- If it fails or is unavailable, do not keep retrying lifecycle/status commands. Switch to direct file inspection and regular AIBridge commands
 
 ## Query Selection
 

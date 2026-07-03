@@ -790,6 +790,7 @@ namespace AIBridge.Editor
             }
 
             content = ApplyProjectTemplateTokens(content);
+            content = AiRuleMarkdownNormalizer.TrimLineEndPunctuation(content);
             WriteTextIfChanged(targetFile, content, Utf8NoBom);
         }
 
@@ -1096,6 +1097,7 @@ namespace AIBridge.Editor
             }
 
             content = ApplyProjectTemplateTokens(content);
+            content = AiRuleMarkdownNormalizer.TrimLineEndPunctuation(content);
             return WriteTextIfChanged(targetFile, content, Utf8NoBom);
         }
 

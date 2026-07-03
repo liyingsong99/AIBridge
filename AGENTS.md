@@ -10,7 +10,7 @@
 
 `Templates~/ProjectRules/AGENTS.zh-CN.md` 和 `Templates~/ProjectRules/AGENTS.en-US.md`
 
-不要把 AIBridge 包内部设计规则写入项目模板，避免污染使用者项目。
+不要把 AIBridge 包内部设计规则写入项目模板，避免污染使用者项目
 
 ## 开发任务工作流
 开发、修改、修复、重构 C# 代码、Unity 资源、Prefab、Editor 工具、包结构、测试、AGENTS 模板或 Skills 时，必须优先使用：

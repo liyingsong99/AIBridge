@@ -20,7 +20,7 @@ namespace AIBridge.Editor
             out string ruleFilePath)
         {
             ruleFilePath = Path.Combine(projectRoot, target.RootRuleFileName);
-            var renderedBody = RuleTemplateRenderer.Render(template.Body, tokens);
+            var renderedBody = AiRuleMarkdownNormalizer.TrimLineEndPunctuation(RuleTemplateRenderer.Render(template.Body, tokens));
             var renderedBlock = InjectionBlockParser.BuildBlock(template.Metadata, renderedBody);
 
             if (!File.Exists(ruleFilePath))

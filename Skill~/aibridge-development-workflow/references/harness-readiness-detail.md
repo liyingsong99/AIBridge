@@ -1,6 +1,6 @@
 # Harness Readiness Detail
 
-只有 compact gate 判断为 `missing`、`stale`、`invalid`，需要 resume，遇到外部 executor，或任务需要未确认能力时，才读取本文件。不要把本文件作为每个 workflow 任务的默认上下文。
+只有 compact gate 判断为 `missing`、`stale`、`invalid`，需要 resume，遇到外部 executor，或任务需要未确认能力时，才读取本文件。不要把本文件作为每个 workflow 任务的默认上下文
 
 ## 最小探测矩阵
 
@@ -17,22 +17,22 @@
 
 ## 状态值
 
-- `available`：已确认可用。
-- `unavailable`：已确认不可用。
-- `unknown`：尚未探测，且当前阶段不强制需要。
-- `not-needed`：本任务不需要该能力。
-- `degraded`：能力部分可用，但需要 fallback 或剩余风险说明。
+- `available`：已确认可用
+- `unavailable`：已确认不可用
+- `unknown`：尚未探测，且当前阶段不强制需要
+- `not-needed`：本任务不需要该能力
+- `degraded`：能力部分可用，但需要 fallback 或剩余风险说明
 
 ## Fallback 规则
 
-- Snapshot fresh：直接按 compact summary 分流，不读取完整 snapshot，不执行完整探测；除非用户要求或影响工具选择，否则不输出 harness 状态。
-- Snapshot missing/stale/invalid：执行 `$CLI harness status`，必要时读取完整 snapshot；只补测任务必需能力，不把 stale snapshot 内容当作当前事实。
-- Skill 不可读：继续使用 RootRule 的 CLI 路径、通用验证和路由规则；不要假设隐藏 Skill 内容。
-- CLI 不存在：只执行 host 侧命令，如 `rg`、文件读取、`dotnet build`；最终明确 AIBridge/Unity 验证未执行。
-- Unity 命令超时或被 modal dialog 阻塞：先检查 `dialog status` 或使用显式 `--on-dialog` 策略；仍失败时报告 blocked。
-- Code Index disabled/unavailable/not-ready/stale：不要反复重试同一查询；直接改用相邻文件和常规源码阅读；如需说明，单独写成工具策略，不混入 harness 可用性宣告。
-- Runtime target 缺失：不要推断 Player 行为；列出需要用户启动 Player/Play Mode 或提供 target。
-- workflow `agent` / `manual` step：AIBridge CLI 只记录为 `skipped_requires_external_executor`；外部执行完成后用 `workflow import` 导入结构化结果。
+- Snapshot fresh：直接按 compact summary 分流，不读取完整 snapshot，不执行完整探测；除非用户要求或影响工具选择，否则不输出 harness 状态
+- Snapshot missing/stale/invalid：执行 `$CLI harness status`，必要时读取完整 snapshot；只补测任务必需能力，不把 stale snapshot 内容当作当前事实
+- Skill 不可读：继续使用 RootRule 的 CLI 路径、通用验证和路由规则；不要假设隐藏 Skill 内容
+- CLI 不存在：只执行 host 侧命令，如 `rg`、文件读取、`dotnet build`；最终明确 AIBridge/Unity 验证未执行
+- Unity 命令超时或被 modal dialog 阻塞：先检查 `dialog status` 或使用显式 `--on-dialog` 策略；仍失败时报告 blocked
+- Code Index disabled/unavailable/not-ready/stale：不要反复重试同一查询；直接改用相邻文件和常规源码阅读；如需说明，单独写成工具策略，不混入 harness 可用性宣告
+- Runtime target 缺失：不要推断 Player 行为；列出需要用户启动 Player/Play Mode 或提供 target
+- workflow `agent` / `manual` step：AIBridge CLI 只记录为 `skipped_requires_external_executor`；外部执行完成后用 `workflow import` 导入结构化结果
 
 需要完整 snapshot JSON 时，明确使用：
 
@@ -43,17 +43,17 @@ $CLI harness status --include-snapshot true
 
 ## Resume 规则
 
-- 长任务或 workflow recipe 任务开始前，优先从 active-run 指针或用户输入确认 run id。
-- 继续已有 run 时，先读取 `workflow status --run <runId>`，再根据缺失 gate 或 skipped step 决定下一步。
-- 不使用明显过期的日志、截图、Runtime target 或 command result 支撑新结论；必要时重新采集。
-- `workflow finish --status passed` 前必须刷新 gate/report；required gate 缺失时不能标记通过。
+- 长任务或 workflow recipe 任务开始前，优先从 active-run 指针或用户输入确认 run id
+- 继续已有 run 时，先读取 `workflow status --run <runId>`，再根据缺失 gate 或 skipped step 决定下一步
+- 不使用明显过期的日志、截图、Runtime target 或 command result 支撑新结论；必要时重新采集
+- `workflow finish --status passed` 前必须刷新 gate/report；required gate 缺失时不能标记通过
 
 ## 证据回传
 
-外部 harness 或子 agent 输出结构化结果时，优先使用 `aibridge-workflow-orchestration/references/evidence-schema.md` 中的 schema。
+外部 harness 或子 agent 输出结构化结果时，优先使用 `aibridge-workflow-orchestration/references/evidence-schema.md` 中的 schema
 
-常见 schema 包括 `EvidenceRef`、`CommandEvidence`、`Finding`、`Verdict`、`PatchProposal`、`ValidationResult` 和 `SkillHandoff`。
+常见 schema 包括 `EvidenceRef`、`CommandEvidence`、`Finding`、`Verdict`、`PatchProposal`、`ValidationResult` 和 `SkillHandoff`
 
-`Finding`、`Verdict`、`PatchProposal`、`ValidationResult` 必须引用 evidence id 或 artifact id，避免粘贴大段日志。
+`Finding`、`Verdict`、`PatchProposal`、`ValidationResult` 必须引用 evidence id 或 artifact id，避免粘贴大段日志
 
-大日志、截图、GIF、性能采样和完整 JSON 结果保存为 artifact，主回复只引用路径或 id。
+大日志、截图、GIF、性能采样和完整 JSON 结果保存为 artifact，主回复只引用路径或 id

@@ -76,7 +76,7 @@ namespace AIBridge.Editor
             builder.AppendLine("## 元数据");
             builder.AppendLine();
             builder.AppendLine("- Settings Hash: `" + ComputeSettingsHash(projectRoot, target) + "`");
-            return builder.ToString();
+            return AiRuleMarkdownNormalizer.TrimLineEndPunctuation(builder.ToString());
         }
 
         public static string RenderBranchSelection(string projectRoot, AssistantIntegrationTarget target)
@@ -171,7 +171,7 @@ namespace AIBridge.Editor
             builder.AppendLine("```");
             builder.AppendLine();
 
-            return builder.ToString();
+            return AiRuleMarkdownNormalizer.TrimLineEndPunctuation(builder.ToString());
         }
 
         public static string RenderGraphManifest(string projectRoot, AssistantIntegrationTarget target)

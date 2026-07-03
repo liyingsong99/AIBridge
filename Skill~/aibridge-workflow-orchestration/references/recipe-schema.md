@@ -1,6 +1,6 @@
 # Recipe Schema
 
-Purpose: define AIBridge workflow recipe JSON files used by `workflow validate`, `workflow plan`, `workflow init`, `workflow run-cli`, active run attach, external result import, and adapter export.
+Purpose: define AIBridge workflow recipe JSON files used by `workflow validate`, `workflow plan`, `workflow init`, `workflow run-cli`, active run attach, external result import, and adapter export
 
 ## Locations
 
@@ -10,7 +10,7 @@ Templates~/Workflows/<name>.aibridge-workflow.json
 .aibridge/workflows/runs/<runId>/
 ```
 
-Package templates live under `Templates~/Workflows`. Project-local recipes live under `.aibridge/workflows/recipes`. A run writes its manifest, inputs, phase/step state, command results, artifacts, gates, and report under `.aibridge/workflows/runs/<runId>/`.
+Package templates live under `Templates~/Workflows`. Project-local recipes live under `.aibridge/workflows/recipes`. A run writes its manifest, inputs, phase/step state, command results, artifacts, gates, and report under `.aibridge/workflows/runs/<runId>/`
 
 ## CLI
 
@@ -39,27 +39,27 @@ $CLI workflow clean --older-than 3d --dry-run false --keep-failed true --keep-la
 $CLI workflow clean --older-than 3d --save-settings true --auto-clean true
 ```
 
-`run-cli` executes only deterministic `cli`, `barrier`, and `report` steps. It records `agent` and `manual` steps as `skipped_requires_external_executor`; external tools such as Codex, Claude, or Cursor remain responsible for those steps. `workflow run-cli --resume <runId>` still requires `--file` or `--recipe`; resume selects the existing run, while file/recipe selects the recipe definition to execute. `partial` is not a CLI success unless `--allow-partial true` is passed explicitly.
+`run-cli` executes only deterministic `cli`, `barrier`, and `report` steps. It records `agent` and `manual` steps as `skipped_requires_external_executor`; external tools such as Codex, Claude, or Cursor remain responsible for those steps. `workflow run-cli --resume <runId>` still requires `--file` or `--recipe`; resume selects the existing run, while file/recipe selects the recipe definition to execute. `partial` is not a CLI success unless `--allow-partial true` is passed explicitly
 
-`begin` creates a run and writes `.aibridge/workflows/active-run.json`. Ordinary commands attach evidence when they receive `--workflow-run <runId>`, when `AIBRIDGE_WORKFLOW_RUN_ID` is set, or when an active run exists. `workflow status` and `workflow report` do not default to the active run; pass `--run <runId>` explicitly, reading `.aibridge/workflows/active-run.json` first when needed. `finish` refreshes gates/report and clears the active run pointer. `finish --status passed` is downgraded when required gates are failed, blocked, or missing evidence.
+`begin` creates a run and writes `.aibridge/workflows/active-run.json`. Ordinary commands attach evidence when they receive `--workflow-run <runId>`, when `AIBRIDGE_WORKFLOW_RUN_ID` is set, or when an active run exists. `workflow status` and `workflow report` do not default to the active run; pass `--run <runId>` explicitly, reading `.aibridge/workflows/active-run.json` first when needed. `finish` refreshes gates/report and clears the active run pointer. `finish --status passed` is downgraded when required gates are failed, blocked, or missing evidence
 
-`import` copies structured external results into run artifacts. `Verdict.status` must be `confirmed`, `refuted`, or `uncertain`; `externalVerdict` gates pass only from imported Verdict artifacts, not from prose summaries. `ValidationResult` imports use the `validation-report` artifact kind by default.
+`import` copies structured external results into run artifacts. `Verdict.status` must be `confirmed`, `refuted`, or `uncertain`; `externalVerdict` gates pass only from imported Verdict artifacts, not from prose summaries. `ValidationResult` imports use the `validation-report` artifact kind by default
 
-For resumed work, run `workflow status --run <runId>` before adding new evidence. Status, run-cli, finish, and JSON report outputs are compact by default; use `--detail full` only when the full manifest JSON is needed. Default handoff should keep `runDirectory`, `manifestPath`, `reportPath`, artifact ids, gate summaries, and gaps as refs; do not read full `manifest.json` or Markdown reports for routine status. Use active-run attachment only when the current task clearly belongs to that run; otherwise pass `--workflow-run <runId>` explicitly or start a new run.
+For resumed work, run `workflow status --run <runId>` before adding new evidence. Status, run-cli, finish, and JSON report outputs are compact by default; use `--detail full` only when the full manifest JSON is needed. Default handoff should keep `runDirectory`, `manifestPath`, `reportPath`, artifact ids, gate summaries, and gaps as refs; do not read full `manifest.json` or Markdown reports for routine status. Use active-run attachment only when the current task clearly belongs to that run; otherwise pass `--workflow-run <runId>` explicitly or start a new run
 
-`export` compiles a recipe into an external task package or script (`codex-task-pack`, `generic-cli`, `claude-workflow`). Exporters do not run external agents and do not provide an LLM runtime.
+`export` compiles a recipe into an external task package or script (`codex-task-pack`, `generic-cli`, `claude-workflow`). Exporters do not run external agents and do not provide an LLM runtime
 
-`workflow clean` is an explicit maintenance command and is safe by default (`dry-run=true`). Do not suggest it for routine context or disk upkeep; ordinary expired run directories are handled by the AIBridge cache cleanup settings, while `workflow clean` remains available when the user explicitly asks to inspect or manually maintain workflow artifacts.
+`workflow clean` is an explicit maintenance command and is safe by default (`dry-run=true`). Do not suggest it for routine context or disk upkeep; ordinary expired run directories are handled by the AIBridge cache cleanup settings, while `workflow clean` remains available when the user explicitly asks to inspect or manually maintain workflow artifacts
 
 ## Recipe Shape
 
 Required top-level fields:
 
-- `schemaVersion`: must be `1`.
-- `name`: lower kebab-case recipe id.
-- `description`: concise purpose.
-- `phases`: ordered phase definitions.
-- `gates`: validation gates.
+- `schemaVersion`: must be `1`
+- `name`: lower kebab-case recipe id
+- `description`: concise purpose
+- `phases`: ordered phase definitions
+- `gates`: validation gates
 
 Optional fields:
 
@@ -74,7 +74,7 @@ Optional fields:
 - `stopWhen`
 - `loopIteration`
 
-These fields are forward-compatible metadata. The CLI validates and preserves them, but it does not treat them as a closed runtime contract.
+These fields are forward-compatible metadata. The CLI validates and preserves them, but it does not treat them as a closed runtime contract
 
 ```json
 {
@@ -116,7 +116,7 @@ Allowed `type` values:
 - `barrier`
 - `report`
 
-`dependsOn` may only reference earlier phases. `itemSource` is syntax-only in the current CLI and is intended for later parallel/pipeline expansion by an external executor.
+`dependsOn` may only reference earlier phases. `itemSource` is syntax-only in the current CLI and is intended for later parallel/pipeline expansion by an external executor
 
 ## Step Shape
 
@@ -134,29 +134,29 @@ Allowed `type` values:
 
 Allowed `kind` values:
 
-- `cli`: executed by `workflow run-cli`.
-- `agent`: external AI executor; recorded but not executed by AIBridge.
-- `manual`: main-agent or human decision; recorded but not executed by AIBridge.
-- `barrier`: lightweight merge/check step; recorded as passed by `run-cli`.
-- `report`: final reporting step; recorded as passed by `run-cli`.
+- `cli`: executed by `workflow run-cli`
+- `agent`: external AI executor; recorded but not executed by AIBridge
+- `manual`: main-agent or human decision; recorded but not executed by AIBridge
+- `barrier`: lightweight merge/check step; recorded as passed by `run-cli`
+- `report`: final reporting step; recorded as passed by `run-cli`
 
-Template variables use `{{name}}` or `{{inputs.name}}` and are resolved from the merged recipe defaults plus `--inputs`. Prefer passing `--inputs` as a JSON file path; inline JSON is shell-quoting sensitive, especially in PowerShell.
+Template variables use `{{name}}` or `{{inputs.name}}` and are resolved from the merged recipe defaults plus `--inputs`. Prefer passing `--inputs` as a JSON file path; inline JSON is shell-quoting sensitive, especially in PowerShell
 
 ## Skill Routing And Scope Metadata
 
-`requiredSkills` and `releaseSkillsAfter` are workflow metadata for external AI harnesses and exported task packs. AIBridge CLI validates and surfaces these fields, but it does not install, unload, or physically remove Skills from a model context.
+`requiredSkills` and `releaseSkillsAfter` are workflow metadata for external AI harnesses and exported task packs. AIBridge CLI validates and surfaces these fields, but it does not install, unload, or physically remove Skills from a model context
 
-Skill routing is a preflight step, not a recipe phase or business mode. It computes baseline, active, deferred, and guarded Skills before entering a mode. Release is evaluated at Mode Exit, phase boundary, or step handoff, not when routing finishes.
+Skill routing is a preflight step, not a recipe phase or business mode. It computes baseline, active, deferred, and guarded Skills before entering a mode. Release is evaluated at Mode Exit, phase boundary, or step handoff, not when routing finishes
 
-When an AI harness executes a recipe, this metadata must also be reflected in short visible status blocks at phase/step entry and handoff. Use explicit labels: `【入口：...】` only for routing, `【模式：...】` for business modes, and `-> ...` for phase/step progress. Put active Skills, expected output, handoff, and gate status on separate lines instead of packing them into one sentence.
+When an AI harness executes a recipe, this metadata must also be reflected in short visible status blocks at phase/step entry and handoff. Use explicit labels: `【入口：...】` only for routing, `【模式：...】` for business modes, and `-> ...` for phase/step progress. Put active Skills, expected output, handoff, and gate status on separate lines instead of packing them into one sentence
 
 Allowed locations:
 
-- Recipe `requiredSkills`: baseline Skills expected for the whole recipe.
-- Phase `requiredSkills`: active Skills needed during Mode Enter / phase execution.
-- Phase `releaseSkillsAfter`: phase-scoped active Skills that should be released at phase Exit after the handoff is written.
-- Step `requiredSkills`: active Skills needed by that step, especially `agent` and `manual` steps.
-- Step `releaseSkillsAfter`: step-scoped active Skills that should be released after the step output is imported.
+- Recipe `requiredSkills`: baseline Skills expected for the whole recipe
+- Phase `requiredSkills`: active Skills needed during Mode Enter / phase execution
+- Phase `releaseSkillsAfter`: phase-scoped active Skills that should be released at phase Exit after the handoff is written
+- Step `requiredSkills`: active Skills needed by that step, especially `agent` and `manual` steps
+- Step `releaseSkillsAfter`: step-scoped active Skills that should be released after the step output is imported
 
 At a phase or step boundary, pass a compact handoff instead of previous Skill details:
 
@@ -179,7 +179,7 @@ At a phase or step boundary, pass a compact handoff instead of previous Skill de
 
 ## ArtifactRef
 
-Run artifacts are normalized into manifest `artifactRefs` and individual `artifacts/<artifactId>/artifact.json` files.
+Run artifacts are normalized into manifest `artifactRefs` and individual `artifacts/<artifactId>/artifact.json` files
 
 Standard kinds:
 
@@ -202,7 +202,7 @@ Standard kinds:
 - `validation-report`
 - `workflow-report`
 
-Artifacts may include `stepId` and `schema` for imported structured results. Screenshots, GIFs, and Runtime screenshots are referenced from their existing `.aibridge` cache paths by default. Readable non-image output files are copied into the run artifact directory when they are under the copy limit; large files may be referenced by `sourcePath`.
+Artifacts may include `stepId` and `schema` for imported structured results. Screenshots, GIFs, and Runtime screenshots are referenced from their existing `.aibridge` cache paths by default. Readable non-image output files are copied into the run artifact directory when they are under the copy limit; large files may be referenced by `sourcePath`
 
 ## Gates
 
@@ -219,13 +219,13 @@ Allowed `kind` values:
 - `externalVerdict`
 - `patchProposalRequired`
 
-Required gates failing make the run `failed` or `blocked`. Optional gate failures make evidence visible without forcing the run to fail.
+Required gates failing make the run `failed` or `blocked`. Optional gate failures make evidence visible without forcing the run to fail
 
-`artifactRequired` may filter by `artifactKind`, `schema`, and `stepId`. `artifactKind` matches both persisted artifact `kind` and semantic command-result `semanticKind`, so a `command-result/runtime-perf` artifact satisfies `artifactKind=runtime-perf`. `externalVerdict` uses `allow` values such as `confirmed`. `uncertain` is reported as an evidence gap and does not count as pass or fail.
+`artifactRequired` may filter by `artifactKind`, `schema`, and `stepId`. `artifactKind` matches both persisted artifact `kind` and semantic command-result `semanticKind`, so a `command-result/runtime-perf` artifact satisfies `artifactKind=runtime-perf`. `externalVerdict` uses `allow` values such as `confirmed`. `uncertain` is reported as an evidence gap and does not count as pass or fail
 
 ## External Result Schemas
 
-Use `EvidenceRef`, `CommandEvidence`, `Finding`, `Verdict`, `PatchProposal`, `ValidationResult`, and `SkillHandoff` when `agent` or `manual` steps are executed by the harness and imported back into a run. Field definitions live in `evidence-schema.md`.
+Use `EvidenceRef`, `CommandEvidence`, `Finding`, `Verdict`, `PatchProposal`, `ValidationResult`, and `SkillHandoff` when `agent` or `manual` steps are executed by the harness and imported back into a run. Field definitions live in `evidence-schema.md`
 
 Import examples:
 
@@ -238,8 +238,8 @@ $CLI workflow import --run <runId> --step phase-handoff --schema SkillHandoff --
 
 ## Boundaries
 
-- Do not use workflow recipes as a generic LLM scheduler.
-- Do not imply `agent` or `manual` steps are executed by AIBridge.
-- Treat adapter exports as handoff artifacts only; execution and result return must be explicit.
-- Keep parallel agents read-only unless isolated worktrees, ownership, merge, and validation gates are explicit.
-- Never parallel-write Prefab, Scene, `.asset`, or `.meta` files.
+- Do not use workflow recipes as a generic LLM scheduler
+- Do not imply `agent` or `manual` steps are executed by AIBridge
+- Treat adapter exports as handoff artifacts only; execution and result return must be explicit
+- Keep parallel agents read-only unless isolated worktrees, ownership, merge, and validation gates are explicit
+- Never parallel-write Prefab, Scene, `.asset`, or `.meta` files

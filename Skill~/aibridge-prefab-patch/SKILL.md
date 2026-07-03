@@ -5,7 +5,7 @@ description: Unity Prefab asset patch workflow for AIBridge. Use when modifying 
 
 # AIBridge Prefab Patch
 
-Use `prefab patch` when one Prefab edit needs multiple operations in one load/save cycle. For single-field or small batched edits, prefer `inspector set_property` or `inspector set_properties`. For scene objects, prefer `gameobject`, `transform`, and `inspector`. For unsupported operations, load `unity-yaml-editing`.
+Use `prefab patch` when one Prefab edit needs multiple operations in one load/save cycle. For single-field or small batched edits, prefer `inspector set_property` or `inspector set_properties`. For scene objects, prefer `gameobject`, `transform`, and `inspector`. For unsupported operations, load `unity-yaml-editing`
 
 ## 参数选择
 
@@ -37,11 +37,11 @@ $CLI prefab patch --prefabPath "Assets/Prefabs/Player.prefab" --ops ".aibridge/p
 ]
 ```
 
-Supported ops: `ensure_child`, `ensure_component`, `set_property`, `set_properties`, `set_array`, `append_array`, `clear_array`. See `references/prefab-reference.md` for full op schemas.
+Supported ops: `ensure_child`, `ensure_component`, `set_property`, `set_properties`, `set_array`, `append_array`, `clear_array`. See `references/prefab-reference.md` for full op schemas
 
 ## 不支持时的处理
 
-If an operation is not covered by patch ops, load `unity-yaml-editing` and follow its Decision Order.
+If an operation is not covered by patch ops, load `unity-yaml-editing` and follow its Decision Order
 
 ## 引用写法
 
@@ -57,8 +57,8 @@ null
 
 ## 注意事项
 
-- Do not edit Prefab YAML directly; for unsupported operations use `unity-yaml-editing`.
-- Duplicate child names or component types are ambiguous; use exact hierarchy paths and `componentIndex`.
+- Do not edit Prefab YAML directly; for unsupported operations use `unity-yaml-editing`
+- Duplicate child names or component types are ambiguous; use exact hierarchy paths and `componentIndex`
 
 ## References
 

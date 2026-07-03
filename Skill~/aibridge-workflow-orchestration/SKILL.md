@@ -11,14 +11,14 @@ Leave routine single-file edits, simple CLI command lookup, and ordinary Unity v
 
 ## Core Rules
 
-- Keep orchestration explicit: phases, roles, dependencies, gates, artifacts, and expected outputs.
-- Keep execution visible: when running a workflow, use short status blocks with explicit labels, `【模式：...】` for the active business mode and `-> ...` for phase/step progress.
-- Prefer parallel read and serial write. Use parallel write only when worktree isolation, file ownership, merge strategy, and validation gates are explicit.
-- Use pipeline for staged per-item work. Use parallel barriers only when a downstream step needs all upstream results.
-- Use structured outputs for intermediate results: findings, verdicts, plans, patch proposals, validation results, artifact references, and Runtime target references.
-- Treat Skill routing as preflight; scope phase-specific Skills to the phase that needs them, then pass compact handoff summaries and artifact references across phase boundaries.
-- Separate claims from evidence. Treat AIBridge CLI, Runtime, screenshots, logs, tests, and Code Index output as evidence.
-- Do not describe `workflow` as a generic AI agent scheduler. Current CLI support covers recipe list/validate/plan/init, active run begin/attach/finish, deterministic `run-cli` steps, ordinary-command artifact attach, external result import, adapter export, gates, and reports; `agent` and `manual` steps require an external executor.
+- Keep orchestration explicit: phases, roles, dependencies, gates, artifacts, and expected outputs
+- Keep execution visible: when running a workflow, use short status blocks with explicit labels, `【模式：...】` for the active business mode and `-> ...` for phase/step progress
+- Prefer parallel read and serial write. Use parallel write only when worktree isolation, file ownership, merge strategy, and validation gates are explicit
+- Use pipeline for staged per-item work. Use parallel barriers only when a downstream step needs all upstream results
+- Use structured outputs for intermediate results: findings, verdicts, plans, patch proposals, validation results, artifact references, and Runtime target references
+- Treat Skill routing as preflight; scope phase-specific Skills to the phase that needs them, then pass compact handoff summaries and artifact references across phase boundaries
+- Separate claims from evidence. Treat AIBridge CLI, Runtime, screenshots, logs, tests, and Code Index output as evidence
+- Do not describe `workflow` as a generic AI agent scheduler. Current CLI support covers recipe list/validate/plan/init, active run begin/attach/finish, deterministic `run-cli` steps, ordinary-command artifact attach, external result import, adapter export, gates, and reports; `agent` and `manual` steps require an external executor
 
 ## Reference Loading
 

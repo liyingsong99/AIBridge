@@ -3,7 +3,7 @@
 ## 状态
 
 - 状态：当前索引
-- 更新时间：2026-07-01
+- 更新时间：2026-07-03
 - 维护范围：`Packages/cn.lys.aibridge`
 
 ## 目的
@@ -144,6 +144,7 @@
 - RootRule 必须简洁写明 `$CLI` 指向项目本地 AIBridge CLI 路径，并给出 PowerShell 调用方式。
 - RootRule 中的 `Host Exec` 规则已进一步去枚举化：只保留“`exec run --stdin` 仅用于外部 host 工具，不要用它包装 AIBridge CLI 命令”这一条边界。stdin 契约仍是 JSON 请求，`command` 只放可执行文件名，`args` / `queries` / `globs` / `paths` 承载参数；包含引号、反斜杠或正则等转义敏感内容时，优先用 PowerShell 对象 `ConvertTo-Json` 或 `--request-file`，不要手写 inline JSON 字符串。多个外部 host 任务使用 `exec batch --stdin` 或 `jobs` 批量请求。
 - `aibridge-development-workflow` 使用短入口，Harness 采用 compact gate；Preflight / Skill Routing 只作为内部选路步骤，对外默认直接进入业务分支输出；完整探测矩阵、fallback、resume 和证据 schema 移入 `harness-readiness-detail.md` 按需加载。
+- Skill 和 RootRule 的 AI 规则 Markdown 不保留普通规则行末尾的 `。` / `.`；源模板、安装副本和生成器输出保持一致
 - Runtime HTTP transport 正常运行时不再轮询 file command 目录，也不为 HTTP command 默认写 result 文件；旧 File transport 仅作为 HTTP 未运行时的兼容回退路径。
 - Runtime HTTP command 成功、timeout、Runtime not-ready 和 CLI cleanup 都会关闭 pending id，迟到的 HTTP 异步结果不会回落到 file result 落盘。
 - Runtime heartbeat 默认间隔为 2 秒；File heartbeat stale 判定保留 15 秒窗口，不会因默认心跳降频触发误判。
