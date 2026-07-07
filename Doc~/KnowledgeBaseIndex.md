@@ -139,7 +139,7 @@
 - `compile dotnet` 只是额外检查，不是 Unity 编译替代品。
 - `test run` 必须在 Editor 处于 Edit Mode 时启动；若当前处于 Play Mode，会直接失败并明确提示先退出 Play Mode。
 - `test run` 在并发请求下会持久化队列到 `.aibridge/test-runs/state.json`；已确认的 run 若后续变成 `unknown`，CLI 会快速失败并提示状态丢失，而不是一直等完整 timeout。
-- `code_index` 已收缩为默认关闭的只读轻量声明名检索入口；公开查询面只保留 `symbol` 和 `definition`，只负责把 C# 声明名快速定位到声明位置和文件路径，后续分析由 AI 自己读取 `.cs` 文件完成；Unity 已导入资源名称/类型查找继续使用 `asset search/find --format paths`。
+- `code_index` 已收缩为默认关闭的只读轻量声明名检索入口；公开查询面只保留 `symbol` 和 `definition`，只负责把 C# 声明名快速定位到声明位置和文件路径，后续分析由 AI 自己读取 `.cs` 文件完成；Unity 已导入资源名称/类型查找继续使用 `asset search/find --format paths`，其中 `asset search <keyword>` 是 `asset search --keyword <keyword>` 的兼容简写。
 - `workflow run-cli` 不会自动执行 `agent` / `manual`，这些步骤仍需要外部执行器回流。
 - RootRule 必须简洁写明 `$CLI` 指向项目本地 AIBridge CLI 路径，并给出 PowerShell 调用方式。
 - RootRule 中的 `Host Exec` 规则已进一步去枚举化：只保留“`exec run --stdin` 仅用于外部 host 工具，不要用它包装 AIBridge CLI 命令”这一条边界。stdin 契约仍是 JSON 请求，`command` 只放可执行文件名，`args` / `queries` / `globs` / `paths` 承载参数；包含引号、反斜杠或正则等转义敏感内容时，优先用 PowerShell 对象 `ConvertTo-Json` 或 `--request-file`，不要手写 inline JSON 字符串。多个外部 host 任务使用 `exec batch --stdin` 或 `jobs` 批量请求。

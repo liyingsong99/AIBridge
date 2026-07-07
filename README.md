@@ -281,6 +281,7 @@ dialog click ok | yes | Save
 ### Assets And Scenes
 
 ```bash
+$CLI asset search "Player" --mode script --format paths
 $CLI asset search --mode script --keyword "Player" --format paths
 $CLI asset find --filter "t:Prefab" --format paths
 $CLI asset get_path --guid "abc123..."

@@ -82,6 +82,10 @@ namespace AIBridgeCLI
                         {
                             result.ExtraArgs.Add(arg);
                         }
+                        else if (IsAssetSearchCommand(result))
+                        {
+                            result.ExtraArgs.Add(arg);
+                        }
                         else
                         {
                             throw new ArgumentException(BuildUnexpectedArgumentMessage(result, arg));
@@ -91,7 +95,47 @@ namespace AIBridgeCLI
                 }
             }
 
+            NormalizePositionalShortcuts(result);
+
             return result;
+        }
+
+        private static void NormalizePositionalShortcuts(ParsedArgs result)
+        {
+            NormalizeAssetSearchKeywordShortcut(result);
+        }
+
+        private static void NormalizeAssetSearchKeywordShortcut(ParsedArgs result)
+        {
+            if (!IsAssetSearchCommand(result) || result.ExtraArgs.Count == 0)
+            {
+                return;
+            }
+
+            if (result.ExtraArgs.Count > 1)
+            {
+                throw new ArgumentException(BuildUnexpectedArgumentMessage(result, result.ExtraArgs[1]));
+            }
+
+            if (result.Options.ContainsKey("keyword") || result.Options.ContainsKey("json"))
+            {
+                throw new ArgumentException(
+                    "Unexpected positional keyword for asset search: " + result.ExtraArgs[0] + Environment.NewLine
+                    + "Use either `asset search <keyword>` or `asset search --keyword <keyword>`, not both.");
+            }
+
+            // 兼容 AI/用户常见简写：asset search Player 等价于 --keyword Player。
+            result.Options["keyword"] = result.ExtraArgs[0];
+            result.ExtraArgs.Clear();
+        }
+
+        private static bool IsAssetSearchCommand(ParsedArgs result)
+        {
+            return result != null
+                && result.CommandType != null
+                && result.Action != null
+                && result.CommandType.Equals("asset", StringComparison.OrdinalIgnoreCase)
+                && result.Action.Equals("search", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string BuildUnexpectedArgumentMessage(ParsedArgs result, string arg)

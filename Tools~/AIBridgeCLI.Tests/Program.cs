@@ -18,6 +18,9 @@ namespace AIBridgeCLI.Tests
                 WorkflowReport_IncludesRuntimePerformanceEvidence();
                 WorkflowReport_IncludesFailedRuntimePerformanceEvidence();
                 ArtifactRequiredGate_MatchesSemanticKind();
+                AssetSearch_PositionalKeywordShortcut_MapsToKeyword();
+                AssetSearch_PositionalKeywordShortcut_RejectsDuplicateKeyword();
+                AssetSearch_Help_ListsPositionalKeywordUsage();
                 LostTestRunStatus_IsRecognizedAfterAck();
                 DialogButtonInfo_ExposesStrictLogicalChoices();
                 DialogButtonInfo_DoesNotExposeChoicesForDisabledButtons();
@@ -188,6 +191,44 @@ namespace AIBridgeCLI.Tests
             AssertTrue(!AIBridgeCLI.Program.IsLostTestRunStatus("cmd_123", "unknown", false), "Unconfirmed unknown status should not fail fast.");
             AssertTrue(!AIBridgeCLI.Program.IsLostTestRunStatus(null, "unknown", true), "Missing runId should not be treated as a lost run.");
             AssertTrue(!AIBridgeCLI.Program.IsLostTestRunStatus("cmd_123", "running", true), "Running status should not be treated as lost.");
+        }
+
+        private static void AssetSearch_PositionalKeywordShortcut_MapsToKeyword()
+        {
+            var parsed = ParseArgs("asset", "search", "BattleSettlementCityChallengeFailPanel", "--mode", "prefab", "--format", "paths");
+            var request = new AssetCommandBuilder().Build(GetParsedAction(parsed), GetParsedOptions(parsed));
+
+            AssertEqual("asset", GetParsedCommandType(parsed), "Command type should parse.");
+            AssertEqual("search", GetParsedAction(parsed), "Action should parse.");
+            AssertEqual("BattleSettlementCityChallengeFailPanel", request.@params["keyword"], "Positional asset search value should map to keyword.");
+            AssertEqual("prefab", request.@params["mode"], "Mode option should be preserved.");
+            AssertEqual("paths", request.@params["format"], "Format option should be preserved.");
+            AssertEqual(0, GetParsedExtraArgs(parsed).Count, "Positional shortcut should not leave extra args.");
+        }
+
+        private static void AssetSearch_PositionalKeywordShortcut_RejectsDuplicateKeyword()
+        {
+            try
+            {
+                ParseArgs("asset", "search", "Player", "--keyword", "Enemy");
+                throw new InvalidOperationException("Duplicate positional and explicit keyword should fail.");
+            }
+            catch (TargetInvocationException ex)
+            {
+                var inner = ex.InnerException as ArgumentException;
+                if (inner == null || inner.Message.IndexOf("Use either `asset search <keyword>`", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    throw;
+                }
+            }
+        }
+
+        private static void AssetSearch_Help_ListsPositionalKeywordUsage()
+        {
+            var help = new AssetCommandBuilder().GetHelp("search");
+
+            AssertContains(help, "AIBridgeCLI asset search [keyword] [options]", "Asset search help should show the positional keyword shortcut.");
+            AssertContains(help, "AIBridgeCLI asset search --keyword <keyword> [options]", "Asset search help should still show explicit keyword usage.");
         }
 
         private static JObject CreateRuntimePerfCommandResult()
@@ -496,6 +537,48 @@ namespace AIBridgeCLI.Tests
                 title = id,
                 buttons = new List<DialogButtonInfo>(buttons)
             };
+        }
+
+        private static object ParseArgs(params string[] args)
+        {
+            var method = typeof(AIBridgeCLI.Program).GetMethod("ParseArguments", BindingFlags.Static | BindingFlags.NonPublic);
+            if (method == null)
+            {
+                throw new InvalidOperationException("ParseArguments method not found.");
+            }
+
+            return method.Invoke(null, new object[] { args });
+        }
+
+        private static string GetParsedCommandType(object parsed)
+        {
+            return (string)GetParsedProperty(parsed, "CommandType");
+        }
+
+        private static string GetParsedAction(object parsed)
+        {
+            return (string)GetParsedProperty(parsed, "Action");
+        }
+
+        private static Dictionary<string, string> GetParsedOptions(object parsed)
+        {
+            return (Dictionary<string, string>)GetParsedProperty(parsed, "Options");
+        }
+
+        private static List<string> GetParsedExtraArgs(object parsed)
+        {
+            return (List<string>)GetParsedProperty(parsed, "ExtraArgs");
+        }
+
+        private static object GetParsedProperty(object parsed, string name)
+        {
+            var property = parsed.GetType().GetProperty(name, BindingFlags.Instance | BindingFlags.Public);
+            if (property == null)
+            {
+                throw new InvalidOperationException("ParsedArgs property not found: " + name);
+            }
+
+            return property.GetValue(parsed);
         }
 
         private static void AssertContains(List<string> values, string expected, string message)

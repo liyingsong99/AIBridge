@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System;
 
 namespace AIBridgeCLI.Commands
 {
@@ -58,5 +59,19 @@ namespace AIBridgeCLI.Commands
                 new ParameterInfo("maxChars", "Maximum number of characters to return", false, "12000")
             }
         };
+
+        public override string GetHelp(string action = null)
+        {
+            var help = base.GetHelp(action);
+            if (!string.Equals(action, "search", StringComparison.OrdinalIgnoreCase))
+            {
+                return help;
+            }
+
+            return help.Replace(
+                "Usage: AIBridgeCLI asset search [options]",
+                "Usage: AIBridgeCLI asset search [keyword] [options]" + System.Environment.NewLine
+                + "       AIBridgeCLI asset search --keyword <keyword> [options]");
+        }
     }
 }
