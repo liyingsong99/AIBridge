@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using AIBridge.Internal.Json;
+using AIBridge.Runtime.Internal;
 using UnityEditor;
 
 namespace AIBridge.Editor
@@ -14,6 +15,7 @@ namespace AIBridge.Editor
     {
         private static readonly TimeSpan CommandDirectoryRescanInterval = TimeSpan.FromSeconds(5);
         private static readonly TimeSpan WatcherUnavailableScanInterval = TimeSpan.FromSeconds(1);
+        private static readonly TimeSpan CommandFileTransientRetryWindow = TimeSpan.FromSeconds(2);
         /// <summary>
         /// Timeout for stale command/result files (10 minutes)
         /// </summary>
@@ -81,6 +83,7 @@ namespace AIBridge.Editor
                 return;
             }
 
+            var retryScan = false;
             foreach (var file in files)
             {
                 try
@@ -95,12 +98,15 @@ namespace AIBridge.Editor
                         continue;
                     }
 
-                    var json = File.ReadAllText(file, System.Text.Encoding.UTF8);
-
-                    var commandData = AIBridgeJson.DeserializeObject(json);
-                    if (commandData == null)
+                    if (!TryReadCommandData(file, nowUtc, out var commandData, out var retryLater, out var readError))
                     {
-                        throw new InvalidOperationException("Command JSON root must be an object.");
+                        if (retryLater)
+                        {
+                            retryScan = true;
+                            continue;
+                        }
+
+                        throw new InvalidOperationException(readError);
                     }
 
                     var request = new CommandRequest
@@ -143,7 +149,70 @@ namespace AIBridge.Editor
                 }
             }
 
+            if (retryScan)
+            {
+                Interlocked.Exchange(ref _commandsDirty, 1);
+            }
+
             CleanupPeriodicWorkIfDue(nowUtc);
+        }
+
+        private static bool TryReadCommandData(
+            string file,
+            DateTime nowUtc,
+            out System.Collections.Generic.Dictionary<string, object> commandData,
+            out bool retryLater,
+            out string error)
+        {
+            commandData = null;
+            retryLater = false;
+            error = null;
+
+            try
+            {
+                var json = AIBridgeAtomicFile.ReadAllText(file, System.Text.Encoding.UTF8);
+                commandData = AIBridgeJson.DeserializeObject(json);
+                if (commandData == null)
+                {
+                    throw new InvalidOperationException("Command JSON root must be an object.");
+                }
+
+                return true;
+            }
+            catch (IOException ex)
+            {
+                retryLater = true;
+                error = ex.Message;
+                return false;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                retryLater = true;
+                error = ex.Message;
+                return false;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                if (IsRecentlyWritten(file, nowUtc))
+                {
+                    retryLater = true;
+                }
+
+                return false;
+            }
+        }
+
+        private static bool IsRecentlyWritten(string file, DateTime nowUtc)
+        {
+            try
+            {
+                return nowUtc - File.GetLastWriteTimeUtc(file) < CommandFileTransientRetryWindow;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private bool ShouldScanCommandDirectory(DateTime nowUtc)
@@ -248,6 +317,8 @@ namespace AIBridge.Editor
                 }
             }
 
+            CleanupStaleTempFiles(_resultsDir);
+
             // Cleanup stale error files in commands directory
             if (Directory.Exists(_commandsDir))
             {
@@ -269,6 +340,35 @@ namespace AIBridge.Editor
                 {
                     AIBridgeLogger.LogError($"Failed to cleanup stale error files: {ex.Message}");
                 }
+            }
+
+            CleanupStaleTempFiles(_commandsDir);
+        }
+
+        private void CleanupStaleTempFiles(string directory)
+        {
+            if (!Directory.Exists(directory))
+            {
+                return;
+            }
+
+            try
+            {
+                var tempFiles = Directory.GetFiles(directory, "*.tmp.*");
+                foreach (var file in tempFiles)
+                {
+                    var fileInfo = new FileInfo(file);
+                    var fileAge = DateTime.Now - fileInfo.CreationTime;
+                    if (fileAge > StaleFileTimeout)
+                    {
+                        File.Delete(file);
+                        AIBridgeLogger.LogDebug($"Cleaned up stale temp file: {Path.GetFileName(file)}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AIBridgeLogger.LogError($"Failed to cleanup stale temp files: {ex.Message}");
             }
         }
 
@@ -348,7 +448,7 @@ namespace AIBridge.Editor
             try
             {
                 var json = AIBridgeJson.Serialize(result, pretty: true);
-                File.WriteAllText(filePath, json, System.Text.Encoding.UTF8);
+                AIBridgeAtomicFile.WriteTextAtomic(filePath, json, System.Text.Encoding.UTF8);
             }
             catch (Exception ex)
             {

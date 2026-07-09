@@ -15,6 +15,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AIBridge.Internal.Json;
 using AIBridge.Runtime;
+using AIBridge.Runtime.Internal;
 using UnityEditor;
 using UnityEngine;
 
@@ -1355,7 +1356,7 @@ $CLI code cancel
 
                 var filePath = Path.Combine(resultsDir, result.id + ".json");
                 var json = AIBridgeJson.Serialize(result, true);
-                File.WriteAllText(filePath, json, Encoding.UTF8);
+                AIBridgeAtomicFile.WriteTextAtomic(filePath, json, Encoding.UTF8);
             }
             catch (Exception ex)
             {

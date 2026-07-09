@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <Compile Include="..\..\Runtime\Internal\Json\AIBridgeJson.cs" Link="Shared\AIBridgeJson.cs" />
+    <Compile Include="..\..\Runtime\Internal\AIBridgeAtomicFile.cs" Link="Shared\AIBridgeAtomicFile.cs" />
     <Compile Include="..\..\Runtime\Internal\AIBridgeCacheCleanup.cs" Link="Shared\AIBridgeCacheCleanup.cs" />
   </ItemGroup>
 

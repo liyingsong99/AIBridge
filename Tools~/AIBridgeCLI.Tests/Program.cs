@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Text;
+using System.Threading;
+using AIBridge.Runtime.Internal;
 using AIBridgeCLI.Commands;
 using AIBridgeCLI.Core;
 using AIBridgeCLI.Workflow;
@@ -18,6 +21,8 @@ namespace AIBridgeCLI.Tests
                 WorkflowReport_IncludesRuntimePerformanceEvidence();
                 WorkflowReport_IncludesFailedRuntimePerformanceEvidence();
                 ArtifactRequiredGate_MatchesSemanticKind();
+                AtomicFile_WriteTextAtomic_ReplacesExistingFileAndRemovesTemp();
+                CommandSender_TryGetResult_RetriesIncompleteJson();
                 AssetSearch_PositionalKeywordShortcut_MapsToKeyword();
                 AssetSearch_PositionalKeywordShortcut_RejectsDuplicateKeyword();
                 AssetSearch_Help_ListsPositionalKeywordUsage();
@@ -181,6 +186,81 @@ namespace AIBridgeCLI.Tests
                 if (File.Exists(artifactPath))
                 {
                     File.Delete(artifactPath);
+                }
+            }
+        }
+
+        private static void AtomicFile_WriteTextAtomic_ReplacesExistingFileAndRemovesTemp()
+        {
+            var directory = Path.Combine(Path.GetTempPath(), "AIBridgeCLI.Atomic.Tests." + Guid.NewGuid().ToString("N"));
+            var path = Path.Combine(directory, "result.json");
+            try
+            {
+                Directory.CreateDirectory(directory);
+                File.WriteAllText(path, "old", new UTF8Encoding(false));
+
+                AIBridgeAtomicFile.WriteTextAtomic(path, "new", new UTF8Encoding(false));
+
+                AssertEqual("new", File.ReadAllText(path, Encoding.UTF8), "Atomic write should replace the final file.");
+                AssertEqual(0, Directory.GetFiles(directory, "*.tmp.*").Length, "Atomic write should remove temporary files.");
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                {
+                    Directory.Delete(directory, true);
+                }
+            }
+        }
+
+        private static void CommandSender_TryGetResult_RetriesIncompleteJson()
+        {
+            var previousRoot = Environment.GetEnvironmentVariable("UNITY_PROJECT_ROOT");
+            var previousDirectory = Directory.GetCurrentDirectory();
+            var projectRoot = Path.Combine(Path.GetTempPath(), "AIBridgeCLI.ResultRead.Tests." + Guid.NewGuid().ToString("N"));
+            var commandId = "cmd_result_retry";
+            Thread writer = null;
+            try
+            {
+                Directory.CreateDirectory(projectRoot);
+                Environment.SetEnvironmentVariable("UNITY_PROJECT_ROOT", projectRoot);
+                Directory.SetCurrentDirectory(projectRoot);
+                ResetPathHelperCache();
+                PathHelper.EnsureDirectoriesExist();
+
+                var resultPath = Path.Combine(projectRoot, ".aibridge", "results", commandId + ".json");
+                File.WriteAllText(resultPath, "{\"id\":\"" + commandId, new UTF8Encoding(false));
+
+                writer = new Thread(() =>
+                {
+                    Thread.Sleep(40);
+                    AIBridgeAtomicFile.WriteTextAtomic(
+                        resultPath,
+                        "{\"id\":\"" + commandId + "\",\"success\":true}",
+                        new UTF8Encoding(false));
+                });
+                writer.Start();
+
+                var result = new CommandSender().TryGetResult(commandId);
+
+                AssertTrue(result != null, "TryGetResult should retry while JSON is incomplete.");
+                AssertTrue(result.success, "TryGetResult should return the completed result.");
+                AssertTrue(!File.Exists(resultPath), "TryGetResult should delete the consumed result file.");
+                AssertEqual(0, Directory.GetFiles(Path.GetDirectoryName(resultPath), "*.tmp.*").Length, "Result retry should not leave temp files.");
+            }
+            finally
+            {
+                if (writer != null)
+                {
+                    writer.Join();
+                }
+
+                Environment.SetEnvironmentVariable("UNITY_PROJECT_ROOT", previousRoot);
+                Directory.SetCurrentDirectory(previousDirectory);
+                ResetPathHelperCache();
+                if (Directory.Exists(projectRoot))
+                {
+                    Directory.Delete(projectRoot, true);
                 }
             }
         }

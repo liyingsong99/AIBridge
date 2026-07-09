@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AIBridge.Internal.Json;
 using AIBridge.Runtime.Diagnostics;
+using AIBridge.Runtime.Internal;
 using AIBridge.Runtime.Transports;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -1674,7 +1675,7 @@ namespace AIBridge.Runtime
 
             try
             {
-                WriteTextAtomic(_heartbeatPath, heartbeatJson, false);
+                AIBridgeAtomicFile.WriteTextAtomic(_heartbeatPath, heartbeatJson, Encoding.UTF8, false);
             }
             catch (DirectoryNotFoundException)
             {
@@ -1682,7 +1683,7 @@ namespace AIBridge.Runtime
                 try
                 {
                     EnsureHeartbeatDirectory();
-                    WriteTextAtomic(_heartbeatPath, heartbeatJson, false);
+                    AIBridgeAtomicFile.WriteTextAtomic(_heartbeatPath, heartbeatJson, Encoding.UTF8, false);
                 }
                 catch (Exception ex)
                 {
@@ -1906,7 +1907,7 @@ namespace AIBridge.Runtime
                     json = AIBridgeJson.Serialize(result, pretty: true);
                 }
 
-                WriteTextAtomic(filePath, json);
+                AIBridgeAtomicFile.WriteTextAtomic(filePath, json, Encoding.UTF8);
                 LogDebug($"Wrote result: {fileName}");
             }
             catch (Exception e)
@@ -2526,28 +2527,6 @@ namespace AIBridge.Runtime
 
                 return builder.ToString();
             }
-        }
-
-        private static void WriteTextAtomic(string path, string text, bool ensureDirectory = true)
-        {
-            if (ensureDirectory)
-            {
-                var directory = Path.GetDirectoryName(path);
-                if (!string.IsNullOrEmpty(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-            }
-
-            // 先写临时文件再替换，避免 CLI 读到半截 JSON。
-            var tempPath = path + ".tmp";
-            File.WriteAllText(tempPath, text, Encoding.UTF8);
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-
-            File.Move(tempPath, path);
         }
 
         private void LogDebug(string message)

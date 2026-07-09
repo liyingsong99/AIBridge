@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using AIBridge.Internal.Json;
 using AIBridge.Runtime;
+using AIBridge.Runtime.Internal;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -734,7 +735,7 @@ Recommended flow: `editor play` -> `scene get_hierarchy` -> `input click` -> `ge
 
                 var filePath = Path.Combine(resultsDir, $"{result.id}.json");
                 var json = AIBridgeJson.Serialize(result, true);
-                File.WriteAllText(filePath, json, System.Text.Encoding.UTF8);
+                AIBridgeAtomicFile.WriteTextAtomic(filePath, json, System.Text.Encoding.UTF8);
             }
             catch (Exception ex)
             {

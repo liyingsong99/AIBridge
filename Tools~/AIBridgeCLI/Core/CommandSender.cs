@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text;
 using System.Threading;
+using AIBridge.Runtime.Internal;
 using AIBridgeCLI.Commands;
 using Newtonsoft.Json;
 
@@ -12,6 +13,10 @@ namespace AIBridgeCLI.Core
     /// </summary>
     public class CommandSender
     {
+        private static readonly Encoding CommandFileEncoding = new UTF8Encoding(false);
+        private const int ResultReadRetryAttempts = 5;
+        private const int ResultReadRetryDelayMs = 20;
+
         private readonly string _commandsDir;
         private readonly string _resultsDir;
         private readonly int _timeout;
@@ -67,7 +72,7 @@ namespace AIBridgeCLI.Core
 
             // Write command file with UTF-8 encoding (no BOM)
             var json = JsonConvert.SerializeObject(request, Formatting.None);
-            File.WriteAllText(commandFile, json, new UTF8Encoding(false));
+            AIBridgeAtomicFile.WriteTextAtomic(commandFile, json, CommandFileEncoding);
 
             // Wait for result
             var startTime = DateTime.Now;
@@ -76,25 +81,17 @@ namespace AIBridgeCLI.Core
             {
                 if (File.Exists(resultFile))
                 {
-                    // Small delay to ensure file is fully written
-                    Thread.Sleep(10);
-
-                    try
+                    if (TryReadResultFile(resultFile, true, out var result, out var error))
                     {
-                        var resultJson = File.ReadAllText(resultFile, Encoding.UTF8);
-                        var result = JsonConvert.DeserializeObject<CommandResult>(resultJson);
-
-                        // Clean up result file
-                        try { File.Delete(resultFile); } catch { }
-
                         return result;
                     }
-                    catch (IOException)
+
+                    return new CommandResult
                     {
-                        // File might still be locked, retry
-                        Thread.Sleep(_pollInterval);
-                        continue;
-                    }
+                        id = request.id,
+                        success = false,
+                        error = "Failed to read command result file: " + error.Message
+                    };
                 }
 
                 if (ShouldPollAutoDialog(ref lastAutoDialogPoll))
@@ -162,7 +159,7 @@ namespace AIBridgeCLI.Core
 
             // Write command file with UTF-8 encoding (no BOM)
             var json = JsonConvert.SerializeObject(request, Formatting.None);
-            File.WriteAllText(commandFile, json, new UTF8Encoding(false));
+            AIBridgeAtomicFile.WriteTextAtomic(commandFile, json, CommandFileEncoding);
 
             return new CommandResult
             {
@@ -188,20 +185,57 @@ namespace AIBridgeCLI.Core
                 return null;
             }
 
-            try
+            if (TryReadResultFile(resultFile, true, out var result, out _))
             {
-                var resultJson = File.ReadAllText(resultFile, Encoding.UTF8);
-                var result = JsonConvert.DeserializeObject<CommandResult>(resultJson);
-
-                // Clean up result file
-                try { File.Delete(resultFile); } catch { }
-
                 return result;
             }
-            catch
+
+            return null;
+        }
+
+        private static bool TryReadResultFile(string resultFile, bool deleteAfterRead, out CommandResult result, out Exception error)
+        {
+            result = null;
+            error = null;
+
+            for (var attempt = 0; attempt < ResultReadRetryAttempts; attempt++)
             {
-                return null;
+                try
+                {
+                    var resultJson = AIBridgeAtomicFile.ReadAllText(resultFile, Encoding.UTF8);
+                    result = JsonConvert.DeserializeObject<CommandResult>(resultJson);
+                    if (result == null)
+                    {
+                        throw new JsonException("Result JSON was empty.");
+                    }
+
+                    if (deleteAfterRead)
+                    {
+                        try { File.Delete(resultFile); } catch { }
+                    }
+
+                    return true;
+                }
+                catch (Exception ex) when (IsTransientResultReadException(ex))
+                {
+                    error = ex;
+                    if (attempt + 1 >= ResultReadRetryAttempts)
+                    {
+                        return false;
+                    }
+
+                    Thread.Sleep(ResultReadRetryDelayMs);
+                }
             }
+
+            return false;
+        }
+
+        private static bool IsTransientResultReadException(Exception ex)
+        {
+            return ex is IOException
+                || ex is UnauthorizedAccessException
+                || ex is JsonException;
         }
 
         private BlockingDialogDiagnostic HandleBlockingDialog(bool isPreflight)

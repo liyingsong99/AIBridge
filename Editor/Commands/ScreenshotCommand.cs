@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using AIBridge.Internal.Json;
+using AIBridge.Runtime.Internal;
 using UnityEditor;
 using UnityEngine;
 
@@ -227,7 +228,7 @@ $CLI screenshot gif --frameCount 100 --fps 25 --scale 0.5 --colorCount 128
 
                 var filePath = Path.Combine(resultsDir, $"{result.id}.json");
                 var json = AIBridgeJson.Serialize(result, pretty: true);
-                File.WriteAllText(filePath, json, System.Text.Encoding.UTF8);
+                AIBridgeAtomicFile.WriteTextAtomic(filePath, json, System.Text.Encoding.UTF8);
 
                 AIBridgeLogger.LogInfo($"GIF recording result written: {result.id}, success={result.success}");
             }

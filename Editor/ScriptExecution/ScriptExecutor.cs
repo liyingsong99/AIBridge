@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using AIBridge.Editor;
 using AIBridge.Internal.Json;
+using AIBridge.Runtime.Internal;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
@@ -467,7 +468,7 @@ namespace AIBridge.Editor.ScriptExecution
 
                 var filePath = Path.Combine(resultsDir, result.id + ".json");
                 var json = AIBridgeJson.Serialize(result, pretty: true);
-                File.WriteAllText(filePath, json, System.Text.Encoding.UTF8);
+                AIBridgeAtomicFile.WriteTextAtomic(filePath, json, System.Text.Encoding.UTF8);
 
                 AIBridgeLogger.LogInfo($"Batch script result written: {result.id}, success={result.success}");
             }
