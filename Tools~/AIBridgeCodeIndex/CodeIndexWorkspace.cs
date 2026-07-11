@@ -1606,29 +1606,30 @@ namespace AIBridgeCodeIndex
 
         private static AssemblySnapshot ReadAssemblyRecord(BinaryReader reader)
         {
-            // 兼容旧 snapshot 的 tokenIndexFile 槽位；当前实现不再消费 token 索引。
-            ReadString(reader);
-            return new AssemblySnapshot
+            // 与 WriteAssemblyRecord 对齐：nameIndex 之后保留遗留 tokenIndexFile 空槽。
+            var record = new AssemblySnapshot
             {
                 AssemblyName = ReadString(reader),
                 AssemblyId = ReadString(reader),
                 SnapshotFile = ReadString(reader),
-                NameIndexFile = ReadString(reader),
-                OutputPath = ReadString(reader),
-                AsmdefPath = ReadString(reader),
-                LanguageVersion = ReadString(reader),
-                AllowUnsafe = reader.ReadBoolean(),
-                SourceFileCount = reader.ReadInt32(),
-                ReferenceCount = reader.ReadInt32(),
-                DefinesHash = ReadString(reader),
-                SourcesHash = ReadString(reader),
-                ReferencesHash = ReadString(reader),
-                CompilerOptionsHash = ReadString(reader),
-                AssemblyHash = ReadString(reader),
-                LastWriteTimeTicks = reader.ReadInt64(),
-                DependencyAssemblyIds = ReadStringList(reader),
-                ReverseDependencyAssemblyIds = ReadStringList(reader)
+                NameIndexFile = ReadString(reader)
             };
+            ReadString(reader);
+            record.OutputPath = ReadString(reader);
+            record.AsmdefPath = ReadString(reader);
+            record.LanguageVersion = ReadString(reader);
+            record.AllowUnsafe = reader.ReadBoolean();
+            record.SourceFileCount = reader.ReadInt32();
+            record.ReferenceCount = reader.ReadInt32();
+            record.DefinesHash = ReadString(reader);
+            record.SourcesHash = ReadString(reader);
+            record.ReferencesHash = ReadString(reader);
+            record.CompilerOptionsHash = ReadString(reader);
+            record.AssemblyHash = ReadString(reader);
+            record.LastWriteTimeTicks = reader.ReadInt64();
+            record.DependencyAssemblyIds = ReadStringList(reader);
+            record.ReverseDependencyAssemblyIds = ReadStringList(reader);
+            return record;
         }
 
         private static List<string> ReadStringList(BinaryReader reader)

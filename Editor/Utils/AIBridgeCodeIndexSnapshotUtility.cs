@@ -1735,19 +1735,19 @@ namespace AIBridge.Editor
 
         private static AssemblyRecord ReadBinaryAssemblyRecord(BinaryReader reader)
         {
-            // 兼容旧 snapshot 的 tokenIndexFile 槽位；当前实现仅保留 name index。
-            ReadBinaryString(reader);
+            // 与 WriteAssemblyRecord 对齐：nameIndex 之后保留遗留 tokenIndexFile 空槽。
             var record = new AssemblyRecord
             {
                 AssemblyName = ReadBinaryString(reader),
                 AssemblyId = ReadBinaryString(reader),
                 SnapshotFile = ReadBinaryString(reader),
-                NameIndexFile = ReadBinaryString(reader),
-                OutputPath = ReadBinaryString(reader),
-                AsmdefPath = ReadBinaryString(reader),
-                LanguageVersion = ReadBinaryString(reader),
-                AllowUnsafe = reader.ReadBoolean()
+                NameIndexFile = ReadBinaryString(reader)
             };
+            ReadBinaryString(reader);
+            record.OutputPath = ReadBinaryString(reader);
+            record.AsmdefPath = ReadBinaryString(reader);
+            record.LanguageVersion = ReadBinaryString(reader);
+            record.AllowUnsafe = reader.ReadBoolean();
             record.SourceFileCount = reader.ReadInt32();
             record.ReferenceCount = reader.ReadInt32();
             record.DefinesHash = ReadBinaryString(reader);

@@ -1524,7 +1524,7 @@ namespace AIBridgeCLI.Commands
             AddContentPart(parts, "assembly[" + index + "].assemblyId", ReadSnapshotString(reader));
             AddContentPart(parts, "assembly[" + index + "].snapshotFile", ReadSnapshotString(reader));
             AddContentPart(parts, "assembly[" + index + "].nameIndexFile", ReadSnapshotString(reader));
-            // 兼容旧 snapshot 二进制结构，跳过遗留的 tokenIndexFile 槽位。
+            // 与 WriteAssemblyRecord 对齐：nameIndex 之后跳过遗留 tokenIndexFile 空槽。
             ReadSnapshotString(reader);
             AddContentPart(parts, "assembly[" + index + "].outputPath", ReadSnapshotString(reader));
             AddContentPart(parts, "assembly[" + index + "].asmdefPath", ReadSnapshotString(reader));
