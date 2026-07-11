@@ -21,11 +21,11 @@ namespace AIBridge.Editor
 
         private static readonly BranchInfo[] Branches =
         {
-            new BranchInfo(ImplementationId, "实施分支", "创建、修改、修复、重构、生成、迁移、提交", "改动当前工作树并验证", "references/branches/implementation.md", "aibridge、aibridge-code-index、aibridge-prefab-patch、unity-yaml-editing、aibridge-batch-script"),
-            new BranchInfo(DebugId, "调试诊断分支", "排查、诊断、复现、为什么、追踪、日志、Runtime、Player、Play Mode、性能、UI 异常", "收集证据并给出根因判断", "references/branches/debug.md", "aibridge、aibridge-code-index、aibridge-workflow-orchestration、aibridge-batch-script"),
-            new BranchInfo(ReviewId, "审查分支", "review、audit、检查风险、设计评审、只读分析", "输出 confirmed findings 和剩余风险", "references/branches/review.md", "aibridge-code-index、按需 aibridge-workflow-orchestration"),
-            new BranchInfo(ValidationId, "验证分支", "编译、日志、截图、测试、Runtime/UI 验证、回归确认", "给出可重复验证结果", "references/branches/validation.md", "aibridge、现有 workflow recipe"),
-            new BranchInfo(OrchestrationId, "编排分支", "workflow recipe、多 Agent、并行 sweep、对抗验证、结构化 artifact", "设计或执行结构化 workflow", "references/branches/orchestration.md", "aibridge-workflow-orchestration")
+            new BranchInfo(ImplementationId, "实施分支", "创建、修改、修复、重构、生成、迁移、提交", "改动当前工作树并验证", "references/branches/implementation.md", "aibridge、aibridge-code-index、aibridge-prefab-patch、unity-yaml-editing、aibridge-batch-script", "aibridge、aibridge-prefab-patch、unity-yaml-editing、aibridge-batch-script"),
+            new BranchInfo(DebugId, "调试诊断分支", "排查、诊断、复现、为什么、追踪、日志、Runtime、Player、Play Mode、性能、UI 异常", "收集证据并给出根因判断", "references/branches/debug.md", "aibridge、aibridge-code-index、aibridge-workflow-orchestration、aibridge-batch-script", "aibridge、aibridge-workflow-orchestration、aibridge-batch-script"),
+            new BranchInfo(ReviewId, "审查分支", "review、audit、检查风险、设计评审、只读分析", "输出 confirmed findings 和剩余风险", "references/branches/review.md", "aibridge-code-index、按需 aibridge-workflow-orchestration", "按需 aibridge-workflow-orchestration"),
+            new BranchInfo(ValidationId, "验证分支", "编译、日志、截图、测试、Runtime/UI 验证、回归确认", "给出可重复验证结果", "references/branches/validation.md", "aibridge、现有 workflow recipe", "aibridge、现有 workflow recipe"),
+            new BranchInfo(OrchestrationId, "编排分支", "workflow recipe、多 Agent、并行 sweep、对抗验证、结构化 artifact", "设计或执行结构化 workflow", "references/branches/orchestration.md", "aibridge-workflow-orchestration", "aibridge-workflow-orchestration")
         };
 
         public static string RenderPreferences(string projectRoot, AssistantIntegrationTarget target)
@@ -55,7 +55,16 @@ namespace AIBridge.Editor
             builder.AppendLine();
             builder.AppendLine("- 默认验证级别：" + GetValidationLevelText(workflowUi.DefaultValidationLevel) + " (`" + AIBridgeProjectSettings.NormalizeWorkflowValidationLevel(workflowUi.DefaultValidationLevel) + "`)");
             builder.AppendLine("- Runtime 证据偏好：" + (workflowUi.PreferRuntimeEvidence ? "优先收集可用 Runtime 证据" : "仅在任务明确需要时收集 Runtime 证据"));
-            builder.AppendLine("- Code Index 偏好：" + (workflowUi.PreferCodeIndexGuidance ? "Code Index 可用时优先用于快速 C# 声明文件定位" : "只有明确需要快速定位 C# 声明文件时才使用 Code Index"));
+            if (settings.CodeIndex.EnableCodeIndex)
+            {
+                builder.AppendLine("- Code Index：" + (workflowUi.PreferCodeIndexGuidance
+                    ? "已启用；优先用于快速 C# 声明文件定位（加载 `aibridge-code-index`）"
+                    : "已启用；只有明确需要快速定位 C# 声明文件时才加载 `aibridge-code-index`"));
+            }
+            else
+            {
+                builder.AppendLine("- Code Index：已关闭。禁止加载 `aibridge-code-index`，禁止调用 `code_index`");
+            }
             builder.AppendLine();
 
             builder.AppendLine("## 附加提示词");
@@ -98,8 +107,8 @@ namespace AIBridge.Editor
             builder.AppendLine("```");
             builder.AppendLine();
             builder.AppendLine("- Preflight / Skill Routing 是入口步骤，不是业务模式；它只选择主分支并计算 Skill 状态。");
-            builder.AppendLine("- Harness 判定是 Preflight gate，不是业务分支固定步骤；fresh 且不影响工具选择时不单独输出。");
-            builder.AppendLine("- 只有缺失、过期、降级、阻塞、用户要求说明，或能力状态改变工具选择时，才在当前业务分支输出中简短补充 Harness 状态或工具策略。");
+            builder.AppendLine("- 项目侧能力以 Root Rule / preferences 为准；勿用 harness status 做 enablement 预检。");
+            builder.AppendLine("- 只有运行时任务命令失败、降级、阻塞，或能力状态改变工具选择时，才在当前业务分支输出中简短补充工具策略。");
             builder.AppendLine("- 如果需求边界、验收标准或方案方向不清晰，先进入需求讨论分支，确认后再继续正式分支选择。");
             builder.AppendLine("- Mode Enter 只激活当前分支真正需要的 Skill，并读取该分支文档。");
             builder.AppendLine("- Mode Exit 生成 `SkillHandoff`，并释放下一模式不需要的模式专用 Skill。");
@@ -107,12 +116,10 @@ namespace AIBridge.Editor
 
             builder.AppendLine("## 需求讨论分支");
             builder.AppendLine();
-            builder.AppendLine("需求讨论分支是 Preflight 的前置分支，不是可选主分支。它只在需求不清晰、边界待定、方案方向分歧，或用户要求先分析/先确认时触发。");
+            builder.AppendLine("需求讨论分支是 Preflight 的前置分支，不是可选主分支。需求不清晰、边界待定、方案分歧，或用户要求先分析/先确认时触发。");
             builder.AppendLine();
             builder.AppendLine("- 目标是收敛目标、边界、非目标、约束、方案选项和确认结论。");
-            builder.AppendLine("- 若用户要求，或项目存在相应功能文档归类，确认后的方案必须先写入 `.aibridge/plan` 工作底稿，再按需同步到正式文档位置。");
-            builder.AppendLine("- 默认以 Markdown 工作底稿作为方案源文件；当方案包含流程图、决策树、对比表，或更适合开发者浏览时，再在每个落点目录内同步生成 HTML 展示页。");
-            builder.AppendLine("- Markdown 和 HTML 应保持同目录、同 basename；`.aibridge/plan` 负责 AI 续跑和多 agent 协作，正式文档负责 Git review 和对外呈现。");
+            builder.AppendLine("- 方案写入规则见 `references/branches/requirements.md`（默认 `.aibridge/plan/<slug>.md`）。");
             builder.AppendLine();
 
             builder.AppendLine("## 可选主分支");
@@ -129,7 +136,7 @@ namespace AIBridge.Editor
                 }
 
                 enabledCount++;
-                builder.AppendLine("| " + branch.DisplayName + " | " + branch.TriggerSignals + " | " + branch.DefaultGoal + " | `" + branch.DocumentPath + "` | `" + branch.CommonSkills + "` |");
+                builder.AppendLine("| " + branch.DisplayName + " | " + branch.TriggerSignals + " | " + branch.DefaultGoal + " | `" + branch.DocumentPath + "` | `" + GetCommonSkills(branch) + "` |");
             }
 
             if (enabledCount == 0)
@@ -261,9 +268,11 @@ namespace AIBridge.Editor
 
         public static string ComputeSettingsHash(string projectRoot, AssistantIntegrationTarget target)
         {
-            var workflowUi = AIBridgeProjectSettings.Instance.WorkflowUi;
+            var settings = AIBridgeProjectSettings.Instance;
+            var workflowUi = settings.WorkflowUi;
             var builder = new StringBuilder();
             builder.AppendLine(target == null ? string.Empty : target.Id);
+            builder.AppendLine(settings.CodeIndex.EnableCodeIndex.ToString());
             builder.AppendLine(workflowUi.EnableImplementationBranch.ToString());
             builder.AppendLine(workflowUi.EnableDebugBranch.ToString());
             builder.AppendLine(workflowUi.EnableReviewBranch.ToString());
@@ -478,16 +487,31 @@ namespace AIBridge.Editor
             }
         }
 
+        private static string GetCommonSkills(BranchInfo branch)
+        {
+            return AIBridgeProjectSettings.Instance.CodeIndex.EnableCodeIndex
+                ? branch.CommonSkillsWithCodeIndex
+                : branch.CommonSkillsWithoutCodeIndex;
+        }
+
         private sealed class BranchInfo
         {
-            public BranchInfo(string id, string displayName, string triggerSignals, string defaultGoal, string documentPath, string commonSkills)
+            public BranchInfo(
+                string id,
+                string displayName,
+                string triggerSignals,
+                string defaultGoal,
+                string documentPath,
+                string commonSkillsWithCodeIndex,
+                string commonSkillsWithoutCodeIndex)
             {
                 Id = id;
                 DisplayName = displayName;
                 TriggerSignals = triggerSignals;
                 DefaultGoal = defaultGoal;
                 DocumentPath = documentPath;
-                CommonSkills = commonSkills;
+                CommonSkillsWithCodeIndex = commonSkillsWithCodeIndex;
+                CommonSkillsWithoutCodeIndex = commonSkillsWithoutCodeIndex;
             }
 
             public string Id { get; private set; }
@@ -495,7 +519,8 @@ namespace AIBridge.Editor
             public string TriggerSignals { get; private set; }
             public string DefaultGoal { get; private set; }
             public string DocumentPath { get; private set; }
-            public string CommonSkills { get; private set; }
+            public string CommonSkillsWithCodeIndex { get; private set; }
+            public string CommonSkillsWithoutCodeIndex { get; private set; }
         }
 
         [Serializable]

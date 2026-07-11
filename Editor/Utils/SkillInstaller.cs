@@ -124,11 +124,12 @@ namespace AIBridge.Editor
                 }
 
                 var targets = GetSelectedTargets(projectRoot);
-                HarnessCapabilitySnapshot.WriteNoThrow(projectRoot, targets);
 
                 // 检查是否启用自动安装
                 if (!AIBridgeProjectSettings.Instance.AutoInstallSkills)
                 {
+                    // 即使不自动安装 Skills，也同步项目侧能力到 Root Rule / 已安装 workflow 规则
+                    SyncProjectCapabilityRules(projectRoot);
                     return;
                 }
 
@@ -137,6 +138,7 @@ namespace AIBridge.Editor
 
                 if (targets.Count == 0)
                 {
+                    HarnessCapabilitySnapshot.WriteNoThrow(projectRoot, targets);
                     return;
                 }
 
@@ -181,10 +183,10 @@ namespace AIBridge.Editor
                 CopyCliToCacheIfNeeded(projectRoot);
 
                 var targets = GetSelectedTargets(projectRoot);
-                HarnessCapabilitySnapshot.WriteNoThrow(projectRoot, targets);
                 CleanupUnselectedTargets(projectRoot, targets);
                 if (targets.Count == 0)
                 {
+                    HarnessCapabilitySnapshot.WriteNoThrow(projectRoot, targets);
                     return;
                 }
 
@@ -195,6 +197,68 @@ namespace AIBridge.Editor
             catch (Exception ex)
             {
                 AIBridgeLogger.LogWarning("[SkillInstaller] Failed to refresh installed integrations: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// 将项目侧可确认能力同步到 Root Rule、optional Skills 与已生成的 workflow 规则。
+        /// 不依赖 AutoInstallSkills；Skill 目录尚未安装时仍刷新 Root Rule 与 capabilities.json。
+        /// </summary>
+        internal static void SyncProjectCapabilityRules(string projectRoot = null)
+        {
+            try
+            {
+                if (IsAssetImportWorker())
+                {
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(projectRoot))
+                {
+                    projectRoot = GetProjectRoot();
+                }
+
+                var targetsList = DeduplicateClaudeCodexTargets(GetSelectedTargets(projectRoot));
+                if (targetsList.Count == 0)
+                {
+                    HarnessCapabilitySnapshot.WriteNoThrow(projectRoot, targetsList);
+                    return;
+                }
+
+                foreach (var target in targetsList)
+                {
+                    try
+                    {
+                        var template = RuleTemplateLoader.Load(projectRoot, target.RootRuleTemplateRelativePath);
+                        var tokens = BuildTemplateTokens(projectRoot, target, targetsList);
+                        string rootRulePath;
+                        RuleFileInstaller.Install(projectRoot, target, template, tokens, out rootRulePath);
+
+                        if (!target.SupportsSkillDirectory)
+                        {
+                            continue;
+                        }
+
+                        var targetSkillRoot = GetTargetSkillRootDirectory(projectRoot, target);
+                        if (string.IsNullOrEmpty(targetSkillRoot) || !Directory.Exists(targetSkillRoot))
+                        {
+                            continue;
+                        }
+
+                        InstallAdditionalSkillDirectoriesForTarget(projectRoot, target);
+                        GenerateWorkflowPreferenceFilesForTarget(projectRoot, target);
+                    }
+                    catch (Exception ex)
+                    {
+                        AIBridgeLogger.LogWarning("[SkillInstaller] Failed to sync capability rules for " + target.DisplayName + ": " + ex.Message);
+                    }
+                }
+
+                HarnessCapabilitySnapshot.WriteNoThrow(projectRoot, targetsList);
+            }
+            catch (Exception ex)
+            {
+                AIBridgeLogger.LogWarning("[SkillInstaller] Failed to sync project capability rules: " + ex.Message);
             }
         }
 
@@ -803,25 +867,8 @@ namespace AIBridge.Editor
         {
             var results = new List<AssistantIntegrationResult>();
             var sourceSkillPath = GetSourceSkillPath();
-            
-            // 去重逻辑：如果同时存在 CLAUDE.md 和 AGENTS.md，优先使用 AGENTS.md
-            var targetsList = targets.ToList();
-            var hasClaudeTarget = targetsList.Any(t => t.Id == "claude");
-            var hasCodexTarget = targetsList.Any(t => t.Id == "codex");
-            
-            if (hasClaudeTarget && hasCodexTarget)
-            {
-                var claudeMdPath = Path.Combine(projectRoot, "CLAUDE.md");
-                var agentsMdPath = Path.Combine(projectRoot, "AGENTS.md");
-                
-                // 如果两个文件都存在，优先使用 AGENTS.md，跳过 CLAUDE.md
-                if (File.Exists(claudeMdPath) && File.Exists(agentsMdPath))
-                {
-                    targetsList = targetsList.Where(t => t.Id != "claude").ToList();
-                    AIBridgeLogger.LogInfo("[SkillInstaller] 检测到 CLAUDE.md 和 AGENTS.md 同时存在，优先使用 AGENTS.md");
-                }
-            }
-            
+            var targetsList = DeduplicateClaudeCodexTargets(targets.ToList(), projectRoot);
+
             foreach (var target in targetsList)
             {
                 var result = new AssistantIntegrationResult
@@ -1381,7 +1428,7 @@ namespace AIBridge.Editor
                 { "ROUTING_TITLE", AIBridgeEditorText.For(language, "Routing Rules", "路由原则") },
                 { "QUICK_TASK_RULE", AIBridgeEditorText.For(language, "Quick tasks: answer or execute directly without loading `aibridge-development-workflow` for pure Q&A, code explanation, simple search/display, or tasks with no code or Unity asset changes and no review, validation, or root-cause verdict.", "快速任务：纯问答、代码解释、简单查找/显示，且不需要修改代码或 Unity 资源、不输出审查/验证/根因结论时，直接回答或执行，不加载 `aibridge-development-workflow`。") },
                 { "DEVELOPMENT_TASK_RULE", AIBridgeEditorText.For(language, "Workflow tasks: load `aibridge-development-workflow` first when the task requires code or Unity asset changes, persistent AGENTS/Skill/workflow rule changes, root-cause debugging, Runtime/log evidence, or a risk review/validation verdict.", "工作流任务：当任务需要修改代码或 Unity 资源、修改持久化 AGENTS/Skill/workflow 规则、调试根因、采集 Runtime/日志证据，或输出风险审查/验证结论时，必须优先加载 `aibridge-development-workflow`。") },
-                { "WORKFLOW_SKILL_RULE", AIBridgeEditorText.For(language, "After entering the workflow, `aibridge-development-workflow` probes harness readiness, chooses the task branch, and decides whether to load additional Skills.", "进入工作流后，由 `aibridge-development-workflow` 探测 harness 能力、选择任务分支，并决定是否继续加载其它 Skill。") },
+                { "WORKFLOW_SKILL_RULE", AIBridgeEditorText.For(language, "After entering the workflow, `aibridge-development-workflow` reads harness-readiness as Preflight gate, chooses the task branch, and decides whether to load additional Skills.", "进入工作流后，由 `aibridge-development-workflow` 读取 harness-readiness 作为 Preflight gate、选择任务分支，并决定是否继续加载其它 Skill。") },
                 { "SKILL_LOADING_TITLE", AIBridgeEditorText.For(language, "Skill Loading", "Skill 加载") },
                 { "WORKFLOW_SKILL_ENTRY", AIBridgeEditorText.For(language, "Load `aibridge-development-workflow` from `" + workflowSkillDocPath + "` before workflow tasks.", "工作流任务先加载 `" + workflowSkillDocPath + "` 中的 `aibridge-development-workflow`。") },
                 { "SKILL_ROOT_RULE", AIBridgeEditorText.For(language, "AIBridge Skills are installed under `" + skillRootPath + "/<skill-name>/SKILL.md`; load sibling Skills from that directory when this root rule or the workflow requires them.", "AIBridge Skills 安装在 `" + skillRootPath + "/<skill-name>/SKILL.md`；当本根规则或工作流要求时，从该目录加载同级 Skill。") }
@@ -1394,14 +1441,40 @@ namespace AIBridge.Editor
             {
                 return AIBridgeEditorText.For(
                     language,
-                    "Code Index: enabled. Use `aibridge-code-index` only for fast C# declaration-name lookup when the query can be expressed as `symbol` or `definition`. Treat it as a path and declaration locator for class, interface, enum, field, property, method, constructor, or delegate names, then read the returned `.cs` files yourself for follow-up analysis. For Unity imported asset or script asset name/type lookup, use `asset search/find --format paths` when AIBridge and the Editor are available.",
-                    "Code Index：已启用。`aibridge-code-index` 只用于快速 C# 声明名检索，查询面仅限 `symbol` 和 `definition`。它的职责是把类、接口、枚举、字段、属性、方法、构造器、delegate 等声明名快速定位到声明位置和 `.cs` 文件；拿到路径后继续由 AI 自己读取文件分析。Unity 已导入资源或脚本资源的名称/类型查找中，当 AIBridge 和 Editor 可用时使用 `asset search/find --format paths`。");
+                    "Code Index: enabled. Load `aibridge-code-index` for `symbol`/`definition` only; do not call `$CLI harness status` to re-check. Details: `aibridge-code-index` Skill.",
+                    "Code Index：已启用。仅加载 `aibridge-code-index` 做 `symbol`/`definition`；不要调用 `$CLI harness status` 再次确认。细则见 `aibridge-code-index` Skill。");
             }
 
             return AIBridgeEditorText.For(
                 language,
-                "Code Index: disabled. Do not call `code_index`; use `asset search/find --format paths` for Unity imported asset name/type lookup when AIBridge and the Editor are available.",
-                "Code Index：已关闭。不要调用 `code_index`；当 AIBridge 和 Editor 可用时，Unity 已导入资源的名称/类型查找使用 `asset search/find --format paths`。");
+                "Code Index: disabled. Do not load `aibridge-code-index` or call `code_index`.",
+                "Code Index：已关闭。不要加载 `aibridge-code-index`，也不要调用 `code_index`。");
+        }
+
+        private static List<AssistantIntegrationTarget> DeduplicateClaudeCodexTargets(List<AssistantIntegrationTarget> targets, string projectRoot = null)
+        {
+            var targetsList = (targets ?? new List<AssistantIntegrationTarget>()).Where(item => item != null).ToList();
+            var hasClaudeTarget = targetsList.Any(t => t.Id == "claude");
+            var hasCodexTarget = targetsList.Any(t => t.Id == "codex");
+            if (!hasClaudeTarget || !hasCodexTarget)
+            {
+                return targetsList;
+            }
+
+            if (string.IsNullOrWhiteSpace(projectRoot))
+            {
+                projectRoot = GetProjectRoot();
+            }
+
+            var claudeMdPath = Path.Combine(projectRoot, "CLAUDE.md");
+            var agentsMdPath = Path.Combine(projectRoot, "AGENTS.md");
+            if (File.Exists(claudeMdPath) && File.Exists(agentsMdPath))
+            {
+                targetsList = targetsList.Where(t => t.Id != "claude").ToList();
+                AIBridgeLogger.LogInfo("[SkillInstaller] 检测到 CLAUDE.md 和 AGENTS.md 同时存在，优先使用 AGENTS.md");
+            }
+
+            return targetsList;
         }
 
         private static bool ShouldInstallSkillDirectory(string sourceSkillDir)

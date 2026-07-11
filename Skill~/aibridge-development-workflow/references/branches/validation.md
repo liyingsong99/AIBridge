@@ -6,19 +6,17 @@
 
 ## 进入规则
 
-1. 先确认项目偏好中验证分支已启用
-2. 读取 `harness-readiness.md`，优先使用 `.aibridge/harness/capabilities.json` 或 `$CLI harness status` 的 compact 结果
-3. 根据项目默认验证级别选择命令
+1. 先确认 preferences 中验证分支已启用
+2. 读取 `harness-readiness.md`（能力以 Root Rule / preferences 为准）
+3. 按 preferences 默认验证级别选择命令
 
 ## 默认验证级别
 
-- `compileOnly`：执行 `$CLI compile unity`
-- `compileAndLogs`：执行 `$CLI compile unity` 和 `$CLI get_logs --logType Error`
-- `compileLogsAndRuntime`：执行编译、Error 日志检查，并在 Runtime target 可用时补充 Runtime 证据
+以 `project-workflow-preferences.md` 为准，不在此复述三档定义
 
 ## 输出规则
 
-- 只报告实际执行过的验证，不把静态检查或 dotnet build 冒充 Unity 编译
-- 如果 Unity、Runtime、测试或日志检查不可用，说明不可用原因和剩余风险
-- Runtime 证据偏好启用时，Runtime/UI/Player 相关验证应优先尝试可用 target
-- 按决策树验证：先确认前置条件，再执行验证动作，最后判断通过、失败或阻塞；未执行的检查不能写成通过
+- 只报告实际执行过的验证；不把静态检查或 `dotnet build` 冒充 Unity 编译
+- Unity/Runtime/测试/日志不可用时说明原因与剩余风险
+- Runtime 证据偏好启用时，优先尝试可用 target
+- 先确认前置，再执行验证，最后判定通过/失败/阻塞；未执行的检查不能写成通过

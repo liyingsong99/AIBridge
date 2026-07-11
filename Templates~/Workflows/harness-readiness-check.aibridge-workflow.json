@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "harness-readiness-check",
   "title": "Harness Readiness Check",
-  "description": "Probe the current AI harness, AIBridge CLI, workflow support, and optional Unity/Runtime capabilities before a long or delegated workflow.",
+  "description": "Optional diagnostic recipe: probe AIBridge CLI, workflow support, and optional Unity/Runtime/Code Index capabilities. Project-side enablement (including Code Index) is authoritative in Root Rule / workflow rules — do not treat this recipe as default AI preflight.",
   "version": "1.0.0",
   "requiredSkills": [
     "aibridge-development-workflow"
@@ -64,7 +64,7 @@
         {
           "id": "harness-status",
           "kind": "cli",
-          "description": "Read the Unity-generated harness capability snapshot.",
+          "description": "Optional diagnostic read of the Unity-generated harness capability snapshot (not default AI preflight).",
           "command": "harness status",
           "outputs": [
             "CommandEvidence",

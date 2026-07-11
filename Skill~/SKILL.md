@@ -7,45 +7,29 @@ description: Unity Editor and Player Runtime CLI integration for AIBridge. Use f
 
 ## Invocation
 
-Run commands from the Unity project root
-
-**CLI Path:** `./.aibridge/cli/AIBridgeCLI.exe`
-
-`$CLI` means the platform-appropriate AIBridge CLI invocation. On Windows PowerShell, prefer the call operator:
+Run from Unity project root. `$CLI` is the platform AIBridge CLI; on Windows PowerShell prefer:
 
 ```powershell
 & "./.aibridge/cli/AIBridgeCLI.exe" <command> [action] [options]
 ```
 
-Common global options: `--timeout <ms>`, `--raw`, `--pretty`, `--json <json>`, `--stdin`, `--help`, `--on-dialog <mode>`
-
-Generated command references are installed under `references/` in the target assistant Skill directory. In the package source tree they may be absent until Skill installation/refresh runs
+Common options: `--timeout`, `--raw`, `--pretty`, `--json`, `--stdin`, `--help`, `--on-dialog`. Installed command references live under `references/` after Skill install
 
 ## Host Tools
 
-Use `exec run --stdin` only for external host tools; do not use it to wrap AIBridge CLI commands. `exec run --stdin` accepts stdin JSON only: use `command`, not `cmd`, and do not append a raw shell command after `--stdin`. When the payload contains quotes, backslashes, or regex, build a PowerShell object and pipe `ConvertTo-Json` output, or use `--request-file`. Use `multi --stdin` for multiple AIBridge commands and `exec` `jobs[]` or `exec batch --stdin` for multiple external host commands
+`exec run --stdin` only for external host tools (not wrapping AIBridge CLI). Stdin JSON uses `command` not `cmd`. Prefer PowerShell object + `ConvertTo-Json` or `--request-file` for quotes/regex. Use `multi --stdin` for multiple AIBridge commands; `exec batch --stdin` for multiple host jobs
 
 ## Harness Snapshot
 
-Unity Editor writes `.aibridge/harness/capabilities.json` during Skill installation/refresh
-
-```bash
-$CLI harness status
-$CLI harness status --detail full
-```
-
-Default `harness status` output is compact. Use `--detail full` or `--include-snapshot true` only when the full snapshot JSON is needed
+Project-side capabilities are in Root Rule / workflow rules. `$CLI harness status` is optional diagnosis only — not enablement/freshness preflight
 
 ## Operating Rules
 
-- Use `compile unity` for Unity validation. `compile dotnet` is an explicit extra solution-build check, not a Unity fallback
-- For Unity imported asset path discovery, including script, prefab, scene, ScriptableObject, texture, material, audio, animation, shader, font, and model assets by name/type/filter, prefer `asset search/find --format paths` when the Editor is available, because it resolves through the Unity asset database
-- Resource edit order: `inspector set_property/set_properties` -> `aibridge-prefab-patch` for supported complex Prefab edits -> Unity Editor scripts for high-level generated assets -> `unity-yaml-editing` only for unsupported serialized-file structure work
-- For scene objects, Prefabs, and serialized Unity assets, discover targets with `inspector get_components/get_properties/find_property`, then write with AIBridge/Unity APIs when possible
-- For prefab asset edits, use `assetPath + objectPath + componentName` or `componentIndex`; `componentInstanceId` is scene-only
-- In PowerShell, avoid inline complex `--json`; build JSON in a variable or file, then pipe it with `$request | & ./.aibridge/cli/AIBridgeCLI.exe exec run --stdin` instead of composing a shell string, writing `exec run --stdin rg ...`, or hand-writing inline JSON with escaping-sensitive regex values
-- `focus` is Windows CLI-only. `dialog` is CLI-only and omits dialog fields when no modal dialog is detected
-- `input` requires Play Mode and an active EventSystem; pair it with `gameview`, `screenshot`, and `get_logs` for UI interaction checks
-- `runtime` talks to `AIBridgeRuntime` in a Player or Play Mode target. Run quick `runtime list_targets` first, use `runtime list_targets --probe true` only when local port scanning is needed, then target `latest` or a specific target id. For UI work, start with `runtime.ui.snapshot`; button entries include screen coordinates and screen rects for direct clicks, and `runtime.input.key` covers semantic submit/cancel/tab/move input
-- Code Index is optional. For fast C# declaration-name lookup use `aibridge-code-index` only when installed and enabled; it only helps locate declaration files or declaration positions for names such as classes and methods
-- AIBridge automatically cleans expired `.aibridge` cache according to Settings. Do not proactively enumerate or delete `.aibridge` files for routine disk maintenance; only run maintenance commands or guide the user to Settings when the user explicitly asks for cleanup, investigation, or manual maintenance
+- Unity validation: `compile unity`. `compile dotnet` is an extra check, not a Unity fallback
+- Imported asset path discovery: `asset search/find --format paths` when Editor is available
+- Edit order: `inspector set_property/set_properties` → `aibridge-prefab-patch` → Editor scripts → `unity-yaml-editing` only for unsupported YAML structure
+- Prefab asset edits: `assetPath + objectPath + componentName`/`componentIndex`; `componentInstanceId` is scene-only
+- `focus` Windows-only; `dialog` CLI-only; `input` needs Play Mode + EventSystem
+- `runtime`: quick `list_targets` first; `--probe true` only for port scan; UI start with `runtime.ui.snapshot`
+- Code Index: only when Root Rule declares enabled — load `aibridge-code-index` for declaration-name lookup
+- Do not proactively clean `.aibridge` cache unless the user asks for maintenance

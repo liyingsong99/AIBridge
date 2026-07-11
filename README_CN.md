@@ -206,7 +206,7 @@ $CLI profiler save_data --path ".aibridge/profiler/latest.json"
 $CLI profiler stop
 ```
 
-`harness status` 用于 compact preflight，`selection` 用于管理 Unity 当前选择对象，`menu_item` 用于调用 Unity 菜单路径，`profiler` 用于 Editor 诊断和快照采集。
+`harness status` 仅用于可选诊断（项目侧能力以 Root Rule / workflow 规则为准），`selection` 用于管理 Unity 当前选择对象，`menu_item` 用于调用 Unity 菜单路径，`profiler` 用于 Editor 诊断和快照采集。
 
 ### Workflow Recipes
 

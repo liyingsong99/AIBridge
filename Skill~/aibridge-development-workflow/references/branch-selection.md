@@ -13,22 +13,22 @@ Preflight / Skill Routing
 ```
 
 - Preflight / Skill Routing 是入口步骤，不是业务模式；它只选择主分支并计算 Skill 状态
-- Harness 判定是 Preflight gate，不是业务分支固定步骤；fresh 且不影响工具选择时不单独输出
-- 只有缺失、过期、降级、阻塞、用户要求说明，或能力状态改变工具选择时，才在当前业务分支输出中简短补充 Harness 状态或工具策略
+- 项目侧能力以 Root Rule / preferences 为准；勿用 harness status 做 enablement 预检
+- 只有运行时任务命令失败、降级、阻塞，或能力状态改变工具选择时，才在当前业务分支输出中简短补充工具策略
 - 如果需求边界、验收标准或方案方向不清晰，先进入需求讨论分支，确认后再继续正式分支选择
 - Mode Enter 只激活当前分支真正需要的 Skill，并读取该分支文档
 - Mode Exit 生成 `SkillHandoff`，并释放下一模式不需要的模式专用 Skill
 
 ## 需求讨论分支
 
-需求讨论分支是 Preflight 的前置分支，不是可选主分支。它只在需求不清晰、边界待定、方案方向分歧，或用户要求先分析/先确认时触发
+需求讨论分支是 Preflight 的前置分支，不是可选主分支。需求不清晰、边界待定、方案分歧，或用户要求先分析/先确认时触发
 
 - 目标是收敛目标、边界、非目标、约束、方案选项和确认结论
-- 若用户要求，或项目存在相应功能文档归类，确认后的方案必须先写入 `.aibridge/plan` 工作底稿，再按需同步到正式文档位置
-- 默认以 Markdown 工作底稿作为方案源文件；当方案包含流程图、决策树、对比表，或更适合开发者浏览时，再在每个落点目录内同步生成 HTML 展示页
-- Markdown 和 HTML 应保持同目录、同 basename；`.aibridge/plan` 负责 AI 续跑和多 agent 协作，正式文档负责 Git review 和对外呈现
+- 方案写入规则见 `references/branches/requirements.md`（默认 `.aibridge/plan/<slug>.md`）
 
 ## 可选主分支
+
+下表是 source fallback；安装后的生成版会按 `EnableCodeIndex` 从 Skills 列表中移除 `aibridge-code-index`。以生成版与 Root Rule 为准
 
 | 主分支 | 触发信号 | 默认目标 | 进入后读取 | 常用 Skills / 工具 |
 |---|---|---|---|---|

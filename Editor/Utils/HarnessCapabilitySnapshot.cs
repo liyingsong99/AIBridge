@@ -72,14 +72,16 @@ namespace AIBridge.Editor
 
             if (language == AIBridgeEditorLanguage.SimplifiedChinese)
             {
-                return "Harness 能力快照：`" + SnapshotRelativePath + "`。RootRule 只提供 compact 摘要；工作流任务需要确认能力时先用 `$CLI harness status` compact 输出，仅在缺失、过期或任务需要未确认能力时读取完整 snapshot 或运行完整探测。"
+                return "项目侧能力以本 Root Rule 与已安装 workflow 规则为准；不要为 Code Index、Skill 或 assistant 开关调用 `$CLI harness status` 做 enablement/freshness 预检。"
+                    + "可选诊断快照：`" + SnapshotRelativePath + "`。"
                     + "已选助手：" + selectedText + "。"
                     + "Skill 根目录：" + skillRootText + "。"
                     + "Code Index：" + codeIndexText + "。"
                     + "外部 agent/sub-agent 能力：Unity 无法判断，按 unknown 处理。";
             }
 
-            return "Harness capability snapshot: `" + SnapshotRelativePath + "`. RootRule only provides a compact summary; for workflow tasks that need capability confirmation, use compact `$CLI harness status` first and read the full snapshot or run full probes only when it is missing, stale, or the task needs an unconfirmed capability. "
+            return "Project-side capabilities are authoritative in this Root Rule and installed workflow rules; do not call `$CLI harness status` for Code Index, Skill, or assistant enablement/freshness preflight. "
+                + "Optional diagnostic snapshot: `" + SnapshotRelativePath + "`. "
                 + "Selected assistants: " + selectedText + ". "
                 + "Skill root: " + skillRootText + ". "
                 + "Code Index: " + codeIndexText + ". "
@@ -275,9 +277,10 @@ namespace AIBridge.Editor
         {
             return new Dictionary<string, object>
             {
-                { "readSnapshotFirst", true },
-                { "runFullProbeWhen", "missing-stale-or-required-capability-unknown" },
-                { "fallbackWhenMissing", "Use RootRule minimum workflow and report unverified Unity/Runtime capabilities." }
+                { "trustRootRuleAndWorkflowPreferences", true },
+                { "harnessStatusUsage", "optional-diagnosis-only" },
+                { "runRuntimeProbeWhen", "task-needs-unity-runtime-or-command-failed" },
+                { "fallbackWhenMissing", "Use RootRule and project-workflow-preferences; report unverified Unity/Runtime capabilities when task commands fail." }
             };
         }
 

@@ -18,6 +18,7 @@ namespace AIBridge.Editor.Tests
             Assert.IsTrue(File.Exists(Path.Combine(skillDirectory, "SKILL.md")));
             Assert.IsTrue(File.Exists(Path.Combine(skillDirectory, "references", "orchestration-patterns.md")));
             Assert.IsTrue(File.Exists(Path.Combine(skillDirectory, "references", "recipe-schema.md")));
+            Assert.IsTrue(File.Exists(Path.Combine(skillDirectory, "references", "workflow-cli-reference.md")));
             Assert.IsTrue(File.Exists(Path.Combine(skillDirectory, "references", "builtin-recipes.md")));
             Assert.IsFalse(Directory.GetFiles(skillDirectory, "*.meta", SearchOption.AllDirectories).Any());
             Assert.IsTrue(results.Single().AdditionalSkillFilePaths.Any(path => path.Replace('\\', '/').EndsWith("/aibridge-workflow-orchestration/SKILL.md")));
@@ -32,13 +33,17 @@ namespace AIBridge.Editor.Tests
 
             var workflowSkillPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "SKILL.md");
             var workflowSkill = File.ReadAllText(workflowSkillPath);
-            StringAssert.Contains("aibridge-workflow-orchestration", workflowSkill);
             StringAssert.Contains("workflow recipe", workflowSkill);
+            StringAssert.Contains("references/branch-selection.md", workflowSkill);
 
             var orchestrationBranchPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "branches", "orchestration.md");
             var orchestrationBranch = File.ReadAllText(orchestrationBranchPath);
             StringAssert.Contains("加载 `aibridge-workflow-orchestration`", orchestrationBranch);
             StringAssert.Contains("多 Agent", orchestrationBranch);
+
+            var orchestrationSkillPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-workflow-orchestration", "SKILL.md");
+            Assert.IsTrue(File.Exists(orchestrationSkillPath));
+            StringAssert.Contains("workflow-cli-reference.md", File.ReadAllText(orchestrationSkillPath));
         }
 
         [Test]
@@ -55,25 +60,27 @@ namespace AIBridge.Editor.Tests
 
             var readiness = File.ReadAllText(readinessPath);
             StringAssert.Contains("Harness Preflight gate", readiness);
-            StringAssert.Contains("compact-first", readiness);
+            StringAssert.Contains("勿用 `$CLI harness status` 做 enablement/freshness 预检", readiness);
             StringAssert.Contains("harness-readiness-detail.md", readiness);
-            StringAssert.Contains("`fresh` 且不影响当前工具选择时", readiness);
-            StringAssert.Contains("不要输出未经当前 compact status 支撑的 Code Index、Unity Editor、Runtime 等能力结论", readiness);
+            StringAssert.Contains("Root Rule / preferences 已声明的能力不要再输出 Preflight 宣告", readiness);
+            StringAssert.DoesNotContain("需要确认 freshness 时执行 `$CLI harness status`", readiness);
             StringAssert.DoesNotContain("最小探测矩阵", readiness);
             StringAssert.DoesNotContain("Fallback 规则", readiness);
             StringAssert.DoesNotContain("Resume 规则", readiness);
             Assert.IsFalse(readiness.Contains("【模式：Harness"));
 
             var detail = File.ReadAllText(detailPath);
+            StringAssert.Contains("前置：已读", detail);
             StringAssert.Contains("最小探测矩阵", detail);
             StringAssert.Contains("Fallback 规则", detail);
             StringAssert.Contains("Resume 规则", detail);
             StringAssert.Contains("EvidenceRef", detail);
             StringAssert.Contains("CommandEvidence", detail);
-            StringAssert.Contains("快速定位 C# 声明文件或声明位置", detail);
-            StringAssert.Contains("snapshot / name index 可用", detail);
+            StringAssert.Contains("快速定位 C# 声明", detail);
+            StringAssert.Contains("仅 Root Rule/preferences 已启用时", detail);
             StringAssert.Contains("$CLI harness status --detail full", detail);
             StringAssert.Contains("$CLI harness status --include-snapshot true", detail);
+            StringAssert.Contains("显式诊断", detail);
             StringAssert.Contains("workflow finish --status passed", detail);
             Assert.IsFalse(detail.Contains("【模式：Harness"));
         }

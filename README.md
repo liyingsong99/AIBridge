@@ -206,7 +206,7 @@ $CLI profiler save_data --path ".aibridge/profiler/latest.json"
 $CLI profiler stop
 ```
 
-Use `harness status` for compact preflight, `selection` to manage the active Unity selection, `menu_item` to invoke Unity menu paths, and `profiler` for editor diagnostics and snapshot capture.
+Use `harness status` for optional diagnosis only (project-side capabilities come from Root Rule / workflow rules), `selection` to manage the active Unity selection, `menu_item` to invoke Unity menu paths, and `profiler` for editor diagnostics and snapshot capture.
 
 ### Workflow Recipes
 

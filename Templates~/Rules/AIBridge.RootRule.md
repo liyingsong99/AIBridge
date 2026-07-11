@@ -1,7 +1,7 @@
 ---
 templateId: unity-integration
 assistant: aibridge
-version: 8
+version: 10
 target: root-rule
 ---
 ## AIBridge Bootstrap

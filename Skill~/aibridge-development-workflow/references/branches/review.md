@@ -8,7 +8,7 @@
 
 1. 先确认项目偏好中审查分支已启用
 2. 默认只读，不直接修改文件
-3. C# 声明名/文件定位是否优先使用 Code Index，以 `project-workflow-preferences.md` 和当前 Code Index 可用状态为准
+3. C# 声明定位是否用 Code Index：以 Root Rule / preferences 为准
 
 ## 输出规则
 

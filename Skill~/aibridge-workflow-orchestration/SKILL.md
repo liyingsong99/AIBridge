@@ -5,25 +5,20 @@ description: AIBridge workflow and multi-agent orchestration guidance. Use when 
 
 # AIBridge Workflow Orchestration
 
-Focus on workflow recipes, multi-agent orchestration, parallel review, pipeline validation, adversarial verification, Runtime debug investigations, Runtime target sweeps, or structured workflow artifacts
-
-Leave routine single-file edits, simple CLI command lookup, and ordinary Unity validation to `aibridge-development-workflow` and `aibridge`
+Focus on recipes, multi-agent orchestration, parallel/pipeline validation, adversarial verification, Runtime sweeps, or structured artifacts. Routine edits and ordinary Unity validation stay with `aibridge-development-workflow` / `aibridge`
 
 ## Core Rules
 
-- Keep orchestration explicit: phases, roles, dependencies, gates, artifacts, and expected outputs
-- Keep execution visible: when running a workflow, use short status blocks with explicit labels, `【模式：...】` for the active business mode and `-> ...` for phase/step progress
-- Prefer parallel read and serial write. Use parallel write only when worktree isolation, file ownership, merge strategy, and validation gates are explicit
-- Use pipeline for staged per-item work. Use parallel barriers only when a downstream step needs all upstream results
-- Use structured outputs for intermediate results: findings, verdicts, plans, patch proposals, validation results, artifact references, and Runtime target references
-- Treat Skill routing as preflight; scope phase-specific Skills to the phase that needs them, then pass compact handoff summaries and artifact references across phase boundaries
-- Separate claims from evidence. Treat AIBridge CLI, Runtime, screenshots, logs, tests, and Code Index output as evidence
-- Do not describe `workflow` as a generic AI agent scheduler. Current CLI support covers recipe list/validate/plan/init, active run begin/attach/finish, deterministic `run-cli` steps, ordinary-command artifact attach, external result import, adapter export, gates, and reports; `agent` and `manual` steps require an external executor
+- Keep phases, roles, dependencies, gates, artifacts, and expected outputs explicit
+- Prefer parallel read and serial write; parallel write only with isolation, ownership, merge, and gates
+- Use structured outputs for intermediate results; separate claims from evidence
+- Skill routing is preflight; scope phase Skills then pass compact handoff + artifact refs
+- `agent`/`manual` need an external executor; AIBridge CLI does not run them as an LLM scheduler
 
 ## Reference Loading
 
-- Read `references/orchestration-patterns.md` before selecting parallel, pipeline, barrier, adversarial, or Runtime sweep patterns
-- Read `references/recipe-schema.md` before writing or reviewing a workflow recipe document
-- Read `references/evidence-schema.md` when defining or importing structured external results
-- Read `references/builtin-recipes.md` before drafting common Unity implementation, review, Runtime validation, Prefab sweep, or bug-hunter workflows
-- For cross-turn, resumed, or external-agent work, follow the active-run, evidence schema, and import rules in `references/orchestration-patterns.md` and `references/recipe-schema.md`
+- Patterns: `references/orchestration-patterns.md`
+- Recipe shape/gates: `references/recipe-schema.md`
+- Workflow CLI commands: `references/workflow-cli-reference.md` (on demand)
+- Evidence import: `references/evidence-schema.md`
+- Built-in recipes: `references/builtin-recipes.md`

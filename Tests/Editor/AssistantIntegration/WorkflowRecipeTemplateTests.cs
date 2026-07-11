@@ -76,11 +76,13 @@ namespace AIBridge.Editor.Tests
         {
             var packageRoot = GetPackageRoot();
             var schema = File.ReadAllText(Path.Combine(packageRoot, "Skill~", "aibridge-workflow-orchestration", "references", "recipe-schema.md"));
+            var cliReference = File.ReadAllText(Path.Combine(packageRoot, "Skill~", "aibridge-workflow-orchestration", "references", "workflow-cli-reference.md"));
             var recipes = File.ReadAllText(Path.Combine(packageRoot, "Skill~", "aibridge-workflow-orchestration", "references", "builtin-recipes.md"));
             var evidenceSchema = File.ReadAllText(Path.Combine(packageRoot, "Skill~", "aibridge-workflow-orchestration", "references", "evidence-schema.md"));
 
-            StringAssert.Contains("$CLI workflow validate", schema);
-            StringAssert.Contains("skipped_requires_external_executor", schema);
+            StringAssert.Contains("workflow-cli-reference.md", schema);
+            StringAssert.Contains("$CLI workflow validate", cliReference);
+            StringAssert.Contains("skipped_requires_external_executor", cliReference);
             StringAssert.Contains("runtime-target-sweep", recipes);
             StringAssert.Contains("runtime-debug-investigation", recipes);
             StringAssert.Contains("performance-hotspot-investigation", recipes);
@@ -93,9 +95,9 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("EvidenceRef", evidenceSchema);
             StringAssert.Contains("CommandEvidence", evidenceSchema);
             StringAssert.Contains("SkillHandoff", evidenceSchema);
-            StringAssert.Contains("workflow status --run", schema);
-            StringAssert.Contains("--detail full", schema);
-            StringAssert.Contains("do not read full `manifest.json` or Markdown reports for routine status", schema);
+            StringAssert.Contains("workflow status --run", cliReference);
+            StringAssert.Contains("--detail full", cliReference);
+            StringAssert.Contains("do not read full manifests for routine status", cliReference);
             StringAssert.Contains("terminalState", schema);
             StringAssert.Contains("terminalReason", schema);
             StringAssert.Contains("retryBudget", schema);

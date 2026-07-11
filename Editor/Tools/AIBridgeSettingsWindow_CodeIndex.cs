@@ -48,8 +48,8 @@ namespace AIBridge.Editor
             {
                 EditorGUILayout.HelpBox(
                     AIBridgeEditorText.T(
-                        "Code Index is disabled. The aibridge-code-index Skill is removed from selected assistant integrations when Auto Install Skills is enabled; otherwise reinstall selected integrations manually.",
-                        "Code Index 已关闭。启用自动安装 Skills 时，会从已选 AI 工具集成中移除 aibridge-code-index；否则请手动重新安装选中集成。"),
+                        "Code Index is disabled. AIBridge syncs Root Rule and installed workflow rules immediately, and removes the aibridge-code-index Skill from selected assistant integrations when those Skills are already installed.",
+                        "Code Index 已关闭。AIBridge 会立即同步 Root Rule 与已安装 workflow 规则；若已安装对应 Skills，会从已选 AI 工具集成中移除 aibridge-code-index。"),
                     MessageType.Warning);
             }
 
@@ -126,10 +126,7 @@ namespace AIBridge.Editor
                         AIBridgeCodeIndexEditorUtility.ShutdownDaemon(settings.CleanupModeOnQuit, 3000);
                     }
 
-                    if (AIBridgeProjectSettings.Instance.AutoInstallSkills)
-                    {
-                        SkillInstaller.RefreshInstalledIntegrationsNoDialog();
-                    }
+                    SkillInstaller.SyncProjectCapabilityRules();
                 }
             }
 

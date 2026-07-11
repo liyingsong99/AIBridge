@@ -999,14 +999,10 @@ namespace AIBridge.Editor
         private void SaveAndApplyWorkflowOptions()
         {
             AIBridgeProjectSettings.Instance.SaveSettings();
-            var generatedFiles = SkillInstaller.GenerateWorkflowPreferenceFilesForSelectedTargets(GetProjectRoot());
-            _workflowOptionsApplyMessage = generatedFiles.Count > 0
-                ? AIBridgeEditorText.T(
-                    "Workflow options saved and applied to installed Skills: " + generatedFiles.Count + " generated file(s).",
-                    "Workflow 选项已保存，并已应用到已安装 Skills：" + generatedFiles.Count + " 个生成文件。")
-                : AIBridgeEditorText.T(
-                    "Workflow options saved. Install selected integrations before these preferences can affect assistant Skills.",
-                    "Workflow 选项已保存。需要先安装选中集成，这些偏好才会影响 assistant Skills。");
+            SkillInstaller.SyncProjectCapabilityRules(GetProjectRoot());
+            _workflowOptionsApplyMessage = AIBridgeEditorText.T(
+                "Workflow options saved. Root Rule and installed workflow capability rules were synced.",
+                "Workflow 选项已保存，并已同步 Root Rule 与已安装 workflow 能力规则。");
             Repaint();
         }
     }
