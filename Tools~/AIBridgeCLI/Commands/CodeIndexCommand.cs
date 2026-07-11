@@ -83,7 +83,7 @@ namespace AIBridgeCLI.Commands
                 }
                 catch (ArgumentException ex)
                 {
-                    return BuildFailure(null, ex.Message, "invalid_arguments");
+                    return CompactQueryResponse(BuildFailure(null, ex.Message, "invalid_arguments"), null);
                 }
             }
 
@@ -186,7 +186,8 @@ namespace AIBridgeCLI.Commands
                 case "reset":
                     return await ResetAsync(context, timeout);
                 default:
-                    return BuildDisabledFailure(context);
+                    // symbol/definition 在禁用时也走精简失败面，避免把 settings 诊断字段灌进 AI 上下文
+                    return CompactQueryResponse(BuildDisabledFailure(context), null);
             }
         }
 
@@ -195,8 +196,8 @@ namespace AIBridgeCLI.Commands
             var status = await EnsureDaemonAsync(context, timeout, false);
             if (IsDaemonTransportFailure(status))
             {
-                status["enabled"] = context.Enabled;
-                return status;
+                // 查询失败面只保留 AI 决策字段，诊断细节留给 status/doctor
+                return CompactQueryResponse(status, null);
             }
 
             if (IsReady(context, status))
@@ -220,35 +221,38 @@ namespace AIBridgeCLI.Commands
                 }
                 catch (TaskCanceledException)
                 {
-                    return BuildFailure(
-                        context,
-                        "code_index request timed out after " + queryTimeouts.TransportTimeoutMs.ToString(CultureInfo.InvariantCulture)
-                        + "ms before the daemon returned a queue or execution result.",
-                        "http_timeout");
+                    return CompactQueryResponse(
+                        BuildFailure(
+                            context,
+                            "code_index request timed out after " + queryTimeouts.TransportTimeoutMs.ToString(CultureInfo.InvariantCulture)
+                            + "ms before the daemon returned a queue or execution result.",
+                            "http_timeout"),
+                        null);
                 }
                 catch (HttpRequestException ex)
                 {
-                    return BuildFailure(context, "Code index daemon is not reachable: " + ex.Message, "daemon_unreachable");
+                    return CompactQueryResponse(
+                        BuildFailure(context, "Code index daemon is not reachable: " + ex.Message, "daemon_unreachable"),
+                        null);
                 }
                 catch (JsonException ex)
                 {
-                    return BuildFailure(context, "Code index daemon returned invalid JSON: " + ex.Message, "invalid_daemon_response");
+                    return CompactQueryResponse(
+                        BuildFailure(context, "Code index daemon returned invalid JSON: " + ex.Message, "invalid_daemon_response"),
+                        null);
                 }
 
                 if (response.Value<bool>("success"))
                 {
-                    SanitizeQueryResponse(response);
-                    response["source"] = "name-index";
-                    response["enabled"] = true;
-                    return response;
+                    return CompactQueryResponse(response, "name-index");
                 }
 
-                SanitizeQueryResponse(response);
-                response["enabled"] = context.Enabled;
-                return response;
+                return CompactQueryResponse(response, null);
             }
 
-            return BuildFailure(context, "Unity snapshot workspace is not ready.", "workspace_not_ready");
+            return CompactQueryResponse(
+                BuildFailure(context, "Unity snapshot workspace is not ready.", "workspace_not_ready"),
+                null);
         }
 
         private static CodeIndexQueryTimeouts ResolveQueryTimeouts(string action, Dictionary<string, string> options, int timeout)
@@ -2130,25 +2134,80 @@ namespace AIBridgeCLI.Commands
             }
         }
 
-        private static void SanitizeQueryResponse(JObject response)
+        /// <summary>
+        /// 将 symbol/definition 公开查询响应收缩为 AI 决策所需最小字段，去掉 daemon/快照/队列诊断噪声。
+        /// </summary>
+        private static JObject CompactQueryResponse(JObject response, string sourceOverride)
         {
             if (response == null)
             {
-                return;
+                return new JObject
+                {
+                    ["success"] = false,
+                    ["items"] = new JArray()
+                };
             }
 
-            response.Remove("semantic");
-            response.Remove("workspaceMode");
-            response.Remove("loadedProjects");
-            response.Remove("loadedDocuments");
+            var success = response.Value<bool?>("success") ?? false;
+            var compact = new JObject
+            {
+                ["success"] = success
+            };
 
-            var items = response["items"] as JArray;
+            var source = !string.IsNullOrWhiteSpace(sourceOverride)
+                ? sourceOverride
+                : response.Value<string>("source");
+            if (!string.IsNullOrWhiteSpace(source))
+            {
+                compact["source"] = source;
+            }
+
+            // 仅在禁用时保留 enabled，避免成功路径重复灌入 true
+            if (response.Value<bool?>("enabled") == false)
+            {
+                compact["enabled"] = false;
+            }
+
+            var error = response.Value<string>("error");
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                compact["error"] = error;
+            }
+
+            var errorCode = response.Value<string>("errorCode");
+            if (!string.IsNullOrWhiteSpace(errorCode))
+            {
+                compact["errorCode"] = errorCode;
+            }
+
+            var warning = response.Value<string>("warning");
+            if (!string.IsNullOrWhiteSpace(warning))
+            {
+                compact["warning"] = warning;
+            }
+
+            if (response.Value<bool?>("stale") == true)
+            {
+                compact["stale"] = true;
+                var staleReason = response.Value<string>("staleReason");
+                if (!string.IsNullOrWhiteSpace(staleReason))
+                {
+                    compact["staleReason"] = staleReason;
+                }
+            }
+
+            compact["items"] = SanitizeQueryItems(response["items"] as JArray);
+            return compact;
+        }
+
+        private static JArray SanitizeQueryItems(JArray items)
+        {
+            var sanitized = new JArray();
             if (items == null)
             {
-                return;
+                return sanitized;
             }
 
-            var sanitized = new JArray();
             for (var i = 0; i < items.Count; i++)
             {
                 if (!(items[i] is JObject item))
@@ -2160,21 +2219,50 @@ namespace AIBridgeCLI.Commands
                 {
                     ["kind"] = item["kind"],
                     ["name"] = item["name"],
-                    ["container"] = item["container"],
                     ["file"] = item["file"],
-                    ["line"] = item["line"],
-                    ["column"] = item["column"]
+                    ["line"] = item["line"]
                 };
 
-                if (item.TryGetValue("signature", out var signature) && signature != null && signature.Type != JTokenType.Null)
+                // container/column/signature 仅在有值时保留，减少空命中与短结果的噪声
+                CopyOptionalQueryItemField(item, sanitizedItem, "container");
+                if (item.TryGetValue("column", out var column)
+                    && column != null
+                    && column.Type != JTokenType.Null
+                    && column.Type != JTokenType.Undefined)
                 {
-                    sanitizedItem["signature"] = signature;
+                    var columnValue = column.Value<int?>();
+                    if (columnValue.HasValue && columnValue.Value > 0)
+                    {
+                        sanitizedItem["column"] = columnValue.Value;
+                    }
                 }
 
+                CopyOptionalQueryItemField(item, sanitizedItem, "signature");
                 sanitized.Add(sanitizedItem);
             }
 
-            response["items"] = sanitized;
+            return sanitized;
+        }
+
+        private static void CopyOptionalQueryItemField(JObject source, JObject target, string fieldName)
+        {
+            if (source == null
+                || target == null
+                || string.IsNullOrWhiteSpace(fieldName)
+                || !source.TryGetValue(fieldName, out var value)
+                || value == null
+                || value.Type == JTokenType.Null
+                || value.Type == JTokenType.Undefined)
+            {
+                return;
+            }
+
+            if (value.Type == JTokenType.String && string.IsNullOrWhiteSpace(value.Value<string>()))
+            {
+                return;
+            }
+
+            target[fieldName] = value;
         }
 
         private static bool ResolveOptionBool(Dictionary<string, string> options, string key, bool defaultValue)

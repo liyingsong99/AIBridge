@@ -437,7 +437,7 @@ $CLI code_index symbol --query PlayerController
 $CLI code_index definition --query PlayerController
 ```
 
-该命令刻意保持只读：不做 rename、重构、自动修复或文件写入。`symbol` 只返回声明候选，`definition` 只按名称返回最佳声明位置。查到路径后，由 AI 继续直接读取 `.cs` 文件做真实分析。daemon 生命周期、快照构建、预热和恢复都属于内部实现细节，不再作为公开 AI CLI 契约的一部分。最终编译权威仍然是 `compile unity`。
+该命令刻意保持只读：不做 rename、重构、自动修复或文件写入。`symbol` 只返回声明候选，`definition` 只按名称返回最佳声明位置。`--query` 应使用 C# 声明标识符（或其子串），不要用自然语言、中文业务名或注释文案。公开查询响应默认精简为命中列表与必要错误字段；快照/队列诊断请用 `status` / `doctor`。查到路径后，由 AI 继续直接读取 `.cs` 文件做真实分析。daemon 生命周期、快照构建、预热和恢复都属于内部实现细节，不再作为公开 AI CLI 契约的一部分。最终编译权威仍然是 `compile unity`。
 
 启用 Code Index 后，Unity Editor 可在 `AIBridge > Settings > Code Index` 中生成快照、配置启动后空闲预热、快照自动刷新、PackageCache 源码是否纳入索引、忽略程序集/源码路径规则和退出清理策略。公开使用面继续保持极窄：只通过 `symbol` / `definition` 做声明名定位，daemon 启动、恢复和快照刷新都交给内部生命周期处理。
 
