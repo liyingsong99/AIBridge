@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using AIBridgeCLI.Core;
 using Newtonsoft.Json;
 
 namespace AIBridgeCLI.Commands
@@ -17,6 +18,11 @@ namespace AIBridgeCLI.Commands
     /// </summary>
     public static class DotnetBuildCommand
     {
+        internal const int MaxRawOutputChars = 200000;
+        internal const int MaxDiagnosticLineChars = 32768;
+        internal const int MaxRetainedDiagnosticsPerKind = 1000;
+        private const int ProcessExitWaitMs = 5000;
+
         // Regex to parse MSBuild error format: path(line,column): error CS0001: message
         private static readonly Regex MsBuildErrorRegex = new Regex(
             @"^\s*(?<file>.+?)\((?<line>\d+),(?<column>\d+)\):\s*(?<type>error|warning)\s+(?<code>\w+):\s*(?<message>.+?)(?:\s*\[(?<project>.+?)\])?$",
@@ -82,10 +88,19 @@ namespace AIBridgeCLI.Commands
                 result.SolutionPath = solutionPath;
                 result.ProjectRoot = projectRoot;
 
+                var filterConfig = LoadFilterConfig();
+                var excludePaths = options.ExcludePaths ?? filterConfig.ExcludePaths.ToArray();
+                var excludeCodes = options.ExcludeCodes ?? filterConfig.ExcludeCodes.ToArray();
+                var hideWarnings = options.EnableFilter
+                    ? options.HideWarnings && filterConfig.HideWarnings
+                    : options.HideWarnings;
+                var diagnostics = new DotnetBuildDiagnosticCollector(
+                    projectRoot,
+                    options.EnableFilter,
+                    hideWarnings,
+                    excludePaths,
+                    excludeCodes);
                 var stopwatch = Stopwatch.StartNew();
-                var allErrors = new List<BuildError>();
-                var allWarnings = new List<BuildError>();
-                var outputBuilder = new StringBuilder();
 
                 var startInfo = new ProcessStartInfo
                 {
@@ -103,83 +118,50 @@ namespace AIBridgeCLI.Commands
                 using (var process = new Process())
                 {
                     process.StartInfo = startInfo;
-
-                    process.OutputDataReceived += (sender, e) =>
-                    {
-                        if (!string.IsNullOrEmpty(e.Data))
-                        {
-                            outputBuilder.AppendLine(e.Data);
-                            ParseMsBuildOutput(e.Data, allErrors, allWarnings, projectRoot);
-                        }
-                    };
-
-                    process.ErrorDataReceived += (sender, e) =>
-                    {
-                        if (!string.IsNullOrEmpty(e.Data))
-                        {
-                            outputBuilder.AppendLine(e.Data);
-                            ParseMsBuildOutput(e.Data, allErrors, allWarnings, projectRoot);
-                        }
-                    };
-
                     process.Start();
-                    process.BeginOutputReadLine();
-                    process.BeginErrorReadLine();
+                    var stdoutTask = BoundedProcessOutputReader.ReadAsync(
+                        process.StandardOutput,
+                        MaxRawOutputChars,
+                        MaxDiagnosticLineChars,
+                        diagnostics.AddLine);
+                    var stderrTask = BoundedProcessOutputReader.ReadAsync(
+                        process.StandardError,
+                        MaxRawOutputChars,
+                        MaxDiagnosticLineChars,
+                        diagnostics.AddLine);
 
                     var completed = process.WaitForExit(options.TimeoutMs);
-                    stopwatch.Stop();
-
                     if (!completed)
                     {
-                        try
-                        {
-                            process.Kill();
-                        }
-                        catch
-                        {
-                            // Ignore kill errors
-                        }
-
-                        result.Success = false;
-                        result.Error = $"Build timed out after {options.TimeoutMs}ms";
-                        return result;
-                    }
-
-                    result.ExitCode = process.ExitCode;
-                    result.Duration = stopwatch.Elapsed.TotalSeconds;
-                    result.RawOutput = outputBuilder.ToString();
-
-                    // Apply filtering
-                    if (options.EnableFilter)
-                    {
-                        // Load filter config from file (hot-reload)
-                        var filterConfig = LoadFilterConfig();
-
-                        // Use command-line options if provided, otherwise use config file
-                        var excludePaths = options.ExcludePaths ?? filterConfig.ExcludePaths.ToArray();
-                        var excludeCodes = options.ExcludeCodes ?? filterConfig.ExcludeCodes.ToArray();
-                        var hideWarnings = options.HideWarnings && filterConfig.HideWarnings;
-
-                        result.Errors = FilterErrors(allErrors, excludePaths, excludeCodes, projectRoot);
-                        result.Warnings = hideWarnings
-                            ? new List<BuildError>()
-                            : FilterErrors(allWarnings, excludePaths, excludeCodes, projectRoot);
-                        result.FilteredErrorCount = allErrors.Count - result.Errors.Count;
-                        result.FilteredWarningCount = hideWarnings
-                            ? allWarnings.Count
-                            : allWarnings.Count - result.Warnings.Count;
+                        TryKillProcessTree(process);
+                        TryWaitForExit(process, ProcessExitWaitMs);
                     }
                     else
                     {
-                        result.Errors = allErrors;
-                        result.Warnings = options.HideWarnings ? new List<BuildError>() : allWarnings;
-                        result.FilteredErrorCount = 0;
-                        result.FilteredWarningCount = options.HideWarnings ? allWarnings.Count : 0;
+                        process.WaitForExit();
                     }
 
-                    result.TotalErrorCount = allErrors.Count;
-                    result.TotalWarningCount = allWarnings.Count;
-                    result.Success = result.Errors.Count == 0;
+                    var stdout = stdoutTask.GetAwaiter().GetResult();
+                    var stderr = stderrTask.GetAwaiter().GetResult();
+                    stopwatch.Stop();
+
+                    result.ExitCode = process.HasExited ? process.ExitCode : -1;
+                    result.Duration = stopwatch.Elapsed.TotalSeconds;
+                    result.RawOutput = CombineCapturedOutput(stdout.Text, stderr.Text, MaxRawOutputChars, out var combinedTruncated);
+                    result.RawOutputCharsRead = stdout.CharsRead + stderr.CharsRead;
+                    result.RawOutputTruncated = stdout.Truncated || stderr.Truncated || combinedTruncated;
+                    result.TruncatedDiagnosticLineCount = stdout.TruncatedLineCount + stderr.TruncatedLineCount;
+                    diagnostics.ApplyTo(result);
+
+                    if (!completed)
+                    {
+                        result.Success = false;
+                        result.Error = $"Build timed out after {options.TimeoutMs}ms";
+                    }
+                    else
+                    {
+                        result.Success = diagnostics.UnfilteredErrorCount == 0;
+                    }
                 }
             }
             catch (Exception ex)
@@ -189,6 +171,46 @@ namespace AIBridgeCLI.Commands
             }
 
             return result;
+        }
+
+        private static void TryKillProcessTree(Process process)
+        {
+            try
+            {
+                if (process != null && !process.HasExited)
+                {
+                    process.Kill(true);
+                }
+            }
+            catch
+            {
+                // Timeout cleanup is best-effort; the timeout remains visible in the result.
+            }
+        }
+
+        private static void TryWaitForExit(Process process, int timeoutMs)
+        {
+            try
+            {
+                process?.WaitForExit(timeoutMs);
+            }
+            catch
+            {
+                // Timeout cleanup is best-effort; the timeout remains visible in the result.
+            }
+        }
+
+        private static string CombineCapturedOutput(string stdout, string stderr, int maxChars, out bool truncated)
+        {
+            var combined = (stdout ?? string.Empty) + (stderr ?? string.Empty);
+            if (combined.Length <= maxChars)
+            {
+                truncated = false;
+                return combined;
+            }
+
+            truncated = true;
+            return combined.Substring(0, maxChars);
         }
 
         /// <summary>
@@ -342,97 +364,178 @@ namespace AIBridgeCLI.Commands
             }
         }
 
-        /// <summary>
-        /// Parse MSBuild output line for errors/warnings
-        /// </summary>
-        private static void ParseMsBuildOutput(string line, List<BuildError> errors, List<BuildError> warnings, string projectRoot)
+        private static bool TryParseMsBuildOutput(
+            string line,
+            string projectRoot,
+            out BuildError diagnostic,
+            out bool isError)
         {
+            diagnostic = null;
+            isError = false;
             var match = MsBuildErrorRegex.Match(line);
-            if (match.Success)
+            if (!match.Success)
             {
-                var filePath = match.Groups["file"].Value;
-
-                // Make path relative if possible
-                if (projectRoot != null && filePath.StartsWith(projectRoot, StringComparison.OrdinalIgnoreCase))
-                {
-                    filePath = filePath.Substring(projectRoot.Length).TrimStart('\\', '/');
-                }
-
-                var errorInfo = new BuildError
-                {
-                    File = filePath,
-                    Line = int.Parse(match.Groups["line"].Value),
-                    Column = int.Parse(match.Groups["column"].Value),
-                    Code = match.Groups["code"].Value,
-                    Message = match.Groups["message"].Value.Trim(),
-                    Project = match.Groups["project"].Success ? match.Groups["project"].Value : null,
-                    RawLine = line
-                };
-
-                if (match.Groups["type"].Value.Equals("error", StringComparison.OrdinalIgnoreCase))
-                {
-                    errors.Add(errorInfo);
-                }
-                else
-                {
-                    warnings.Add(errorInfo);
-                }
+                return false;
             }
+
+            var filePath = match.Groups["file"].Value;
+            if (projectRoot != null && filePath.StartsWith(projectRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                filePath = filePath.Substring(projectRoot.Length).TrimStart('\\', '/');
+            }
+
+            diagnostic = new BuildError
+            {
+                File = filePath,
+                Line = int.Parse(match.Groups["line"].Value),
+                Column = int.Parse(match.Groups["column"].Value),
+                Code = match.Groups["code"].Value,
+                Message = match.Groups["message"].Value.Trim(),
+                Project = match.Groups["project"].Success ? match.Groups["project"].Value : null,
+                RawLine = line
+            };
+            isError = match.Groups["type"].Value.Equals("error", StringComparison.OrdinalIgnoreCase);
+            return true;
         }
 
-        /// <summary>
-        /// Filter errors based on exclude paths and codes
-        /// </summary>
-        private static List<BuildError> FilterErrors(List<BuildError> errors, string[] excludePaths, string[] excludeCodes, string projectRoot)
+        private static bool ShouldExclude(BuildError diagnostic, string[] excludePaths, string[] excludeCodes)
         {
-            var filtered = new List<BuildError>();
-
-            foreach (var error in errors)
+            foreach (var excludePath in excludePaths ?? Array.Empty<string>())
             {
-                bool shouldExclude = false;
-
-                // Check exclude paths
-                foreach (var excludePath in excludePaths)
+                if (diagnostic.File.IndexOf(excludePath, StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    if (error.File.IndexOf(excludePath, StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        shouldExclude = true;
-                        break;
-                    }
-
-                    if (error.Project != null && error.Project.IndexOf(excludePath, StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        shouldExclude = true;
-                        break;
-                    }
-
-                    if (error.RawLine != null && error.RawLine.IndexOf(excludePath, StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        shouldExclude = true;
-                        break;
-                    }
+                    return true;
                 }
 
-                // Check exclude codes
-                if (!shouldExclude)
+                if (diagnostic.Project != null
+                    && diagnostic.Project.IndexOf(excludePath, StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    foreach (var excludeCode in excludeCodes)
-                    {
-                        if (error.Code.Equals(excludeCode, StringComparison.OrdinalIgnoreCase))
-                        {
-                            shouldExclude = true;
-                            break;
-                        }
-                    }
+                    return true;
                 }
 
-                if (!shouldExclude)
+                if (diagnostic.RawLine != null
+                    && diagnostic.RawLine.IndexOf(excludePath, StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    filtered.Add(error);
+                    return true;
                 }
             }
 
-            return filtered;
+            foreach (var excludeCode in excludeCodes ?? Array.Empty<string>())
+            {
+                if (diagnostic.Code.Equals(excludeCode, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal sealed class DotnetBuildDiagnosticCollector
+        {
+            private readonly object _sync = new object();
+            private readonly string _projectRoot;
+            private readonly bool _enableFilter;
+            private readonly bool _hideWarnings;
+            private readonly string[] _excludePaths;
+            private readonly string[] _excludeCodes;
+            private readonly List<BuildError> _errors = new List<BuildError>();
+            private readonly List<BuildError> _warnings = new List<BuildError>();
+            private int _totalErrorCount;
+            private int _totalWarningCount;
+            private int _filteredErrorCount;
+            private int _filteredWarningCount;
+            private int _omittedErrorCount;
+            private int _omittedWarningCount;
+
+            public DotnetBuildDiagnosticCollector(
+                string projectRoot,
+                bool enableFilter,
+                bool hideWarnings,
+                string[] excludePaths,
+                string[] excludeCodes)
+            {
+                _projectRoot = projectRoot;
+                _enableFilter = enableFilter;
+                _hideWarnings = hideWarnings;
+                _excludePaths = excludePaths ?? Array.Empty<string>();
+                _excludeCodes = excludeCodes ?? Array.Empty<string>();
+            }
+
+            public int UnfilteredErrorCount
+            {
+                get
+                {
+                    lock (_sync)
+                    {
+                        return _totalErrorCount - _filteredErrorCount;
+                    }
+                }
+            }
+
+            public void AddLine(string line, bool lineTruncated)
+            {
+                if (lineTruncated || string.IsNullOrEmpty(line))
+                {
+                    return;
+                }
+
+                if (!TryParseMsBuildOutput(line, _projectRoot, out var diagnostic, out var isError))
+                {
+                    return;
+                }
+
+                lock (_sync)
+                {
+                    if (isError)
+                    {
+                        _totalErrorCount++;
+                        if (_enableFilter && ShouldExclude(diagnostic, _excludePaths, _excludeCodes))
+                        {
+                            _filteredErrorCount++;
+                        }
+                        else if (_errors.Count < MaxRetainedDiagnosticsPerKind)
+                        {
+                            _errors.Add(diagnostic);
+                        }
+                        else
+                        {
+                            _omittedErrorCount++;
+                        }
+
+                        return;
+                    }
+
+                    _totalWarningCount++;
+                    if (_hideWarnings || (_enableFilter && ShouldExclude(diagnostic, _excludePaths, _excludeCodes)))
+                    {
+                        _filteredWarningCount++;
+                    }
+                    else if (_warnings.Count < MaxRetainedDiagnosticsPerKind)
+                    {
+                        _warnings.Add(diagnostic);
+                    }
+                    else
+                    {
+                        _omittedWarningCount++;
+                    }
+                }
+            }
+
+            public void ApplyTo(DotnetBuildResult result)
+            {
+                lock (_sync)
+                {
+                    result.Errors = new List<BuildError>(_errors);
+                    result.Warnings = new List<BuildError>(_warnings);
+                    result.TotalErrorCount = _totalErrorCount;
+                    result.TotalWarningCount = _totalWarningCount;
+                    result.FilteredErrorCount = _filteredErrorCount;
+                    result.FilteredWarningCount = _filteredWarningCount;
+                    result.OmittedErrorCount = _omittedErrorCount;
+                    result.OmittedWarningCount = _omittedWarningCount;
+                }
+            }
         }
     }
 
@@ -472,9 +575,14 @@ namespace AIBridgeCLI.Commands
         public int TotalWarningCount { get; set; }
         public int FilteredErrorCount { get; set; }
         public int FilteredWarningCount { get; set; }
+        public int OmittedErrorCount { get; set; }
+        public int OmittedWarningCount { get; set; }
 
         // Raw output (for debugging)
         public string RawOutput { get; set; }
+        public long RawOutputCharsRead { get; set; }
+        public bool RawOutputTruncated { get; set; }
+        public long TruncatedDiagnosticLineCount { get; set; }
     }
 
     /// <summary>

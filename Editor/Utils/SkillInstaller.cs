@@ -1412,11 +1412,6 @@ namespace AIBridge.Editor
                     "`$CLI` points to the project-local AIBridge CLI. In PowerShell, assign `$CLI = \"" + cliPath + "\"`, then run `& $CLI <command> [action] [options]`.",
                     "`$CLI` 指向项目本地 AIBridge CLI。PowerShell 中可先设 `$CLI = \"" + cliPath + "\"`，再用 `& $CLI <command> [action] [options]` 调用。") },
                 { "COMMON_COMMANDS_TITLE", AIBridgeEditorText.For(language, "Common Commands", "常用命令") },
-                { "HOST_EXEC_TITLE", AIBridgeEditorText.For(language, "Host Exec", "Host Exec") },
-                { "HOST_EXEC_RULE", AIBridgeEditorText.For(
-                    language,
-                    "Use `$CLI exec run --stdin` only for external host tools; do not use it to wrap AIBridge CLI commands. `exec run --stdin` accepts stdin JSON only: use `command`, not `cmd`, and do not append raw shell commands after `--stdin`. When the payload contains quotes, backslashes, or regex, build a PowerShell object and pipe `ConvertTo-Json` output, or use `--request-file`. Use `$CLI exec batch --stdin` only for multiple external host jobs.",
-                    "只有调用外部 host 工具时才使用 `$CLI exec run --stdin`；不要用它包装 AIBridge CLI 命令。`exec run --stdin` 只接受 stdin JSON；使用 `command`，不是 `cmd`，也不要在 `--stdin` 后面追加裸 shell 命令。请求里如果包含引号、反斜杠或正则，优先用 PowerShell 对象再 `ConvertTo-Json`，或者改用 `--request-file`。`$CLI exec batch --stdin` 只用于多个外部 host 任务。") },
                 { "PROJECT_VERSION_TITLE", AIBridgeEditorText.For(language, "Project Version", "项目版本") },
                 { "UNITY_VERSION", unityVersion },
                 { "CSHARP_LANGUAGE_VERSION", csharpLanguageVersion },

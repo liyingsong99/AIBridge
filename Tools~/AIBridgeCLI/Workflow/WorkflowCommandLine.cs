@@ -17,12 +17,24 @@ namespace AIBridgeCLI.Workflow
         public string StartedAtUtc { get; set; }
         public string EndedAtUtc { get; set; }
         public string Error { get; set; }
+        public long StdoutCharsRead { get; set; }
+        public long StderrCharsRead { get; set; }
+        public bool StdoutTruncated { get; set; }
+        public bool StderrTruncated { get; set; }
         public JObject Result { get; set; }
     }
 
     public static class WorkflowCommandLine
     {
+        internal const int MaxCapturedOutputCharsPerStream = 1000000;
+        private const int ProcessExitWaitMs = 5000;
+
         public static WorkflowCommandExecution Execute(string command, int timeoutMs)
+        {
+            return Execute(command, timeoutMs, MaxCapturedOutputCharsPerStream);
+        }
+
+        internal static WorkflowCommandExecution Execute(string command, int timeoutMs, int maxCapturedOutputCharsPerStream)
         {
             var commandId = PathHelper.GenerateCommandId();
             var startedAtUtc = DateTime.UtcNow.ToString("o");
@@ -44,8 +56,6 @@ namespace AIBridgeCLI.Workflow
                 tokens.Add("--raw");
             }
 
-            var output = new StringBuilder();
-            var error = new StringBuilder();
             var startInfo = CreateStartInfo(tokens);
             startInfo.WorkingDirectory = Directory.GetCurrentDirectory();
             startInfo.UseShellExecute = false;
@@ -58,54 +68,49 @@ namespace AIBridgeCLI.Workflow
             using (var process = new Process())
             {
                 process.StartInfo = startInfo;
-                process.OutputDataReceived += (sender, e) =>
-                {
-                    if (e.Data != null)
-                    {
-                        output.AppendLine(e.Data);
-                    }
-                };
-                process.ErrorDataReceived += (sender, e) =>
-                {
-                    if (e.Data != null)
-                    {
-                        error.AppendLine(e.Data);
-                    }
-                };
-
                 process.Start();
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
+                var stdoutTask = BoundedProcessOutputReader.ReadAsync(
+                    process.StandardOutput,
+                    maxCapturedOutputCharsPerStream);
+                var stderrTask = BoundedProcessOutputReader.ReadAsync(
+                    process.StandardError,
+                    maxCapturedOutputCharsPerStream);
 
                 var completed = process.WaitForExit(timeoutMs);
                 if (!completed)
                 {
-                    try
-                    {
-                        process.Kill();
-                    }
-                    catch
-                    {
-                        // Ignore cleanup failure.
-                    }
-
-                    return CreateImmediateFailure(commandId, command, startedAtUtc, "Command timed out after " + timeoutMs + "ms.");
+                    TryKillProcessTree(process);
+                    TryWaitForExit(process, ProcessExitWaitMs);
+                }
+                else
+                {
+                    process.WaitForExit();
                 }
 
-                process.WaitForExit();
                 var endedAtUtc = DateTime.UtcNow.ToString("o");
-                var stdout = output.ToString().Trim();
-                var stderr = error.ToString().Trim();
-                var data = TryParseJson(stdout);
-                var success = process.ExitCode == 0 && ReadSuccess(data, process.ExitCode);
+                var stdoutCapture = stdoutTask.GetAwaiter().GetResult();
+                var stderrCapture = stderrTask.GetAwaiter().GetResult();
+                var stdout = stdoutCapture.Text.Trim();
+                var stderr = stderrCapture.Text.Trim();
+                var outputTruncated = stdoutCapture.Truncated || stderrCapture.Truncated;
+                var exitCode = process.HasExited ? process.ExitCode : -1;
+                var data = outputTruncated ? null : TryParseJson(stdout);
+                var success = completed
+                              && !outputTruncated
+                              && exitCode == 0
+                              && ReadSuccess(data, exitCode);
                 var result = new JObject
                 {
                     ["id"] = commandId,
                     ["success"] = success,
-                    ["exitCode"] = process.ExitCode,
+                    ["exitCode"] = exitCode,
                     ["command"] = command,
                     ["startedAtUtc"] = startedAtUtc,
-                    ["endedAtUtc"] = endedAtUtc
+                    ["endedAtUtc"] = endedAtUtc,
+                    ["stdoutCharsRead"] = stdoutCapture.CharsRead,
+                    ["stderrCharsRead"] = stderrCapture.CharsRead,
+                    ["stdoutTruncated"] = stdoutCapture.Truncated,
+                    ["stderrTruncated"] = stderrCapture.Truncated
                 };
 
                 if (!string.IsNullOrWhiteSpace(stdout))
@@ -123,10 +128,24 @@ namespace AIBridgeCLI.Workflow
                     result["data"] = data;
                 }
 
-                var errorMessage = ReadError(data);
-                if (string.IsNullOrWhiteSpace(errorMessage))
+                string errorMessage;
+                if (!completed)
                 {
-                    errorMessage = stderr;
+                    errorMessage = "Command timed out after " + timeoutMs + "ms.";
+                }
+                else if (outputTruncated)
+                {
+                    errorMessage = "CLI output exceeded the workflow capture limit of "
+                                   + maxCapturedOutputCharsPerStream
+                                   + " characters per stream. Use compact command output or workflow artifacts.";
+                }
+                else
+                {
+                    errorMessage = ReadError(data);
+                    if (string.IsNullOrWhiteSpace(errorMessage))
+                    {
+                        errorMessage = stderr;
+                    }
                 }
 
                 if (!string.IsNullOrWhiteSpace(errorMessage))
@@ -139,12 +158,43 @@ namespace AIBridgeCLI.Workflow
                     CommandId = commandId,
                     Command = command,
                     Success = success,
-                    ExitCode = process.ExitCode,
+                    ExitCode = exitCode,
                     StartedAtUtc = startedAtUtc,
                     EndedAtUtc = endedAtUtc,
                     Error = success ? null : errorMessage,
+                    StdoutCharsRead = stdoutCapture.CharsRead,
+                    StderrCharsRead = stderrCapture.CharsRead,
+                    StdoutTruncated = stdoutCapture.Truncated,
+                    StderrTruncated = stderrCapture.Truncated,
                     Result = result
                 };
+            }
+        }
+
+        private static void TryKillProcessTree(Process process)
+        {
+            try
+            {
+                if (process != null && !process.HasExited)
+                {
+                    process.Kill(true);
+                }
+            }
+            catch
+            {
+                // Timeout cleanup is best-effort; the failure is reported by the command result.
+            }
+        }
+
+        private static void TryWaitForExit(Process process, int timeoutMs)
+        {
+            try
+            {
+                process?.WaitForExit(timeoutMs);
+            }
+            catch
+            {
+                // Timeout cleanup is best-effort; the failure is reported by the command result.
             }
         }
 

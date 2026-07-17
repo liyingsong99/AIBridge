@@ -7,7 +7,7 @@
 English | [中文](./README_CN.md)
 
 ![Unity 2019.4+ ~ 6000.x](https://img.shields.io/badge/Unity-2019.4%2B%20~%206000.x-black?style=flat-square&logo=unity)
-![Package 1.5.8](https://img.shields.io/badge/Package-1.5.8-5b6cff?style=flat-square)
+![Package 1.5.9](https://img.shields.io/badge/Package-1.5.9-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
@@ -125,7 +125,7 @@ You can also clone this repository into a Unity project's `Packages` folder.
 4. Click `Install Selected Integrations`.
 5. Optionally click `Install Unity Project AGENTS.md Template` to create a root `AGENTS.md`.
 
-Installed AIBridge Skills are written to each selected tool's default skills directory, such as `.codex/skills/` for Codex. You can set a custom directory in the `Workflows > Skills` tab, but custom directories may not be discovered automatically by the AI tool. Each AI tool receives a minimal RootRule and, when needed for a custom directory, a plugin adapter that references the Skill root. The RootRule includes the fixed project-root-relative CLI path, an explicit `$CLI` binding, common commands, host-tool `exec` routing, Skill root, and `aibridge-development-workflow` entry point. Multi-branch routing, targeted checklists, advanced workflow orchestration guidance, and command references live in the installed workflow Skill and its `references/` directory.
+Installed AIBridge Skills are written to each selected tool's default skills directory, such as `.codex/skills/` for Codex. You can set a custom directory in the `Workflows > Skills` tab, but custom directories may not be discovered automatically by the AI tool. Each AI tool receives a minimal RootRule and, when needed for a custom directory, a plugin adapter that references the Skill root. The RootRule includes the fixed project-root-relative CLI path, an explicit `$CLI` binding, common commands, Skill root, and `aibridge-development-workflow` entry point. Multi-branch routing, targeted checklists, advanced workflow orchestration guidance, and command references live in the installed workflow Skill and its `references/` directory.
 
 You can also open the `Workflows > Recommended Library` tab, refresh the default `obra/superpowers` repository, and install third-party Skills into the selected tools' skills directories.
 
@@ -191,6 +191,8 @@ $CLI test status
 
 Use `compile unity` for Unity validation. `compile dotnet` is only an extra solution build check and is not a replacement for Unity compilation.
 
+`compile dotnet` streams child-process output through a bounded reader. Raw output retains at most 200,000 characters, diagnostic lines are capped at 32,768 characters, and at most 1,000 errors plus 1,000 warnings are returned; total, filtered, omitted, and truncation counts remain available in the result.
+
 ### Selection, Menu Items, and Profiler
 
 ```bash
@@ -241,6 +243,8 @@ Built-in recipes include `bug-hunter-loop`, `harness-readiness-check`, `performa
 `runtime-debug-investigation` is for investigating Runtime, Player, Play Mode, UI, log, or performance symptoms. It checks evidence completeness first and does not treat Runtime errors themselves as workflow failure conditions; once a root cause is confirmed and a fix is requested, hand off to an implementation workflow.
 
 `workflow begin` creates an active run; ordinary commands can attach evidence with `--workflow-run`, `AIBRIDGE_WORKFLOW_RUN_ID`, or the active run pointer. `workflow status` and `workflow report` always require explicit `--run`; read `.aibridge/workflows/active-run.json` first when you need the active run id. `workflow run-cli --resume <runId>` resumes an existing run but still requires `--recipe` or `--file` so the CLI can load the recipe definition. Prefer a JSON file path for `--inputs`; inline JSON is fragile in PowerShell. `workflow import` stores structured external results such as `Verdict`, and `externalVerdict` gates only pass from imported artifacts. `workflow export` writes handoff packages for external tools. `partial` workflow status is not treated as CLI success unless `--allow-partial true` is passed explicitly. `workflow status`, `workflow run-cli`, `workflow finish`, and JSON `workflow report` are compact by default; use `--detail full` only when you need the full manifest JSON. Compact output keeps `terminalState`, `terminalReason`, `runDirectory`, `manifestPath`, `reportPath`, `artifactIds`, gate summaries, and external gaps, while `stepGaps`, `evidenceFreshness`, and `failedCommands` stay full-detail only.
+
+Nested `workflow run-cli` stdout/stderr retains at most 1,000,000 characters per stream. Command results expose `stdoutCharsRead`, `stderrCharsRead`, `stdoutTruncated`, and `stderrTruncated`; truncation fails the step so incomplete JSON is never treated as valid evidence.
 
 Workflow cleanup is explicit maintenance: `workflow clean` starts in dry-run mode and should be used when you intentionally inspect or prune workflow artifacts. Routine expired run directories are handled by the AIBridge Settings > Cache cleanup policy; the active run is preserved, while old failed/blocked runs are not permanently exempt once they exceed the retention window.
 
@@ -328,27 +332,6 @@ PowerShell JSON tip:
 $values = (@{ 'm_LocalPosition.x' = 0; 'm_LocalPosition.y' = 1 } | ConvertTo-Json -Compress) -replace '"', '\"'
 & "./.aibridge/cli/AIBridgeCLI.exe" inspector set_properties --assetPath 'Assets/Prefabs/Player.prefab' --componentName Transform --values $values
 ```
-
-### External Exec
-
-Use `exec` for shellless external tools such as `rg`, `git`, `dotnet`, `python`, or `node`. AIBridge commands like `harness status` run directly. Requests are JSON from stdin or a request file; `exec run --stdin` uses `command`, not `cmd`, and does not accept a raw shell command after `--stdin`. Keep `command` to the executable name and put flags, paths, and search text in `args`, `queries`, `globs`, or `paths`. When values contain quotes, backslashes, or regex, build a PowerShell object and pipe `ConvertTo-Json` output, or use `--request-file`.
-
-For multiple external host commands, use an `exec batch --stdin` request or a JSON request with `jobs`.
-
-```powershell
-$request = @'
-{
-  "command": "rg",
-  "args": ["-n"],
-  "queries": ["ProcessStartInfo", "ArgumentList"],
-  "globs": ["*.cs"],
-  "paths": ["Packages/cn.lys.aibridge/Tools~/AIBridgeCLI"]
-}
-'@
-$request | & "./.aibridge/cli/AIBridgeCLI.exe" exec run --stdin
-```
-
-For multiple independent commands, send a `jobs` batch. `rg` and `search` requests treat exit code `1` as a successful no-match result.
 
 ### Batch And Multi
 

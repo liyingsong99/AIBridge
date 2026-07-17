@@ -26,7 +26,7 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("{{SKILL_ROOT_RULE}}", template.Body);
             StringAssert.Contains("{{UNITY_VERSION_RULE}}", template.Body);
             StringAssert.Contains("{{CSHARP_VERSION_RULE}}", template.Body);
-            StringAssert.Contains("{{HOST_EXEC_RULE}}", template.Body);
+            StringAssert.DoesNotContain("HOST_EXEC", template.Body);
             StringAssert.Contains("{{HARNESS_CAPABILITY_RULE}}", template.Body);
             StringAssert.Contains("{{CODE_INDEX_CAPABILITY_RULE}}", template.Body);
             Assert.IsFalse(template.Body.Contains("{{SKILL_INDEX}}"));
@@ -68,15 +68,8 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("project-local AIBridge CLI", rootRule);
             StringAssert.Contains("$CLI = \"" + expectedCliPath + "\"", rootRule);
             StringAssert.Contains("& $CLI <command> [action] [options]", rootRule);
-            StringAssert.Contains("Host Exec", rootRule);
-            StringAssert.Contains("$CLI exec run --stdin", rootRule);
-            StringAssert.Contains("$CLI exec batch --stdin", rootRule);
-            StringAssert.Contains("only for external host tools", rootRule);
-            StringAssert.Contains("do not use it to wrap AIBridge CLI commands", rootRule);
-            StringAssert.Contains("do not append raw shell commands after `--stdin`", rootRule);
-            StringAssert.Contains("quotes, backslashes, or regex", rootRule);
-            StringAssert.Contains("ConvertTo-Json", rootRule);
-            StringAssert.Contains("--request-file", rootRule);
+            StringAssert.DoesNotContain("Host Exec", rootRule);
+            StringAssert.DoesNotContain("$CLI exec", rootRule);
             StringAssert.DoesNotContain("In AIBridge workflow tasks", rootRule);
             StringAssert.Contains("without loading `aibridge-development-workflow`", rootRule);
             StringAssert.Contains("simple search/display", rootRule);
@@ -121,14 +114,8 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("不加载 `aibridge-development-workflow`", rootRule);
             StringAssert.Contains("不输出审查/验证/根因结论", rootRule);
             StringAssert.Contains("工作流任务先加载", rootRule);
-            StringAssert.Contains("外部 host 工具", rootRule);
-            StringAssert.Contains("$CLI exec run --stdin", rootRule);
-            StringAssert.Contains("只有调用外部 host 工具时才使用", rootRule);
-            StringAssert.Contains("不要用它包装 AIBridge CLI 命令", rootRule);
-            StringAssert.Contains("不要在 `--stdin` 后面追加裸 shell 命令", rootRule);
-            StringAssert.Contains("引号、反斜杠或正则", rootRule);
-            StringAssert.Contains("ConvertTo-Json", rootRule);
-            StringAssert.Contains("--request-file", rootRule);
+            StringAssert.DoesNotContain("Host Exec", rootRule);
+            StringAssert.DoesNotContain("$CLI exec", rootRule);
             Assert.Less(
                 rootRule.IndexOf("**路由原则**", StringComparison.Ordinal),
                 rootRule.IndexOf("**项目版本**", StringComparison.Ordinal));

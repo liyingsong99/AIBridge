@@ -4,6 +4,7 @@ using System.IO;
 using System.Reflection;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using AIBridge.Runtime.Internal;
 using AIBridgeCLI.Commands;
 using AIBridgeCLI.Core;
@@ -14,10 +15,20 @@ namespace AIBridgeCLI.Tests
 {
     internal static class Program
     {
-        private static int Main()
+        private static int Main(string[] args)
         {
             try
             {
+                if (args != null
+                    && args.Length == 2
+                    && string.Equals(args[0], "--bounded-output-chars", StringComparison.OrdinalIgnoreCase)
+                    && long.TryParse(args[1], out var characterCount))
+                {
+                    AssertBoundedStream(characterCount, 1000);
+                    Console.WriteLine("Bounded output probe passed.");
+                    return 0;
+                }
+
                 WorkflowReport_IncludesRuntimePerformanceEvidence();
                 WorkflowReport_IncludesFailedRuntimePerformanceEvidence();
                 ArtifactRequiredGate_MatchesSemanticKind();
@@ -38,6 +49,12 @@ namespace AIBridgeCLI.Tests
                 CodeIndex_UnsupportedAction_ReturnsUnsupportedAction();
                 CodeIndex_DefinitionSourceLocationArguments_RequireQuery();
                 CodeIndex_InternalActions_AreNotShownInHelp();
+                CommandRegistry_DoesNotExposeExec();
+                BoundedOutputReader_CapsLargeStreamsWithoutPreallocatingOutput();
+                BoundedOutputReader_CapsLongLinesWithoutWaitingForNewline();
+                WorkflowCommandLine_AcceptsCompactJsonAndRejectsTruncatedOutput();
+                DotnetDiagnostics_BoundsRetainedItemsAndPreservesCounts();
+                DotnetDiagnostics_AppliesFiltersBeforeRetention();
                 Console.WriteLine("AIBridgeCLI tests passed.");
                 return 0;
             }
@@ -45,6 +62,140 @@ namespace AIBridgeCLI.Tests
             {
                 Console.Error.WriteLine(ex.Message);
                 return 1;
+            }
+        }
+
+        private static void CommandRegistry_DoesNotExposeExec()
+        {
+            CommandRegistry.Initialize();
+            foreach (var type in CommandRegistry.GetTypes())
+            {
+                AssertTrue(!string.Equals(type, "exec", StringComparison.OrdinalIgnoreCase), "Removed exec command must not remain registered.");
+            }
+
+            AssertTrue(
+                CommandRegistry.GetGlobalHelp().IndexOf(Environment.NewLine + "  exec", StringComparison.OrdinalIgnoreCase) < 0,
+                "Global help must not list the removed exec command.");
+        }
+
+        private static void BoundedOutputReader_CapsLargeStreamsWithoutPreallocatingOutput()
+        {
+            AssertBoundedStream(64L * 1024L * 1024L, 1000);
+            AssertBoundedStream(512L * 1024L * 1024L, 1000);
+        }
+
+        private static void AssertBoundedStream(long characterCount, int captureLimit)
+        {
+            using (var reader = new RepeatingTextReader(characterCount, 'x'))
+            {
+                var result = BoundedProcessOutputReader.ReadAsync(reader, captureLimit).GetAwaiter().GetResult();
+                AssertEqual(characterCount, result.CharsRead, "Bounded reader should count the complete external stream.");
+                AssertEqual(captureLimit, result.Text.Length, "Bounded reader should retain only the configured prefix.");
+                AssertTrue(result.Truncated, "Large external output should be marked truncated.");
+            }
+        }
+
+        private static void BoundedOutputReader_CapsLongLinesWithoutWaitingForNewline()
+        {
+            var observedLineLength = -1;
+            var observedLineTruncated = false;
+            using (var reader = new RepeatingTextReader(128L * 1024L, 'y'))
+            {
+                var result = BoundedProcessOutputReader.ReadAsync(
+                    reader,
+                    1000,
+                    32768,
+                    (line, truncated) =>
+                    {
+                        observedLineLength = line.Length;
+                        observedLineTruncated = truncated;
+                    }).GetAwaiter().GetResult();
+
+                AssertEqual(32768, observedLineLength, "Long line parsing should retain only the configured line prefix.");
+                AssertTrue(observedLineTruncated, "Long line parsing should report truncation.");
+                AssertEqual(1L, result.TruncatedLineCount, "Long line parsing should count the truncated line.");
+            }
+        }
+
+        private static void DotnetDiagnostics_BoundsRetainedItemsAndPreservesCounts()
+        {
+            var collector = new DotnetBuildCommand.DotnetBuildDiagnosticCollector(
+                "C:\\project",
+                false,
+                false,
+                Array.Empty<string>(),
+                Array.Empty<string>());
+
+            for (var i = 0; i < 1005; i++)
+            {
+                collector.AddLine($"C:\\project\\Assets\\Test{i}.cs(1,1): error CS1000: failure", false);
+            }
+
+            var result = new DotnetBuildResult();
+            collector.ApplyTo(result);
+            AssertEqual(1005, result.TotalErrorCount, "All parsed errors should contribute to the total count.");
+            AssertEqual(1000, result.Errors.Count, "Retained errors should respect the fixed item limit.");
+            AssertEqual(5, result.OmittedErrorCount, "Overflow errors should be reported as omitted.");
+            AssertEqual(1005, collector.UnfilteredErrorCount, "Build success checks should use the complete unfiltered error count.");
+        }
+
+        private static void WorkflowCommandLine_AcceptsCompactJsonAndRejectsTruncatedOutput()
+        {
+            var compact = WorkflowCommandLine.Execute("workflow list", 10000, 1000000);
+            AssertTrue(compact.Success, "Compact nested CLI JSON should remain parseable.");
+            AssertTrue(!compact.StdoutTruncated && !compact.StderrTruncated, "Compact nested CLI output should not be truncated.");
+            AssertTrue(compact.Result["data"] != null, "Compact nested CLI output should retain parsed JSON data.");
+
+            var truncated = WorkflowCommandLine.Execute("--help", 10000, 64);
+            AssertTrue(!truncated.Success, "Truncated nested CLI output must fail the workflow step.");
+            AssertTrue(truncated.StdoutTruncated || truncated.StderrTruncated, "Truncated nested CLI output should expose stream metadata.");
+            AssertContains(truncated.Error, "capture limit", "Truncated workflow output should report the bounded capture limit.");
+        }
+
+        private static void DotnetDiagnostics_AppliesFiltersBeforeRetention()
+        {
+            var collector = new DotnetBuildCommand.DotnetBuildDiagnosticCollector(
+                "C:\\project",
+                true,
+                true,
+                new[] { "ThirdParty" },
+                Array.Empty<string>());
+
+            collector.AddLine("C:\\project\\ThirdParty\\Ignored.cs(1,1): error CS1000: ignored", false);
+            collector.AddLine("C:\\project\\Assets\\Kept.cs(1,1): error CS1001: kept", false);
+            collector.AddLine("C:\\project\\Assets\\Hidden.cs(1,1): warning CS1002: hidden", false);
+
+            var result = new DotnetBuildResult();
+            collector.ApplyTo(result);
+            AssertEqual(2, result.TotalErrorCount, "Filtered diagnostics should remain visible in total counts.");
+            AssertEqual(1, result.FilteredErrorCount, "Excluded error should increment the filtered count.");
+            AssertEqual(1, result.Errors.Count, "Only the non-filtered error should be retained.");
+            AssertEqual(1, result.FilteredWarningCount, "Hidden warning should increment the filtered count.");
+            AssertEqual(0, result.Warnings.Count, "Hidden warnings should not be retained.");
+            AssertEqual(1, collector.UnfilteredErrorCount, "Only non-filtered errors should affect the visible failure count.");
+        }
+
+        private sealed class RepeatingTextReader : TextReader
+        {
+            private long _remaining;
+            private readonly char _character;
+
+            public RepeatingTextReader(long characterCount, char character)
+            {
+                _remaining = characterCount;
+                _character = character;
+            }
+
+            public override Task<int> ReadAsync(char[] buffer, int index, int count)
+            {
+                var read = (int)Math.Min(_remaining, count);
+                for (var i = 0; i < read; i++)
+                {
+                    buffer[index + i] = _character;
+                }
+
+                _remaining -= read;
+                return Task.FromResult(read);
             }
         }
 

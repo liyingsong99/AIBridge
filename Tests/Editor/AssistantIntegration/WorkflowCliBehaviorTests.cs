@@ -241,7 +241,7 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void ExecRunStdinRejectsTrailingRawCommandWithAgentHint()
+        public void RemovedExecCommandReturnsUnknownCommand()
         {
             var packageRoot = GetPackageRoot();
             var cliPath = ResolveCliPath(packageRoot);
@@ -253,44 +253,11 @@ namespace AIBridge.Editor.Tests
             var projectRoot = CreateTemporaryUnityProject();
             try
             {
-                var run = RunCli(cliPath, projectRoot, "exec run --stdin rg -n TODO Packages");
+                var run = RunCli(cliPath, projectRoot, "exec run --stdin", "{}");
                 var output = run.Stdout + run.Stderr;
 
                 Assert.AreNotEqual(0, run.ExitCode, output);
-                StringAssert.Contains("exec run/batch --stdin reads a JSON request from standard input", output);
-                StringAssert.Contains("Pipe JSON into the CLI instead", output);
-            }
-            finally
-            {
-                if (Directory.Exists(projectRoot))
-                {
-                    Directory.Delete(projectRoot, true);
-                }
-            }
-        }
-
-        [Test]
-        public void ExecRunStdinRejectsMalformedJsonWithEscapingHint()
-        {
-            var packageRoot = GetPackageRoot();
-            var cliPath = ResolveCliPath(packageRoot);
-            if (string.IsNullOrEmpty(cliPath) || !File.Exists(cliPath))
-            {
-                Assert.Ignore("AIBridgeCLI executable was not found for this platform.");
-            }
-
-            var projectRoot = CreateTemporaryUnityProject();
-            try
-            {
-                var malformedJson = "{\"command\":\"rg\",\"queries\":[\"HpSlider|SetHealth\\(\"],\"paths\":[\"Packages\"]}";
-                var run = RunCli(cliPath, projectRoot, "exec run --stdin", malformedJson);
-                var output = run.Stdout + run.Stderr;
-
-                Assert.AreNotEqual(0, run.ExitCode, output);
-                StringAssert.Contains("Invalid exec JSON request", output);
-                StringAssert.Contains("Bad JSON escape sequence", output);
-                StringAssert.Contains("ConvertTo-Json", output);
-                StringAssert.Contains("--request-file", output);
+                StringAssert.Contains("Unknown command type: exec", output);
             }
             finally
             {

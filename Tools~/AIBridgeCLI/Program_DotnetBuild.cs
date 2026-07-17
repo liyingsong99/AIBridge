@@ -78,6 +78,11 @@ namespace AIBridgeCLI
                     totalWarningCount = result.TotalWarningCount,
                     filteredErrorCount = result.FilteredErrorCount,
                     filteredWarningCount = result.FilteredWarningCount,
+                    omittedErrorCount = result.OmittedErrorCount,
+                    omittedWarningCount = result.OmittedWarningCount,
+                    rawOutputCharsRead = result.RawOutputCharsRead,
+                    rawOutputTruncated = result.RawOutputTruncated,
+                    truncatedDiagnosticLineCount = result.TruncatedDiagnosticLineCount,
                     errors = errorsList,
                     warnings = warningsList,
                     error = result.Error
@@ -103,6 +108,17 @@ namespace AIBridgeCLI
                 if (result.FilteredErrorCount > 0 || result.FilteredWarningCount > 0)
                 {
                     OutputFormatter.PrintInfo($"Filtered: {result.FilteredErrorCount} errors, {result.FilteredWarningCount} warnings (third-party/test code)");
+                }
+
+                if (result.OmittedErrorCount > 0 || result.OmittedWarningCount > 0)
+                {
+                    OutputFormatter.PrintInfo($"Omitted from output: {result.OmittedErrorCount} errors, {result.OmittedWarningCount} warnings");
+                }
+
+                if (result.RawOutputTruncated || result.TruncatedDiagnosticLineCount > 0)
+                {
+                    OutputFormatter.PrintInfo(
+                        $"Build output was bounded: rawOutputTruncated={result.RawOutputTruncated}, truncatedLines={result.TruncatedDiagnosticLineCount}");
                 }
 
                 // Show errors

@@ -130,12 +130,6 @@ namespace AIBridgeCLI
                 return HarnessCommand.Execute(parsed.Action, parsed.Options, outputMode);
             }
 
-            // Handle exec command (CLI-only structured external process runner)
-            if (parsed.CommandType.Equals("exec", StringComparison.OrdinalIgnoreCase))
-            {
-                return ExecCommand.Execute(parsed.Action, parsed.Options, stdin, timeout, outputMode);
-            }
-
             // Handle compile dotnet command (CLI-only, no Unity communication needed)
             if (parsed.CommandType.Equals("compile", StringComparison.OrdinalIgnoreCase)
                 && parsed.Action?.Equals("dotnet", StringComparison.OrdinalIgnoreCase) == true)

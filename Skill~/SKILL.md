@@ -1,6 +1,6 @@
 ---
 name: aibridge
-description: Unity Editor and Player Runtime CLI integration for AIBridge. Use for harness snapshot reads, Unity compile/logs/assets/scenes/prefabs/Inspector, screenshots/GIFs, Play Mode input, Runtime Player targets, focus/menu/game view, AIBridgeCLI syntax, or shellless external-tool routing through exec. Route batch/multi, complex prefab patching, and direct UnityYAML edits to specialized Skills
+description: Unity Editor and Player Runtime CLI integration for AIBridge. Use for harness snapshot reads, Unity compile/logs/assets/scenes/prefabs/Inspector, screenshots/GIFs, Play Mode input, Runtime Player targets, focus/menu/game view, or AIBridgeCLI syntax. Route batch/multi, complex prefab patching, and direct UnityYAML edits to specialized Skills
 ---
 
 # AI Bridge Unity Skill
@@ -14,10 +14,6 @@ Run from Unity project root. `$CLI` is the platform AIBridge CLI; on Windows Pow
 ```
 
 Common options: `--timeout`, `--raw`, `--pretty`, `--json`, `--stdin`, `--help`, `--on-dialog`. Installed command references live under `references/` after Skill install
-
-## Host Tools
-
-`exec run --stdin` only for external host tools (not wrapping AIBridge CLI). Stdin JSON uses `command` not `cmd`. Prefer PowerShell object + `ConvertTo-Json` or `--request-file` for quotes/regex. Use `multi --stdin` for multiple AIBridge commands; `exec batch --stdin` for multiple host jobs
 
 ## Harness Snapshot
 
