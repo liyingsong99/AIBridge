@@ -55,6 +55,8 @@ namespace AIBridgeCLI.Tests
                 WorkflowCommandLine_AcceptsCompactJsonAndRejectsTruncatedOutput();
                 DotnetDiagnostics_BoundsRetainedItemsAndPreservesCounts();
                 DotnetDiagnostics_AppliesFiltersBeforeRetention();
+                EditorInstancePaths_UsesEnvOverrideAndStableProjectKey();
+                EditorInstancePaths_PrefersExternalThenLegacyCandidates();
                 Console.WriteLine("AIBridgeCLI tests passed.");
                 return 0;
             }
@@ -851,6 +853,82 @@ namespace AIBridgeCLI.Tests
             if (!condition)
             {
                 throw new InvalidOperationException(message);
+            }
+        }
+
+        private static void EditorInstancePaths_UsesEnvOverrideAndStableProjectKey()
+        {
+            var previous = Environment.GetEnvironmentVariable(AIBridgeEditorInstancePaths.StateDirEnvironment);
+            var tempRoot = Path.Combine(Path.GetTempPath(), "aibridge-editor-instance-paths-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Environment.SetEnvironmentVariable(AIBridgeEditorInstancePaths.StateDirEnvironment, tempRoot);
+                var projectRoot = Path.Combine(tempRoot, "Projects", "DemoGame");
+                Directory.CreateDirectory(projectRoot);
+
+                AssertEqual(
+                    Path.GetFullPath(tempRoot),
+                    Path.GetFullPath(AIBridgeEditorInstancePaths.GetStateRoot()),
+                    "AIBRIDGE_STATE_DIR should override the state root.");
+
+                var key = AIBridgeEditorInstancePaths.BuildProjectKey(projectRoot);
+                AssertTrue(key.StartsWith("DemoGame_", StringComparison.Ordinal), "Project key should start with sanitized project folder name.");
+                AssertEqual(key, AIBridgeEditorInstancePaths.BuildProjectKey(projectRoot), "Project key must be stable for the same project root.");
+
+                var metadataPath = AIBridgeEditorInstancePaths.GetMetadataPath(projectRoot);
+                AssertTrue(
+                    metadataPath.StartsWith(Path.Combine(Path.GetFullPath(tempRoot), AIBridgeEditorInstancePaths.InstancesDirectoryName), StringComparison.OrdinalIgnoreCase),
+                    "Metadata path should live under the overridden state root.");
+                AssertTrue(
+                    metadataPath.EndsWith(AIBridgeEditorInstancePaths.MetadataFileName, StringComparison.OrdinalIgnoreCase),
+                    "Metadata path should end with editor-instance.json.");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(AIBridgeEditorInstancePaths.StateDirEnvironment, previous);
+                TryDeleteDirectory(tempRoot);
+            }
+        }
+
+        private static void EditorInstancePaths_PrefersExternalThenLegacyCandidates()
+        {
+            var previous = Environment.GetEnvironmentVariable(AIBridgeEditorInstancePaths.StateDirEnvironment);
+            var tempRoot = Path.Combine(Path.GetTempPath(), "aibridge-editor-instance-candidates-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Environment.SetEnvironmentVariable(AIBridgeEditorInstancePaths.StateDirEnvironment, tempRoot);
+                var projectRoot = Path.Combine(tempRoot, "Projects", "CandidateGame");
+                Directory.CreateDirectory(projectRoot);
+
+                var candidates = AIBridgeEditorInstancePaths.GetMetadataCandidatePaths(projectRoot);
+                AssertEqual(2, candidates.Count, "Candidate list should include external and legacy paths.");
+                AssertEqual(
+                    AIBridgeEditorInstancePaths.GetMetadataPath(projectRoot),
+                    candidates[0],
+                    "External metadata path should be preferred.");
+                AssertEqual(
+                    AIBridgeEditorInstancePaths.GetLegacyMetadataPath(projectRoot),
+                    candidates[1],
+                    "Legacy .aibridge metadata path should be the fallback candidate.");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(AIBridgeEditorInstancePaths.StateDirEnvironment, previous);
+                TryDeleteDirectory(tempRoot);
+            }
+        }
+
+        private static void TryDeleteDirectory(string path)
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(path) && Directory.Exists(path))
+                {
+                    Directory.Delete(path, true);
+                }
+            }
+            catch
+            {
             }
         }
 

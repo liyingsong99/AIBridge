@@ -7,7 +7,7 @@
 [English](./README.md) | 中文
 
 ![Unity 2019.4+ ~ 6000.x](https://img.shields.io/badge/Unity-2019.4%2B%20~%206000.x-black?style=flat-square&logo=unity)
-![Package 1.5.9](https://img.shields.io/badge/Package-1.5.9-5b6cff?style=flat-square)
+![Package 1.5.10](https://img.shields.io/badge/Package-1.5.10-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
@@ -186,6 +186,8 @@ $CLI get_logs --regex "NullReference|MissingReference"
 $CLI test run --mode EditMode
 $CLI test status
 ```
+
+`focus` 通过项目外的 Editor 实例心跳定位当前工程的 Unity 窗口（Windows 默认 `%LOCALAPPDATA%/AIBridge/instances/<projectKey>/editor-instance.json`，可用 `AIBRIDGE_STATE_DIR` 覆盖根目录）。外部文件不存在时仍兼容读取遗留的 `.aibridge/editor-instance.json`。命令交换、结果、截图、workflow 等项目产物仍保留在 `.aibridge/`。
 
 `test run` 必须在 Editor 处于 Edit Mode 时启动。如果 Unity 已经处于 Play Mode，命令会直接失败，并明确提示先退出 Play Mode 再重试。
 

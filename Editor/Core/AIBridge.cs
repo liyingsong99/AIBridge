@@ -74,7 +74,8 @@ namespace AIBridge.Editor
             LegacyCacheDirectoryCleaner.CleanupIfNeeded(GetProjectRoot(), BridgeDirectory);
             CodeCacheCleaner.CleanupIfNeeded(BridgeDirectory);
             CleanupCacheIfDue();
-            EditorInstanceTracker.Initialize(BridgeDirectory);
+            // 禁用时不写心跳，避免空闲项目外状态目录也被无意义刷新；遗留清理仍在 Initialize 内完成。
+            EditorInstanceTracker.Initialize(BridgeDirectory, writeInitialHeartbeat: _enabled);
 
             // Subscribe to editor update
             EditorApplication.update -= OnEditorUpdate;
@@ -96,12 +97,12 @@ namespace AIBridge.Editor
         /// </summary>
         private static void OnEditorUpdate()
         {
-            EditorInstanceTracker.UpdateHeartbeat();
-
             if (!_enabled)
             {
                 return;
             }
+
+            EditorInstanceTracker.UpdateHeartbeat();
 
             // Check polling interval
             var currentTime = EditorApplication.timeSinceStartup;

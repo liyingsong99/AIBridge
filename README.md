@@ -7,7 +7,7 @@
 English | [中文](./README_CN.md)
 
 ![Unity 2019.4+ ~ 6000.x](https://img.shields.io/badge/Unity-2019.4%2B%20~%206000.x-black?style=flat-square&logo=unity)
-![Package 1.5.9](https://img.shields.io/badge/Package-1.5.9-5b6cff?style=flat-square)
+![Package 1.5.10](https://img.shields.io/badge/Package-1.5.10-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
@@ -186,6 +186,8 @@ $CLI get_logs --regex "NullReference|MissingReference"
 $CLI test run --mode EditMode
 $CLI test status
 ```
+
+`focus` resolves the current project's Unity Editor from an out-of-repo instance heartbeat (`%LOCALAPPDATA%/AIBridge/instances/<projectKey>/editor-instance.json` on Windows; override the root with `AIBRIDGE_STATE_DIR`). It still falls back to a legacy `.aibridge/editor-instance.json` when the external file is missing. Project exchange files (commands, results, screenshots, workflows) remain under `.aibridge/`.
 
 `test run` must start while the Editor is in Edit Mode. If Unity is already in Play Mode, the command fails immediately with a Play Mode reason and asks the agent to stop Play Mode before retrying.
 

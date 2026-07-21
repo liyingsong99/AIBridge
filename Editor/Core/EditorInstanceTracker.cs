@@ -3,13 +3,13 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using AIBridge.Internal.Json;
+using AIBridge.Runtime.Internal;
 using UnityEngine;
 
 namespace AIBridge.Editor
 {
     internal static class EditorInstanceTracker
     {
-        private const string MetadataFileName = "editor-instance.json";
         private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(2);
 
         private static string _metadataPath;
@@ -22,19 +22,21 @@ namespace AIBridge.Editor
         private static DateTime _lastWriteUtc = DateTime.MinValue;
         private static string _lastLoggedError;
 
-        public static void Initialize(string bridgeDirectory)
+        public static void Initialize(string bridgeDirectory, bool writeInitialHeartbeat = true)
         {
-            if (string.IsNullOrEmpty(bridgeDirectory))
-            {
-                return;
-            }
-
-            _metadataDirectory = bridgeDirectory;
-            _metadataPath = Path.Combine(bridgeDirectory, MetadataFileName);
-            _metadataDirectoryReady = false;
             _projectRoot = Path.GetDirectoryName(Application.dataPath);
             _projectName = GetProjectName(_projectRoot);
-            WriteMetadata(force: true);
+            _metadataDirectory = AIBridgeEditorInstancePaths.GetInstanceDirectory(_projectRoot);
+            _metadataPath = AIBridgeEditorInstancePaths.GetMetadataPath(_projectRoot);
+            _metadataDirectoryReady = false;
+
+            // 遗留项目内心跳会持续触发 Git/IDE 监听；迁移到外部目录后立即清理。
+            DeleteLegacyMetadata(bridgeDirectory);
+
+            if (writeInitialHeartbeat)
+            {
+                WriteMetadata(force: true);
+            }
         }
 
         public static void UpdateHeartbeat()
@@ -62,6 +64,23 @@ namespace AIBridge.Editor
             TryDeleteFile(_metadataPath);
             TryDeleteFile(_metadataPath + ".tmp");
             _lastWriteUtc = DateTime.MinValue;
+        }
+
+        private static void DeleteLegacyMetadata(string bridgeDirectory)
+        {
+            var legacyPath = AIBridgeEditorInstancePaths.GetLegacyMetadataPathFromBridgeDirectory(bridgeDirectory);
+            if (string.IsNullOrEmpty(legacyPath))
+            {
+                legacyPath = AIBridgeEditorInstancePaths.GetLegacyMetadataPath(_projectRoot);
+            }
+
+            if (string.IsNullOrEmpty(legacyPath))
+            {
+                return;
+            }
+
+            TryDeleteFile(legacyPath);
+            TryDeleteFile(legacyPath + ".tmp");
         }
 
         private static void WriteMetadata(bool force)

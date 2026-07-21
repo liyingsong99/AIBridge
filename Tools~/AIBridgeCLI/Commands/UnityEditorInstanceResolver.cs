@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using AIBridge.Runtime.Internal;
 using AIBridgeCLI.Core;
 using Newtonsoft.Json;
 
@@ -9,20 +10,18 @@ namespace AIBridgeCLI.Commands
 {
     internal static class UnityEditorInstanceResolver
     {
-        private const string MetadataFileName = "editor-instance.json";
-
         public static bool TryResolve(out Process process, out string error)
         {
             process = null;
             error = null;
 
             var exchangeDirectory = PathHelper.GetExchangeDirectory();
-            var metadataPath = Path.Combine(exchangeDirectory, MetadataFileName);
             var expectedProjectRoot = Path.GetDirectoryName(exchangeDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
             var projectNameHints = new List<string>();
             AddProjectNameHint(projectNameHints, expectedProjectRoot);
 
-            if (!File.Exists(metadataPath))
+            var metadataPath = ResolveMetadataPath(expectedProjectRoot);
+            if (string.IsNullOrEmpty(metadataPath))
             {
                 return TryFallbackResolve(
                     projectNameHints,
@@ -117,6 +116,21 @@ namespace AIBridgeCLI.Commands
                     out process,
                     out error);
             }
+        }
+
+        private static string ResolveMetadataPath(string projectRoot)
+        {
+            var candidates = AIBridgeEditorInstancePaths.GetMetadataCandidatePaths(projectRoot);
+            for (var i = 0; i < candidates.Count; i++)
+            {
+                var path = candidates[i];
+                if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                {
+                    return path;
+                }
+            }
+
+            return null;
         }
 
         private static bool TryFallbackResolve(List<string> projectNameHints, string primaryError, out Process process, out string error)
