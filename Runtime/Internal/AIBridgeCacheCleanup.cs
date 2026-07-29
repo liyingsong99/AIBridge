@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -46,6 +46,7 @@ namespace AIBridge.Runtime.Internal
         public const string SettingsFileName = "cache-cleanup-settings.json";
         public const string StateFileName = "cache-cleanup-state.json";
         public const string LastUsedMarkerFileName = ".last-used";
+        public const string TemporaryDirectoryName = "tmp";
 
         private static readonly TimeSpan AutoCleanupInterval = TimeSpan.FromHours(24);
         private static readonly TimeSpan RuntimeOnlineHeartbeatAge = TimeSpan.FromSeconds(60);
@@ -78,6 +79,11 @@ namespace AIBridge.Runtime.Internal
         public static string GetStatePath(string bridgeDirectory)
         {
             return Path.Combine(NormalizeBridgeDirectory(bridgeDirectory), StateFileName);
+        }
+
+        public static string GetTemporaryDirectory(string bridgeDirectory)
+        {
+            return Path.Combine(NormalizeBridgeDirectory(bridgeDirectory), TemporaryDirectoryName);
         }
 
         public static AIBridgeCacheCleanupSettings LoadSettings(string bridgeDirectory)
@@ -169,6 +175,8 @@ namespace AIBridge.Runtime.Internal
             CleanProfiler(context);
             CleanCompiledCode(context);
             CleanCliTempFiles(context);
+            CleanTemporaryFiles(context);
+            CleanLegacyRootTemporaryFiles(context);
 
             context.Result.FinishedAtUtc = nowUtc.ToString("o", CultureInfo.InvariantCulture);
             SaveState(context);
@@ -384,6 +392,28 @@ namespace AIBridge.Runtime.Internal
                 if (IsExpired(GetLastUsedUtc(directory, true), context.CutoffUtc))
                 {
                     context.DeleteDirectory(directory);
+                }
+            }
+        }
+
+        private static void CleanTemporaryFiles(CleanupContext context)
+        {
+            CleanExpiredChildren(context, GetTemporaryDirectory(context.BridgeDirectory));
+        }
+
+        private static void CleanLegacyRootTemporaryFiles(CleanupContext context)
+        {
+            foreach (var file in SafeEnumerateFiles(context, context.BridgeDirectory))
+            {
+                // 仅兼容历史 Agent/脚本遗留的顶层命名，避免误删用户的常规项目产物。
+                if (!IsLegacyRootTemporaryFileName(Path.GetFileName(file)))
+                {
+                    continue;
+                }
+
+                if (IsExpired(GetLastUsedUtc(file, false), context.CutoffUtc))
+                {
+                    context.DeleteFile(file);
                 }
             }
         }
@@ -653,6 +683,13 @@ namespace AIBridge.Runtime.Internal
             return !string.IsNullOrEmpty(name)
                 && (name.StartsWith("CodeIndex.tmp.", StringComparison.OrdinalIgnoreCase)
                     || name.StartsWith("CodeIndex.old.", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsLegacyRootTemporaryFileName(string name)
+        {
+            return !string.IsNullOrEmpty(name)
+                && (name.StartsWith("tmp_", StringComparison.OrdinalIgnoreCase)
+                    || name.StartsWith("tmp-", StringComparison.OrdinalIgnoreCase));
         }
 
         private static bool IsSamePath(string left, string right)

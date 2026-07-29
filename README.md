@@ -68,7 +68,7 @@ Use for: broad read-only review, multi-target Runtime validation, bug-hunter loo
 - **Workflow recipes and run artifacts**: `workflow` CLI commands can list, validate, plan, initialize, and run deterministic CLI steps from built-in Unity workflow recipes, then write a project-local run manifest, command results, artifacts, gates, and Markdown report under `.aibridge/workflows/runs/`.
 - **Roslyn temporary C# execution**: controlled `code execute` runs `.aibridge/code/*.cs` or `.csx` temporary scripts inside Unity Editor for complex one-off asset generation, structured analysis, diagnostics, and Runtime/Public API calls. It is enabled by default in Settings and can be disabled there for untrusted projects or callers.
 - **Visual and log validation**: capture Game/Scene view screenshots or GIFs, read Console logs, run Unity compilation, and invoke tests so agents can close the loop on changes.
-- **Automatic cache cleanup**: AIBridge Settings includes a Cache tab that automatically removes expired `.aibridge` caches. Cleanup is enabled by default, keeps recently used artifacts, and limits retention to 1-30 days with a default of 30 days.
+- **Automatic cache cleanup**: AIBridge Settings includes a Cache tab that automatically removes expired `.aibridge` caches. Cleanup is enabled by default, keeps recently used artifacts, and limits retention to 1-30 days with a default of 30 days. Store short-lived Agent and script output in `.aibridge/tmp/`; expired legacy root files named `tmp_*` or `tmp-*` are also cleaned for compatibility, while other root files are preserved.
 
 ## AIBridge and Unity MCP
 

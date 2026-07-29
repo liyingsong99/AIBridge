@@ -68,7 +68,7 @@ AIBridge 是面向 Unity 项目的本地 AI 开发 harness。它把项目规则�
 - **Workflow recipes 和运行产物**：`workflow` CLI 可列出、校验、规划、初始化并运行内置 Unity workflow recipe 中的确定性 CLI 步骤，并在 `.aibridge/workflows/runs/` 下写入 run manifest、命令结果、artifact、gate 和 Markdown 报告。
 - **Roslyn 临时 C# 执行**：通过受控的 `code execute` 在 Unity Editor 内执行 `.aibridge/code/*.cs` 或 `.csx` 临时脚本，用于复杂一次性资源生成、结构化分析、诊断和 Runtime/Public API 调用。该能力在设置中默认启用，不可信项目或调用方环境中可在设置里关闭。
 - **视觉和日志验证**：支持 Game/Scene 视图截图、GIF、Console 日志读取、Unity 编译和测试命令，帮助 AI 闭环确认改动结果。
-- **自动缓存清理**：AIBridge Settings 新增 Cache/缓存清理页，默认启用 `.aibridge` 过期缓存清理。清理会保留最近仍在使用的产物，保留天数限制为 1-30 天，默认 30 天。
+- **自动缓存清理**：AIBridge Settings 新增 Cache/缓存清理页，默认启用 `.aibridge` 过期缓存清理。清理会保留最近仍在使用的产物，保留天数限制为 1-30 天，默认 30 天。Agent 和脚本的短生命周期输出应写入 `.aibridge/tmp/`；为兼容历史遗留，也会清理过期的顶层 `tmp_*` 和 `tmp-*` 文件，其他顶层文件保持不动。
 
 ## AIBridge 与 Unity MCP 的关系
 

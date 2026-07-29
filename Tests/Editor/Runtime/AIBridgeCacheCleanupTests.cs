@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -176,6 +176,37 @@ namespace AIBridge.Editor.Tests
             Assert.That(File.Exists(compiledFile), Is.False);
             Assert.That(File.Exists(cliTemp), Is.False);
             Assert.That(File.Exists(cliTool), Is.True);
+        }
+
+        [Test]
+        public void CleanupExpired_CleansTemporaryFilesAndLegacyRootFilesWithoutTouchingOtherRootFiles()
+        {
+            var oldTemporaryFile = WriteFile("tmp/old.txt", _nowUtc.AddDays(-31));
+            var recentTemporaryFile = WriteFile("tmp/recent.txt", _nowUtc.AddDays(-5));
+            var protectedTemporaryFile = WriteFile("tmp/.gitignore", _nowUtc.AddDays(-31));
+            var oldTemporaryDirectoryFile = WriteFile("tmp/old-directory/artifact.json", _nowUtc.AddDays(-31));
+            var oldTemporaryDirectory = ResolvePath("tmp/old-directory");
+            Directory.SetLastWriteTimeUtc(oldTemporaryDirectory, _nowUtc.AddDays(-31));
+
+            var oldUnderscoreLegacyFile = WriteFile("tmp_legacy.json", _nowUtc.AddDays(-31));
+            var oldHyphenLegacyFile = WriteFile("tmp-legacy.json", _nowUtc.AddDays(-31));
+            var recentLegacyFile = WriteFile("tmp_recent.json", _nowUtc.AddDays(-5));
+            var rootArtifact = WriteFile("artifact.json", _nowUtc.AddDays(-90));
+
+            var result = Cleanup();
+
+            Assert.That(AIBridgeCacheCleanup.GetTemporaryDirectory(_bridgeDirectory), Is.EqualTo(ResolvePath("tmp")));
+            Assert.That(File.Exists(oldTemporaryFile), Is.False);
+            Assert.That(File.Exists(recentTemporaryFile), Is.True);
+            Assert.That(File.Exists(protectedTemporaryFile), Is.True);
+            Assert.That(Directory.Exists(oldTemporaryDirectory), Is.False);
+            Assert.That(File.Exists(oldTemporaryDirectoryFile), Is.False);
+            Assert.That(File.Exists(oldUnderscoreLegacyFile), Is.False);
+            Assert.That(File.Exists(oldHyphenLegacyFile), Is.False);
+            Assert.That(File.Exists(recentLegacyFile), Is.True);
+            Assert.That(File.Exists(rootArtifact), Is.True);
+            Assert.That(result.DeletedFiles, Is.EqualTo(4));
+            Assert.That(result.DeletedDirectories, Is.EqualTo(1));
         }
 
         [Test]

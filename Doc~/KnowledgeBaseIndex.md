@@ -3,7 +3,7 @@
 ## 状态
 
 - 状态：当前索引
-- 更新时间：2026-07-21
+- 更新时间：2026-07-29
 - 维护范围：`Packages/cn.lys.aibridge`
 
 ## 目的
@@ -34,7 +34,7 @@
 | Skills | `Skill~/aibridge-development-workflow`、`Skill~/aibridge-workflow-orchestration`、`Skill~/aibridge-code-index`、`Skill~/aibridge-prefab-patch`、`Skill~/aibridge-batch-script`、`Skill~/unity-yaml-editing` | 分别覆盖 workflow 短入口/分支路由、编排、轻量声明名检索、Prefab patch、批处理和 YAML 兜底 |
 | 文档 | `Doc~/README.md`、`Doc~/EditorWindowScreenshot.md`、`Doc~/WorkflowsPanel.md`、`Doc~/WorkflowGraphPanel.md`、`Doc~/workflow-guide/README.md`、`Doc~/workflow-guide/ContextCompression.md`、`Doc~/workflow-guide/AIBridgeLoopsAnalysis.md` | 功能目录、Editor 窗口截图、面板定位、workflow 说明、上下文压缩策略和 FSM 分析 |
 | 模板 | `Templates~/Rules/AIBridge.RootRule.md`、`Templates~/ProjectRules/AGENTS*.md`、`Templates~/Workflows/*.json` | RootRule、项目规则模板和内置 workflow recipes |
-| 生成与缓存 | `.aibridge/harness/capabilities.json`、`.aibridge/test-runs/`、`.aibridge/workflows/active-run.json`、`.aibridge/workflows/runs/`、`.aibridge/code-index/snapshot/`、`.aibridge/code/`、`.aibridge/plan/` | 当前项目的能力快照、测试队列状态、运行产物、代码索引、临时代码和方案底稿 |
+| 生成与缓存 | `.aibridge/harness/capabilities.json`、`.aibridge/test-runs/`、`.aibridge/workflows/active-run.json`、`.aibridge/workflows/runs/`、`.aibridge/code-index/snapshot/`、`.aibridge/code/`、`.aibridge/tmp/`、`.aibridge/plan/` | 当前项目的能力快照、测试队列状态、运行产物、代码索引、临时代码、Agent/脚本短生命周期输出和方案底稿 |
 | Editor 实例状态 | `%LOCALAPPDATA%/AIBridge/instances/<projectKey>/editor-instance.json`（可用 `AIBRIDGE_STATE_DIR` 覆盖根目录） | Editor 心跳与 `focus` 多实例解析；高频状态写在项目外，避免触发 Git 工作区监听；CLI 仍兼容读取遗留 `.aibridge/editor-instance.json` |
 
 ## CLI 功能目录
@@ -151,6 +151,7 @@
 - Runtime heartbeat 默认间隔为 2 秒；File heartbeat stale 判定保留 15 秒窗口，不会因默认心跳降频触发误判。
 - Editor 实例心跳写在项目外用户状态目录（Windows 默认 `%LOCALAPPDATA%/AIBridge/instances/<projectKey>/editor-instance.json`，可用 `AIBRIDGE_STATE_DIR` 覆盖）；`.aibridge` 只保留命令交换与项目产物；禁用 AIBridge 后不再刷新心跳；CLI `focus` 优先读外部路径，并兼容遗留 `.aibridge/editor-instance.json`。
 - Runtime UI snapshot/find 默认不做逐按钮 raycast；需要遮挡诊断时显式传入 `includeRaycastDetails=true`。
+- Agent 和脚本的短生命周期输出统一写入 `.aibridge/tmp/`，由 Cache 清理按保留期清理；兼容清理仅处理过期的顶层 `tmp_*` / `tmp-*` 文件，不会扫描或删除其他顶层产物。
 
 ## Code Index 收口
 

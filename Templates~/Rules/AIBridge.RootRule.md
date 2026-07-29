@@ -1,7 +1,7 @@
----
+﻿---
 templateId: unity-integration
 assistant: aibridge
-version: 10
+version: 11
 target: root-rule
 ---
 ## AIBridge Bootstrap
@@ -24,6 +24,9 @@ $CLI editor log --message "Hello" --logType Warning
 **{{SKILL_LOADING_TITLE}}**:
 - {{WORKFLOW_SKILL_ENTRY}}
 - {{SKILL_ROOT_RULE}}
+
+**Temporary Files**:
+- Store short-lived Agent and script output under `.aibridge/tmp/`; do not write `tmp_*` or `tmp-*` files to `.aibridge/`
 
 **{{PROJECT_VERSION_TITLE}}**:
 - {{UNITY_VERSION_RULE}}
