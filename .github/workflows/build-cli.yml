@@ -64,12 +64,16 @@ jobs:
       - name: Build Editor capture helper (Windows)
         if: runner.os == 'Windows'
         run: |
+          $outputDir = 'Tools~/CLI/win-x64/EditorCapture'
+          if (Test-Path -LiteralPath $outputDir) {
+            Remove-Item -LiteralPath $outputDir -Recurse -Force
+          }
           dotnet publish Tools~/AIBridgeEditorCapture/Windows/AIBridgeEditorCapture.csproj `
             -c Release `
             -r win-x64 `
             --self-contained false `
             -p:PublishSingleFile=true `
-            -o Tools~/CLI/win-x64/EditorCapture
+            -o $outputDir
         shell: pwsh
 
       - name: Build Editor capture helper (macOS)
@@ -80,12 +84,47 @@ jobs:
           else
             arch="x86_64"
           fi
-          mkdir -p "Tools~/CLI/${{ matrix.rid }}/EditorCapture"
+          output_dir="Tools~/CLI/${{ matrix.rid }}/EditorCapture"
+          rm -rf "$output_dir"
+          mkdir -p "$output_dir"
           xcrun swiftc -O \
             -target "${arch}-apple-macos12.3" \
             Tools~/AIBridgeEditorCapture/macOS/main.swift \
-            -o "Tools~/CLI/${{ matrix.rid }}/EditorCapture/AIBridgeEditorCapture"
-          chmod +x "Tools~/CLI/${{ matrix.rid }}/EditorCapture/AIBridgeEditorCapture"
+            -o "$output_dir/AIBridgeEditorCapture"
+          chmod +x "$output_dir/AIBridgeEditorCapture"
+        shell: bash
+
+      - name: Verify Editor capture helper layout (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          $helper = 'Tools~/CLI/win-x64/EditorCapture/AIBridgeEditorCapture.exe'
+          if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) {
+            throw "EditorCapture helper was not published: $helper"
+          }
+        shell: pwsh
+
+      - name: Verify Editor capture helper layout (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          helper="Tools~/CLI/${{ matrix.rid }}/EditorCapture/AIBridgeEditorCapture"
+          if [ "${{ matrix.rid }}" = "osx-arm64" ]; then
+            expected_arch="arm64"
+          else
+            expected_arch="x86_64"
+          fi
+          if [ ! -f "$helper" ]; then
+            echo "EditorCapture helper was not built: $helper" >&2
+            exit 1
+          fi
+          if [ ! -x "$helper" ]; then
+            echo "EditorCapture helper is not executable: $helper" >&2
+            exit 1
+          fi
+          if ! file -b "$helper" | grep -Eq "Mach-O.*${expected_arch}"; then
+            echo "EditorCapture helper does not contain expected Mach-O architecture ${expected_arch}: $helper" >&2
+            file "$helper" >&2
+            exit 1
+          fi
         shell: bash
 
       - name: Upload artifact
@@ -125,6 +164,27 @@ jobs:
             fi
           done
           ls -la */
+
+      - name: Verify final Editor capture helper layout
+        run: |
+          win_helper="Tools~/CLI/win-x64/EditorCapture/AIBridgeEditorCapture.exe"
+          osx_x64_helper="Tools~/CLI/osx-x64/EditorCapture/AIBridgeEditorCapture"
+          osx_arm64_helper="Tools~/CLI/osx-arm64/EditorCapture/AIBridgeEditorCapture"
+
+          for helper in "$win_helper" "$osx_x64_helper" "$osx_arm64_helper"; do
+            if [ ! -f "$helper" ]; then
+              echo "Expected EditorCapture helper is missing after artifact reorganization: $helper" >&2
+              exit 1
+            fi
+          done
+
+          for helper in "$osx_x64_helper" "$osx_arm64_helper"; do
+            if [ ! -x "$helper" ]; then
+              echo "macOS EditorCapture helper is not executable after artifact reorganization: $helper" >&2
+              exit 1
+            fi
+          done
+        shell: bash
 
       - name: Commit and push
         run: |

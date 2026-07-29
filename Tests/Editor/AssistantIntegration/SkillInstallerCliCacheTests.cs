@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -42,6 +42,67 @@ namespace AIBridge.Editor.Tests
             File.WriteAllText(sourceFile, "source");
 
             Assert.IsTrue(SkillInstaller.IsFileCopyNeeded(sourceFile, targetFile));
+        }
+
+        [Test]
+        public void EditorCaptureCopyCheckRequiresMissingHelperRefresh()
+        {
+            var sourceCliDir = Path.Combine(ProjectRoot, "source-cli");
+            var targetCliDir = Path.Combine(ProjectRoot, "target-cli");
+            WriteCompleteEditorCaptureDirectory(Path.Combine(sourceCliDir, "EditorCapture"), "source");
+            Directory.CreateDirectory(Path.Combine(targetCliDir, "EditorCapture"));
+            File.WriteAllText(Path.Combine(targetCliDir, "EditorCapture", "stale.pdb"), "stale");
+
+            string[] missingFiles;
+            Assert.IsFalse(SkillInstaller.IsEditorCaptureDirectoryComplete(Path.Combine(targetCliDir, "EditorCapture"), out missingFiles));
+            CollectionAssert.Contains(missingFiles, GetEditorCaptureExecutableName());
+            Assert.IsTrue(SkillInstaller.IsEditorCaptureCopyNeeded(sourceCliDir, targetCliDir));
+        }
+
+        [Test]
+        public void EditorCaptureCopyInstallsDirectoryAndRemovesStaleFiles()
+        {
+            var sourceCliDir = Path.Combine(ProjectRoot, "source-cli");
+            var targetCliDir = Path.Combine(ProjectRoot, "target-cli");
+            WriteCompleteEditorCaptureDirectory(Path.Combine(sourceCliDir, "EditorCapture"), "source");
+            WriteCompleteEditorCaptureDirectory(Path.Combine(targetCliDir, "EditorCapture"), "old");
+            File.WriteAllText(Path.Combine(targetCliDir, "EditorCapture", "stale.pdb"), "stale");
+
+            var copied = SkillInstaller.CopyEditorCaptureToCache(sourceCliDir, targetCliDir);
+
+            Assert.Greater(copied, 0);
+            string[] missingFiles;
+            Assert.IsTrue(SkillInstaller.IsEditorCaptureDirectoryComplete(Path.Combine(targetCliDir, "EditorCapture"), out missingFiles));
+            Assert.IsFalse(File.Exists(Path.Combine(targetCliDir, "EditorCapture", "stale.pdb")));
+            Assert.AreEqual("source:" + GetEditorCaptureExecutableName(), File.ReadAllText(Path.Combine(targetCliDir, "EditorCapture", GetEditorCaptureExecutableName())));
+        }
+
+        [Test]
+        public void EditorCaptureCopyCheckRequiresRefreshWhenContentsDrift()
+        {
+            var sourceCliDir = Path.Combine(ProjectRoot, "source-cli");
+            var targetCliDir = Path.Combine(ProjectRoot, "target-cli");
+            WriteCompleteEditorCaptureDirectory(Path.Combine(sourceCliDir, "EditorCapture"), "source");
+            WriteCompleteEditorCaptureDirectory(Path.Combine(targetCliDir, "EditorCapture"), "source");
+            File.WriteAllText(Path.Combine(targetCliDir, "EditorCapture", GetEditorCaptureExecutableName()), "drifted:" + GetEditorCaptureExecutableName());
+
+            Assert.IsTrue(SkillInstaller.IsEditorCaptureCopyNeeded(sourceCliDir, targetCliDir));
+        }
+
+        [Test]
+        public void EditorCaptureCopyKeepsExistingTargetWhenSourceIsIncomplete()
+        {
+            var sourceCliDir = Path.Combine(ProjectRoot, "source-cli");
+            var targetCliDir = Path.Combine(ProjectRoot, "target-cli");
+            Directory.CreateDirectory(Path.Combine(sourceCliDir, "EditorCapture"));
+            WriteCompleteEditorCaptureDirectory(Path.Combine(targetCliDir, "EditorCapture"), "old");
+
+            var copied = SkillInstaller.CopyEditorCaptureToCache(sourceCliDir, targetCliDir);
+
+            Assert.AreEqual(0, copied);
+            string[] missingFiles;
+            Assert.IsTrue(SkillInstaller.IsEditorCaptureDirectoryComplete(Path.Combine(targetCliDir, "EditorCapture"), out missingFiles));
+            Assert.AreEqual("old:" + GetEditorCaptureExecutableName(), File.ReadAllText(Path.Combine(targetCliDir, "EditorCapture", GetEditorCaptureExecutableName())));
         }
 
         [Test]
@@ -189,6 +250,12 @@ namespace AIBridge.Editor.Tests
             Assert.AreEqual(firstWriteTime, File.GetLastWriteTimeUtc(workflowSkillPath));
         }
 
+        private static void WriteCompleteEditorCaptureDirectory(string editorCaptureDir, string marker)
+        {
+            Directory.CreateDirectory(editorCaptureDir);
+            File.WriteAllText(Path.Combine(editorCaptureDir, GetEditorCaptureExecutableName()), marker + ":" + GetEditorCaptureExecutableName());
+        }
+
         private static void WriteCompleteCodeIndexDirectory(string codeIndexDir, string marker)
         {
             Directory.CreateDirectory(codeIndexDir);
@@ -222,6 +289,15 @@ namespace AIBridge.Editor.Tests
             return "AIBridgeCodeIndex.exe";
 #else
             return "AIBridgeCodeIndex";
+#endif
+        }
+
+        private static string GetEditorCaptureExecutableName()
+        {
+#if UNITY_EDITOR_WIN
+            return "AIBridgeEditorCapture.exe";
+#else
+            return "AIBridgeEditorCapture";
 #endif
         }
     }

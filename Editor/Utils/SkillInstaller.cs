@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -24,9 +24,15 @@ namespace AIBridge.Editor
         private const string CODE_INDEX_DAEMON_FILE_NAME = "AIBridgeCodeIndex";
         private const string CODE_INDEX_TEMP_PREFIX = CODE_INDEX_FOLDER + ".tmp.";
         private const string CODE_INDEX_BACKUP_PREFIX = CODE_INDEX_FOLDER + ".old.";
+        private const string EDITOR_CAPTURE_FOLDER = "EditorCapture";
+        private const string EDITOR_CAPTURE_FILE_NAME = "AIBridgeEditorCapture";
+        private const string EDITOR_CAPTURE_TEMP_PREFIX = EDITOR_CAPTURE_FOLDER + ".tmp.";
+        private const string EDITOR_CAPTURE_BACKUP_PREFIX = EDITOR_CAPTURE_FOLDER + ".old.";
         private const string CODE_INDEX_DAEMON_SHUTDOWN_CLEANUP_MODE = "processOnly";
         private const int CODE_INDEX_DAEMON_SHUTDOWN_TIMEOUT_MS = 3000;
+        private const int EXECUTABLE_PERMISSION_TIMEOUT_MS = 5000;
         private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
+        private static readonly HashSet<string> EditorCaptureSourceWarningKeys = new HashSet<string>(StringComparer.Ordinal);
         private static readonly string[] CLI_FILES = new[]
         {
             "AIBridgeCLI.dll",
@@ -52,6 +58,8 @@ namespace AIBridge.Editor
             "System.Composition.Runtime.dll",
             "System.Composition.TypedParts.dll"
         };
+        private delegate bool DirectoryCompletenessCheck(string directory, out string[] missingFiles);
+
         private static Action<string, int> _codeIndexDaemonShutdown = AIBridgeCodeIndexEditorUtility.ShutdownDaemon;
         
         private static string GetPlatformRID()
@@ -83,6 +91,15 @@ namespace AIBridge.Editor
             return CODE_INDEX_DAEMON_FILE_NAME + ".exe";
 #else
             return CODE_INDEX_DAEMON_FILE_NAME;
+#endif
+        }
+
+        private static string GetEditorCaptureExecutableName()
+        {
+#if UNITY_EDITOR_WIN
+            return EDITOR_CAPTURE_FILE_NAME + ".exe";
+#else
+            return EDITOR_CAPTURE_FILE_NAME;
 #endif
         }
 
@@ -347,12 +364,15 @@ namespace AIBridge.Editor
                 AIBridgeLogger.LogWarning($"[SkillInstaller] Source CLI executable not found: {sourceCliExe}");
                 return;
             }
+
+            WarnIfEditorCaptureSourceIsIncomplete(platformRID, sourceCliDir);
             
             // 包管理器更新时文件时间戳不一定递增，CLI 缓存必须按内容差异判断是否刷新。
             var cliNeedsCopy = IsCliCopyNeeded(sourceCliDir, targetCliDir, cliExeName);
             var codeIndexNeedsCopy = IsCodeIndexCopyNeeded(sourceCliDir, targetCliDir);
+            var editorCaptureNeedsCopy = IsEditorCaptureCopyNeeded(sourceCliDir, targetCliDir);
             
-            if (!cliNeedsCopy && !codeIndexNeedsCopy)
+            if (!cliNeedsCopy && !codeIndexNeedsCopy && !editorCaptureNeedsCopy)
             {
                 return;
             }
@@ -385,6 +405,11 @@ namespace AIBridge.Editor
             if (codeIndexNeedsCopy)
             {
                 copiedCount += RefreshCodeIndexCache(sourceCliDir, targetCliDir);
+            }
+
+            if (editorCaptureNeedsCopy)
+            {
+                copiedCount += CopyEditorCaptureToCache(sourceCliDir, targetCliDir);
             }
             
             if (copiedCount > 0)
@@ -431,9 +456,9 @@ namespace AIBridge.Editor
             try
             {
                 File.Copy(sourceFile, targetFile, true);
-                if (makeExecutable)
+                if (makeExecutable && !EnsureExecutablePermission(targetFile))
                 {
-                    EnsureExecutablePermission(targetFile);
+                    return false;
                 }
 
                 return true;
@@ -445,21 +470,52 @@ namespace AIBridge.Editor
             }
         }
 
-        private static void EnsureExecutablePermission(string targetFile)
+        private static bool EnsureExecutablePermission(string targetFile)
         {
-#if !UNITY_EDITOR_WIN
+#if UNITY_EDITOR_WIN
+            return true;
+#else
             try
             {
-                var process = new System.Diagnostics.Process();
-                process.StartInfo.FileName = "chmod";
-                process.StartInfo.Arguments = $"+x \"{targetFile}\"";
-                process.StartInfo.UseShellExecute = false;
-                process.StartInfo.CreateNoWindow = true;
-                process.Start();
-                process.WaitForExit();
+                using (var process = new System.Diagnostics.Process())
+                {
+                    process.StartInfo.FileName = "chmod";
+                    process.StartInfo.Arguments = $"+x \"{targetFile}\"";
+                    process.StartInfo.UseShellExecute = false;
+                    process.StartInfo.CreateNoWindow = true;
+                    if (!process.Start())
+                    {
+                        AIBridgeLogger.LogWarning("[SkillInstaller] Failed to start chmod for executable: " + targetFile);
+                        return false;
+                    }
+
+                    if (!process.WaitForExit(EXECUTABLE_PERMISSION_TIMEOUT_MS))
+                    {
+                        try
+                        {
+                            process.Kill();
+                        }
+                        catch
+                        {
+                        }
+
+                        AIBridgeLogger.LogWarning("[SkillInstaller] Timed out setting executable permission: " + targetFile);
+                        return false;
+                    }
+
+                    if (process.ExitCode != 0)
+                    {
+                        AIBridgeLogger.LogWarning("[SkillInstaller] chmod failed with exit code " + process.ExitCode + ": " + targetFile);
+                        return false;
+                    }
+
+                    return true;
+                }
             }
-            catch
+            catch (Exception ex)
             {
+                AIBridgeLogger.LogWarning("[SkillInstaller] Failed to set executable permission for " + targetFile + ": " + ex.Message);
+                return false;
             }
 #endif
         }
@@ -514,6 +570,81 @@ namespace AIBridge.Editor
             {
                 return hashAlgorithm.ComputeHash(stream);
             }
+        }
+
+        private static void WarnIfEditorCaptureSourceIsIncomplete(string platformRID, string sourceCliDir)
+        {
+#if !UNITY_EDITOR_LINUX
+            var sourceDir = Path.Combine(sourceCliDir, EDITOR_CAPTURE_FOLDER);
+            var expectedExecutablePath = Path.Combine(sourceDir, GetEditorCaptureExecutableName());
+            if (Directory.Exists(sourceDir) && File.Exists(expectedExecutablePath))
+            {
+                return;
+            }
+
+            var warningKey = platformRID + "|" + expectedExecutablePath;
+            if (EditorCaptureSourceWarningKeys.Add(warningKey))
+            {
+                AIBridgeLogger.LogWarning("[SkillInstaller] EditorCapture helper is unavailable for RID " + platformRID + ". Expected directory: " + sourceDir + "; expected executable: " + expectedExecutablePath + ".");
+            }
+#endif
+        }
+
+        internal static bool IsEditorCaptureCopyNeeded(string sourceCliDir, string targetCliDir)
+        {
+            var sourceDir = Path.Combine(sourceCliDir, EDITOR_CAPTURE_FOLDER);
+            if (!Directory.Exists(sourceDir))
+            {
+                return false;
+            }
+
+            string[] sourceMissingFiles;
+            if (!IsEditorCaptureDirectoryComplete(sourceDir, out sourceMissingFiles))
+            {
+                return false;
+            }
+
+            var targetDir = Path.Combine(targetCliDir, EDITOR_CAPTURE_FOLDER);
+            if (!Directory.Exists(targetDir))
+            {
+                return true;
+            }
+
+            string[] targetMissingFiles;
+            return !IsEditorCaptureDirectoryComplete(targetDir, out targetMissingFiles)
+                   || IsDirectoryCopyNeeded(sourceDir, targetDir);
+        }
+
+        internal static bool IsEditorCaptureDirectoryComplete(string directory, out string[] missingFiles)
+        {
+            var missing = new List<string>();
+            if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+            {
+                missing.Add(EDITOR_CAPTURE_FOLDER);
+                missingFiles = missing.ToArray();
+                return false;
+            }
+
+            var executableName = GetEditorCaptureExecutableName();
+            if (!File.Exists(Path.Combine(directory, executableName)))
+            {
+                missing.Add(executableName);
+            }
+
+            missingFiles = missing.ToArray();
+            return missing.Count == 0;
+        }
+
+        internal static int CopyEditorCaptureToCache(string sourceCliDir, string targetCliDir)
+        {
+            return CopyCompleteDirectoryToCache(
+                sourceCliDir,
+                targetCliDir,
+                EDITOR_CAPTURE_FOLDER,
+                EDITOR_CAPTURE_TEMP_PREFIX,
+                EDITOR_CAPTURE_BACKUP_PREFIX,
+                IsEditorCaptureDirectoryComplete,
+                GetEditorCaptureExecutableName());
         }
 
         internal static bool IsCodeIndexCopyNeeded(string sourceCliDir, string targetCliDir)
@@ -627,33 +758,58 @@ namespace AIBridge.Editor
 
         internal static int CopyCodeIndexToCache(string sourceCliDir, string targetCliDir)
         {
-            var sourceDir = Path.Combine(sourceCliDir, CODE_INDEX_FOLDER);
+            return CopyCompleteDirectoryToCache(
+                sourceCliDir,
+                targetCliDir,
+                CODE_INDEX_FOLDER,
+                CODE_INDEX_TEMP_PREFIX,
+                CODE_INDEX_BACKUP_PREFIX,
+                IsCodeIndexDirectoryComplete,
+                GetCodeIndexExecutableName());
+        }
+
+        private static int CopyCompleteDirectoryToCache(
+            string sourceCliDir,
+            string targetCliDir,
+            string directoryName,
+            string tempPrefix,
+            string backupPrefix,
+            DirectoryCompletenessCheck isDirectoryComplete,
+            string executableName)
+        {
+            var sourceDir = Path.Combine(sourceCliDir, directoryName);
             if (!Directory.Exists(sourceDir))
             {
                 return 0;
             }
 
-            var targetDir = Path.Combine(targetCliDir, CODE_INDEX_FOLDER);
-            var tempDir = Path.Combine(targetCliDir, CODE_INDEX_TEMP_PREFIX + Guid.NewGuid().ToString("N"));
-            var backupDir = Path.Combine(targetCliDir, CODE_INDEX_BACKUP_PREFIX + Guid.NewGuid().ToString("N"));
+            var targetDir = Path.Combine(targetCliDir, directoryName);
+            var tempDir = Path.Combine(targetCliDir, tempPrefix + Guid.NewGuid().ToString("N"));
+            var backupDir = Path.Combine(targetCliDir, backupPrefix + Guid.NewGuid().ToString("N"));
             try
             {
                 string[] sourceMissingFiles;
-                if (!IsCodeIndexDirectoryComplete(sourceDir, out sourceMissingFiles))
+                if (!isDirectoryComplete(sourceDir, out sourceMissingFiles))
                 {
-                    AIBridgeLogger.LogWarning("[SkillInstaller] Refused to copy incomplete CodeIndex source. Missing: " + FormatMissingFiles(sourceMissingFiles));
+                    AIBridgeLogger.LogWarning("[SkillInstaller] Refused to copy incomplete " + directoryName + " source. Missing: " + FormatMissingFiles(sourceMissingFiles));
                     return 0;
                 }
 
                 DeleteDirectoryIfExists(tempDir);
                 DeleteDirectoryIfExists(backupDir);
-                var copied = CopyDirectoryContents(sourceDir, tempDir);
-
-                string[] copiedMissingFiles;
-                if (!IsCodeIndexDirectoryComplete(tempDir, out copiedMissingFiles))
+                int copied;
+                if (!CopyDirectoryContents(sourceDir, tempDir, executableName, out copied))
                 {
                     DeleteDirectoryIfExists(tempDir);
-                    AIBridgeLogger.LogWarning("[SkillInstaller] Refused to install incomplete CodeIndex cache. Missing: " + FormatMissingFiles(copiedMissingFiles));
+                    AIBridgeLogger.LogWarning("[SkillInstaller] Refused to install " + directoryName + " cache because executable permission could not be set.");
+                    return 0;
+                }
+
+                string[] copiedMissingFiles;
+                if (!isDirectoryComplete(tempDir, out copiedMissingFiles))
+                {
+                    DeleteDirectoryIfExists(tempDir);
+                    AIBridgeLogger.LogWarning("[SkillInstaller] Refused to install incomplete " + directoryName + " cache. Missing: " + FormatMissingFiles(copiedMissingFiles));
                     return 0;
                 }
 
@@ -670,7 +826,7 @@ namespace AIBridge.Editor
             {
                 RestoreCodeIndexBackup(targetDir, backupDir);
                 DeleteDirectoryIfExists(tempDir);
-                AIBridgeLogger.LogWarning($"[SkillInstaller] Failed to copy {CODE_INDEX_FOLDER}: {ex.Message}");
+                AIBridgeLogger.LogWarning("[SkillInstaller] Failed to copy " + directoryName + ": " + ex.Message);
                 return 0;
             }
         }
@@ -681,19 +837,20 @@ namespace AIBridge.Editor
             return CopyCodeIndexToCache(sourceCliDir, targetCliDir);
         }
 
-        private static int CopyDirectoryContents(string sourceDir, string targetDir)
+        private static bool CopyDirectoryContents(string sourceDir, string targetDir, string executableName, out int copied)
         {
             Directory.CreateDirectory(targetDir);
 
-            var copied = 0;
+            copied = 0;
             foreach (var filePath in Directory.GetFiles(sourceDir))
             {
                 var fileName = Path.GetFileName(filePath);
                 var targetFile = Path.Combine(targetDir, fileName);
                 File.Copy(filePath, targetFile, true);
-                if (string.Equals(fileName, GetCodeIndexExecutableName(), StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(fileName, executableName, StringComparison.OrdinalIgnoreCase)
+                    && !EnsureExecutablePermission(targetFile))
                 {
-                    EnsureExecutablePermission(targetFile);
+                    return false;
                 }
 
                 copied++;
@@ -701,10 +858,16 @@ namespace AIBridge.Editor
 
             foreach (var childDir in Directory.GetDirectories(sourceDir))
             {
-                copied += CopyDirectoryContents(childDir, Path.Combine(targetDir, Path.GetFileName(childDir)));
+                int childCopied;
+                if (!CopyDirectoryContents(childDir, Path.Combine(targetDir, Path.GetFileName(childDir)), executableName, out childCopied))
+                {
+                    return false;
+                }
+
+                copied += childCopied;
             }
 
-            return copied;
+            return true;
         }
 
         private static void ShutdownCodeIndexDaemonBeforeCacheRefresh()

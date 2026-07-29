@@ -60,5 +60,57 @@ namespace AIBridge.Editor.Tests
             Assert.That(printResult.Success, Is.True);
             Assert.That(printResult.Message, Is.EqualTo("ready"));
         }
+
+        [Test]
+        public void SelectExternalCliPath_PrefersCachedCliOverPackageCli()
+        {
+            var projectRoot = "project-root";
+            var packageRoot = "package-root";
+            var executableName = "AIBridgeCLI.exe";
+            var cachedPath = Path.Combine(projectRoot, ".aibridge", "cli", executableName);
+
+            var result = CallCommand.SelectExternalCliPath(
+                projectRoot,
+                packageRoot,
+                "win-x64",
+                executableName,
+                true,
+                true);
+
+            Assert.That(result, Is.EqualTo(cachedPath));
+        }
+
+        [Test]
+        public void SelectExternalCliPath_FallsBackToPackageCliWhenCacheIsMissing()
+        {
+            var projectRoot = "project-root";
+            var packageRoot = "package-root";
+            var executableName = "AIBridgeCLI.exe";
+            var packagePath = Path.Combine(packageRoot, "Tools~", "CLI", "win-x64", executableName);
+
+            var result = CallCommand.SelectExternalCliPath(
+                projectRoot,
+                packageRoot,
+                "win-x64",
+                executableName,
+                false,
+                true);
+
+            Assert.That(result, Is.EqualTo(packagePath));
+        }
+
+        [Test]
+        public void SelectExternalCliPath_ReturnsNullWhenNeitherRootContainsCli()
+        {
+            var result = CallCommand.SelectExternalCliPath(
+                "project-root",
+                "package-root",
+                "win-x64",
+                "AIBridgeCLI.exe",
+                false,
+                false);
+
+            Assert.That(result, Is.Null);
+        }
     }
 }

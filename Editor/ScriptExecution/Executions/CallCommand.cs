@@ -88,17 +88,14 @@ namespace AIBridge.Editor.ScriptExecution.Commands
             return ScriptCommandResult.Ok($"Command executed successfully\n{json}");
         }
 
+        private const string PackageName = "cn.lys.aibridge";
+
         private ScriptCommandResult ExecuteExternalCli(ScriptExecutionContext context, string cliArgs)
         {
-            var cliPath = Path.Combine(Directory.GetCurrentDirectory(), ".aibridge", "cli", "AIBridgeCLI.exe");
-            if (!File.Exists(cliPath))
+            var cliPath = ResolveExternalCliPath();
+            if (string.IsNullOrEmpty(cliPath))
             {
-                cliPath = Path.Combine(Directory.GetCurrentDirectory(), "Packages", "cn.lys.aibridge", "Tools~", "CLI", "win-x64", "AIBridgeCLI.exe");
-            }
-
-            if (!File.Exists(cliPath))
-            {
-                return ScriptCommandResult.Fail("AIBridge CLI not found. Tried .aibridge/cli/AIBridgeCLI.exe and Packages/cn.lys.aibridge/Tools~/CLI/win-x64/AIBridgeCLI.exe");
+                return ScriptCommandResult.Fail($"AIBridge CLI not found for {GetPlatformRid()}. Checked the CLI cache and the resolved {PackageName} package.");
             }
 
             context.Log($"[Call] External execute: {cliPath} {cliArgs}");
@@ -158,6 +155,85 @@ namespace AIBridge.Editor.ScriptExecution.Commands
 
                 return ScriptCommandResult.Ok($"Command executed successfully\n{outputData}");
             }
+        }
+
+        private static string ResolveExternalCliPath()
+        {
+            var projectRoot = Directory.GetCurrentDirectory();
+            var cliExecutableName = GetCliExecutableName();
+            var rid = GetPlatformRid();
+            var cachedCliPath = Path.Combine(projectRoot, ".aibridge", "cli", cliExecutableName);
+            var selectedPath = SelectExternalCliPath(
+                projectRoot,
+                null,
+                rid,
+                cliExecutableName,
+                File.Exists(cachedCliPath),
+                false);
+            if (!string.IsNullOrEmpty(selectedPath))
+            {
+                return selectedPath;
+            }
+
+            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/" + PackageName);
+            if (packageInfo == null || string.IsNullOrEmpty(packageInfo.resolvedPath))
+            {
+                return null;
+            }
+
+            var packageCliPath = Path.Combine(packageInfo.resolvedPath, "Tools~", "CLI", rid, cliExecutableName);
+            return SelectExternalCliPath(
+                null,
+                packageInfo.resolvedPath,
+                rid,
+                cliExecutableName,
+                false,
+                File.Exists(packageCliPath));
+        }
+
+        internal static string SelectExternalCliPath(
+            string projectRoot,
+            string packageRoot,
+            string rid,
+            string cliExecutableName,
+            bool cachedCliExists,
+            bool packageCliExists)
+        {
+            if (!string.IsNullOrEmpty(projectRoot) && cachedCliExists)
+            {
+                return Path.Combine(projectRoot, ".aibridge", "cli", cliExecutableName);
+            }
+
+            if (!string.IsNullOrEmpty(packageRoot) && packageCliExists)
+            {
+                return Path.Combine(packageRoot, "Tools~", "CLI", rid, cliExecutableName);
+            }
+
+            return null;
+        }
+
+        private static string GetCliExecutableName()
+        {
+#if UNITY_EDITOR_WIN
+            return "AIBridgeCLI.exe";
+#else
+            return "AIBridgeCLI";
+#endif
+        }
+
+        private static string GetPlatformRid()
+        {
+#if UNITY_EDITOR_WIN
+            return "win-x64";
+#elif UNITY_EDITOR_OSX
+            return System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64
+                ? "osx-arm64"
+                : "osx-x64";
+#elif UNITY_EDITOR_LINUX
+            return "linux-x64";
+#else
+            return "win-x64";
+#endif
         }
 
         private static CommandRequest BuildRequest(List<string> parts)
