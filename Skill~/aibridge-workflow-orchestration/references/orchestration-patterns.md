@@ -103,7 +103,7 @@ Choose gates that match the change:
 - `compile unity`: Unity compile validation
 - `get_logs --logType Error`: Editor Console error check
 - `test run`: targeted Unity tests when available
-- `screenshot game`, `screenshot scene_view`, `screenshot gif`: visual evidence
+- `screenshot game`, `screenshot scene_view`, `screenshot editor_window`, `screenshot gif`: visual evidence
 - `runtime list_targets`, `runtime status`, `runtime logs`, `runtime screenshot`, `runtime perf`, `runtime handlers`, `runtime call`: Player or Play Mode validation
 - `code_index`: optional read-only declaration-name evidence only when the Skill and project settings enable it
 

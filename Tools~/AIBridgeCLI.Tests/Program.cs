@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
@@ -47,8 +47,9 @@ namespace AIBridgeCLI.Tests
                 BatchDialogAutoClickPlan_PreservesTargetKind();
                 CodeIndex_Help_OnlyListsLightweightActions();
                 CodeIndex_UnsupportedAction_ReturnsUnsupportedAction();
+                CodeIndex_MutatingActions_AreRejected();
                 CodeIndex_DefinitionSourceLocationArguments_RequireQuery();
-                CodeIndex_InternalActions_AreNotShownInHelp();
+                CodeIndex_PublicActions_HaveHelp();
                 CommandRegistry_DoesNotExposeExec();
                 BoundedOutputReader_CapsLargeStreamsWithoutPreallocatingOutput();
                 BoundedOutputReader_CapsLongLinesWithoutWaitingForNewline();
@@ -676,8 +677,8 @@ namespace AIBridgeCLI.Tests
 
             AssertContains(help, "  symbol", "Code Index help should include symbol.");
             AssertContains(help, "  definition", "Code Index help should include definition.");
-            AssertTrue(help.IndexOf("  status", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include status.");
-            AssertTrue(help.IndexOf("  doctor", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include doctor.");
+            AssertContains(help, "  status", "Code Index help should include status.");
+            AssertContains(help, "  doctor", "Code Index help should include doctor.");
             AssertTrue(help.IndexOf("  warmup", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include warmup.");
             AssertTrue(help.IndexOf("  reset", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include reset.");
             AssertTrue(help.IndexOf("  build_snapshot", StringComparison.OrdinalIgnoreCase) < 0, "Code Index help should not include build_snapshot.");
@@ -707,15 +708,26 @@ namespace AIBridgeCLI.Tests
             AssertEqual("definition now requires --query", result.Value<string>("error"), "Definition should require --query.");
         }
 
-        private static void CodeIndex_InternalActions_AreNotShownInHelp()
+        private static void CodeIndex_MutatingActions_AreRejected()
+        {
+            var actions = new[] { "warmup", "reset", "build_snapshot" };
+            for (var i = 0; i < actions.Length; i++)
+            {
+                var result = ExecuteCodeIndex(actions[i], new Dictionary<string, string>(), 1000);
+                AssertEqual(false, result.Value<bool>("success"), "Mutating action should fail: " + actions[i]);
+                AssertEqual("unsupported_action", result.Value<string>("errorCode"), "Mutating action should be unsupported: " + actions[i]);
+            }
+        }
+
+        private static void CodeIndex_PublicActions_HaveHelp()
         {
             var builder = new CodeIndexCommandBuilder();
 
-            AssertEqual(builder.GetHelp(), builder.GetHelp("status"), "Internal status help should fall back to public help.");
-            AssertEqual(builder.GetHelp(), builder.GetHelp("doctor"), "Internal doctor help should fall back to public help.");
-            AssertEqual(builder.GetHelp(), builder.GetHelp("warmup"), "Internal warmup help should fall back to public help.");
-            AssertEqual(builder.GetHelp(), builder.GetHelp("reset"), "Internal reset help should fall back to public help.");
-            AssertEqual(builder.GetHelp(), builder.GetHelp("build_snapshot"), "Internal build_snapshot help should fall back to public help.");
+            AssertTrue(!string.Equals(builder.GetHelp(), builder.GetHelp("status"), StringComparison.Ordinal), "Status help should be publicly available.");
+            AssertTrue(!string.Equals(builder.GetHelp(), builder.GetHelp("doctor"), StringComparison.Ordinal), "Doctor help should be publicly available.");
+            AssertEqual(builder.GetHelp(), builder.GetHelp("warmup"), "Warmup help should fall back to public help.");
+            AssertEqual(builder.GetHelp(), builder.GetHelp("reset"), "Reset help should fall back to public help.");
+            AssertEqual(builder.GetHelp(), builder.GetHelp("build_snapshot"), "Build snapshot help should fall back to public help.");
         }
 
         private static JObject ExecuteCodeIndex(string action, Dictionary<string, string> options, int timeout)

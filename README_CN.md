@@ -1,4 +1,4 @@
-<p align="center">
+﻿<p align="center">
   <img src="./Images/aibridge-banner.png" alt="AIBridge banner" width="100%">
 </p>
 
@@ -7,7 +7,7 @@
 [English](./README.md) | 中文
 
 ![Unity 2019.4+ ~ 6000.x](https://img.shields.io/badge/Unity-2019.4%2B%20~%206000.x-black?style=flat-square&logo=unity)
-![Package 1.5.10](https://img.shields.io/badge/Package-1.5.10-5b6cff?style=flat-square)
+![Package 1.5.11](https://img.shields.io/badge/Package-1.5.11-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
@@ -64,7 +64,7 @@ AIBridge 是面向 Unity 项目的本地 AI 开发 harness。它把项目规则�
 - **Prefab 和场景自动化**：支持简单 Inspector 字段修改、Prefab Patch dry-run、多步骤批处理和跨域重载后的任务继续。
 - **UGUI 运行时输入模拟**：Play Mode 下通过 `input` 命令模拟点击、Unity 屏幕坐标点击、Unity 归一化屏幕坐标点击、拖拽和长按，适合验证按钮、背包拖放、运行时面板等基于 EventSystem 的交互。
 - **Player Runtime Bridge**：已编译 Player 中的 `AIBridgeRuntime` 可暴露运行时状态、日志、截图、性能采样、UI snapshot/find/raycast/click、语义化按键输入、项目白名单 handler，以及 HybridCLR 门控的运行时代码执行，适合 Development Build 和移动端调试。
-- **只读 Code Index**：启用后，`code_index` 会把 Unity 编译快照当作轻量 C# 声明名索引使用。它只保留 `symbol` 和 `definition`，用于快速返回声明文件和声明位置；拿到路径后继续由 AI 自己读取 `.cs` 文件分析。
+- **只读 Code Index**：启用后，`code_index` 提供 `symbol`、`definition` 两个轻量 C# 声明名检索动作，以及用于诊断的 `status`、`doctor`。拿到路径后继续由 AI 自己读取 `.cs` 文件分析。
 - **Workflow recipes 和运行产物**：`workflow` CLI 可列出、校验、规划、初始化并运行内置 Unity workflow recipe 中的确定性 CLI 步骤，并在 `.aibridge/workflows/runs/` 下写入 run manifest、命令结果、artifact、gate 和 Markdown 报告。
 - **Roslyn 临时 C# 执行**：通过受控的 `code execute` 在 Unity Editor 内执行 `.aibridge/code/*.cs` 或 `.csx` 临时脚本，用于复杂一次性资源生成、结构化分析、诊断和 Runtime/Public API 调用。该能力在设置中默认启用，不可信项目或调用方环境中可在设置里关闭。
 - **视觉和日志验证**：支持 Game/Scene 视图截图、GIF、Console 日志读取、Unity 编译和测试命令，帮助 AI 闭环确认改动结果。
@@ -378,11 +378,14 @@ $CLI gameview list_resolutions
 $CLI screenshot game
 $CLI screenshot scene_view
 $CLI screenshot scene_view --width 1920 --height 1080
+$CLI screenshot editor_window --target editor
+$CLI screenshot editor_window --target active
+$CLI screenshot editor_window --windowType MyNamespace.MyCustomEditorWindow
 $CLI screenshot gif --frameCount 50 --fps 20 --scale 0.5
 $CLI editor stop
 ```
 
-Game 视图截图、GIF 捕获和 `input` 命令都需要 Play Mode。Scene 视图截图只需要 Unity Editor 中存在 Scene 视图，可在 Edit Mode 使用。运行时 UI 推荐流程是进入 Play Mode，检查场景层级，执行 `input`，读取 Error 日志，再用截图或 GIF 复核画面。
+Game 视图截图、GIF 捕获和 `input` 命令都需要 Play Mode。Scene 视图和 Editor 窗口截图可在 Edit Mode 使用。`editor_window` 在 Windows 10 1803+ 或 macOS 12.3+ 上只捕获 Unity 所属的原生窗口像素，不截取桌面；可用 `--windowType`、`--title` 或 `--instanceId` 定位内置和自定义 EditorWindow。运行时 UI 推荐流程是进入 Play Mode，检查场景层级，执行 `input`，读取 Error 日志，再用截图或 GIF 复核画面。
 
 ### 已编译 Player Runtime Bridge
 

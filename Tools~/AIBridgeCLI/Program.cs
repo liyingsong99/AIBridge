@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using AIBridge.Runtime.Internal;
@@ -12,6 +12,7 @@ namespace AIBridgeCLI
     {
         private const int DEFAULT_TIMEOUT = 5000;
         private const int MULTI_COMMAND_TIMEOUT = 30000;
+        private const int EDITOR_WINDOW_CAPTURE_TIMEOUT = 15000;
 
         static int Main(string[] args)
         {
@@ -40,6 +41,12 @@ namespace AIBridgeCLI
 
             // Handle global options
             var timeout = parsed.GetInt("timeout", DEFAULT_TIMEOUT);
+            if (!parsed.Options.ContainsKey("timeout")
+                && string.Equals(parsed.CommandType, "screenshot", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(parsed.Action, "editor_window", StringComparison.OrdinalIgnoreCase))
+            {
+                timeout = EDITOR_WINDOW_CAPTURE_TIMEOUT;
+            }
             var noWait = parsed.GetBool("no-wait");
             var raw = parsed.GetBool("raw");
             var pretty = parsed.GetBool("pretty");
@@ -112,11 +119,12 @@ namespace AIBridgeCLI
                     outputMode == OutputMode.Pretty);
             }
 
-            // Handle code_index command (CLI-only daemon management and semantic queries)
+            // Handle public code_index diagnostic and query actions.
             if (parsed.CommandType.Equals("code_index", StringComparison.OrdinalIgnoreCase))
             {
                 return CodeIndexCommand.Execute(parsed.Action, parsed.Options, timeout, noWait, outputMode);
             }
+
 
             // Handle workflow command (CLI-only recipe schema, run artifacts, gates, reports)
             if (parsed.CommandType.Equals("workflow", StringComparison.OrdinalIgnoreCase))

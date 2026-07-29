@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
@@ -22,10 +22,17 @@ namespace AIBridge.Editor
         private const string ConfigFileName = "config.json";
         private const string DaemonProcessFileName = "daemon-process.json";
         private const string DaemonProcessDirectoryName = "daemon-processes";
+        private const string DaemonLaunchLockFileName = "daemon-launch.lock";
         private const string DaemonAssemblyName = "AIBridgeCodeIndex";
         private const string TempDirectoryName = "temp";
         private const string LogsDirectoryName = "logs";
         private const int StartupRetryDelaySeconds = 2;
+        private const int DaemonLaunchLockWaitMs = 1500;
+        private const int DaemonStatusProbeTimeoutMs = 250;
+        private const int ExistingDaemonReachabilityWaitMs = 1200;
+        private const int ExistingDaemonRetryDelayMs = 100;
+        // 进程启动时间读取及序列化存在微小精度差；2 秒窗口与 daemon 端 owner monitor 保持一致。
+        private const long OwnerStartTicksTolerance = TimeSpan.TicksPerSecond * 2L;
         private const double PostCompileRefreshDelaySeconds = 1.0;
         private const double SettingsPanelCleanupIntervalSeconds = 5.0;
         private const string PendingPostCompileRefreshSessionKey = "AIBridge.CodeIndex.PendingPostCompileRefresh";
@@ -43,6 +50,7 @@ namespace AIBridge.Editor
         private static bool _snapshotRefreshRunningStartWarmup;
         private static string _snapshotRefreshRunningReason;
         private static Task<AIBridgeCodeIndexSnapshotUtility.SnapshotResult> _snapshotRefreshTask;
+        private static Task<bool> _daemonWarmupTask;
         private static double _lastSettingsPanelCleanupTime = -SettingsPanelCleanupIntervalSeconds;
 
         static AIBridgeCodeIndexEditorUtility()
@@ -244,40 +252,307 @@ namespace AIBridge.Editor
 
         private static bool StartWarmupDaemonNoWait(bool manual)
         {
+            if (_daemonWarmupTask != null && !_daemonWarmupTask.IsCompleted)
+            {
+                return true;
+            }
+
             var settings = AIBridgeProjectSettings.Instance.CodeIndex;
-            var cliPath = ResolveCliPath();
-            if (string.IsNullOrEmpty(cliPath))
+            var daemonPath = ResolveDaemonPath();
+            if (string.IsNullOrEmpty(daemonPath))
             {
                 if (manual)
                 {
-                    AIBridgeLogger.LogWarning("[CodeIndex] AIBridgeCLI was not found for warmup.");
+                    AIBridgeLogger.LogWarning("[CodeIndex] AIBridgeCodeIndex daemon was not found for warmup.");
                 }
 
                 return false;
             }
 
-            var currentProcess = Process.GetCurrentProcess();
-            var ownerStartTicks = GetProcessStartTicks(currentProcess);
-            var args = "code_index warmup --no-wait --timeout 1000"
-                       + " --unity-pid " + currentProcess.Id
-                       + " --owner-pid " + currentProcess.Id
-                       + " --owner-start-ticks " + ownerStartTicks
-                       + " --priority " + (manual ? "normal" : "low")
-                       + " --auto-refresh " + ToCliBool(settings.AutoRefreshOnFileChange);
-            return StartCli(cliPath, args, waitForExit: false, timeoutMs: 1000);
+            int ownerPid;
+            long ownerStartTicks;
+            using (var currentProcess = Process.GetCurrentProcess())
+            {
+                ownerPid = currentProcess.Id;
+                ownerStartTicks = GetProcessStartTicks(currentProcess);
+            }
+
+            // 预热是 Editor 受控入口，直接启动随包发布的 daemon；不能再经由公共 code_index 动作路由。
+            var arguments = "--project-root " + QuoteProcessArgument(GetProjectRoot())
+                            + " --status-path " + QuoteProcessArgument(GetStatusPath())
+                            + " --token " + Guid.NewGuid().ToString("N")
+                            + " --unity-pid " + ownerPid
+                            + " --owner-pid " + ownerPid
+                            + " --owner-start-ticks " + ownerStartTicks
+                            + " --auto-refresh " + ToCliBool(settings.AutoRefreshOnFileChange);
+
+            // 文件锁、HTTP 探测和保守等待均在后台完成，不能卡住 Unity 主线程。
+            _daemonWarmupTask = Task.Run(() => StartWarmupDaemonUnderLaunchLock(daemonPath, arguments, manual ? "normal" : "low"));
+            _daemonWarmupTask.ContinueWith(task =>
+            {
+                if (!task.IsFaulted)
+                {
+                    return;
+                }
+
+                var message = GetTaskExceptionMessage(task.Exception);
+                EditorApplication.delayCall += () => AIBridgeLogger.LogWarning("[CodeIndex] Daemon warmup task failed: " + message);
+            });
+            return true;
+        }
+
+        private static bool StartWarmupDaemonUnderLaunchLock(string daemonPath, string arguments, string priority)
+        {
+            var indexDirectory = GetIndexDirectory();
+            Directory.CreateDirectory(indexDirectory);
+            FileStream launchLock = null;
+            try
+            {
+                launchLock = AcquireDaemonLaunchLock(indexDirectory);
+                if (launchLock == null)
+                {
+                    AIBridgeLogger.LogWarning("[CodeIndex] Timed out waiting for the daemon launch lock; existing daemon was left untouched.");
+                    return false;
+                }
+
+                // 持有跨进程锁后必须重新读取状态并带 token 探测，防止连续预热重复启动。
+                var status = ReadStatus();
+                if (TryProbeDaemonStatus(status))
+                {
+                    return true;
+                }
+
+                if (WaitForReachableExistingDaemon(status))
+                {
+                    return true;
+                }
+
+                if (IsTrackedStatusDaemonAlive(status))
+                {
+                    AIBridgeLogger.LogWarning("[CodeIndex] Existing daemon process is still running but its endpoint is unavailable; skipped restart to avoid a duplicate daemon.");
+                    return false;
+                }
+
+                // 前一个 Editor 可能已写入进程 marker，但 daemon 尚未来得及发布 status.json。
+                // 必须以 marker 中的启动时间校验进程，不能因 status 暂缺而误判为可重启。
+                if (HasLiveCurrentProjectDaemonProcessMarker())
+                {
+                    if (WaitForReachableDaemonStatus(status, requireTrackedStatusDaemon: false))
+                    {
+                        return true;
+                    }
+
+                    AIBridgeLogger.LogWarning("[CodeIndex] A daemon process marker is live but its status endpoint is unavailable; skipped restart to avoid a duplicate daemon.");
+                    return false;
+                }
+
+                // 只有状态记录和当前项目的进程 marker 均未指向存活 daemon 时，才清理旧状态并启动新实例。
+                CleanupStaleDaemonState(status);
+                return StartDaemon(daemonPath, arguments, priority);
+            }
+            catch (Exception ex)
+            {
+                AIBridgeLogger.LogWarning("[CodeIndex] Failed to coordinate daemon warmup: " + ex.Message);
+                return false;
+            }
+            finally
+            {
+                if (launchLock != null)
+                {
+                    launchLock.Dispose();
+                }
+            }
+        }
+
+        private static FileStream AcquireDaemonLaunchLock(string indexDirectory)
+        {
+            var deadline = DateTime.UtcNow.AddMilliseconds(DaemonLaunchLockWaitMs);
+            var lockPath = Path.Combine(indexDirectory, DaemonLaunchLockFileName);
+            while (DateTime.UtcNow < deadline)
+            {
+                try
+                {
+                    return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                }
+                catch (IOException)
+                {
+                    System.Threading.Thread.Sleep(ExistingDaemonRetryDelayMs);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    System.Threading.Thread.Sleep(ExistingDaemonRetryDelayMs);
+                }
+            }
+
+            return null;
+        }
+
+        private static bool WaitForReachableExistingDaemon(CodeIndexStatusSnapshot status)
+        {
+            return WaitForReachableDaemonStatus(status, requireTrackedStatusDaemon: true);
+        }
+
+        private static bool WaitForReachableDaemonStatus(CodeIndexStatusSnapshot status, bool requireTrackedStatusDaemon)
+        {
+            if (requireTrackedStatusDaemon && !IsTrackedStatusDaemonAlive(status))
+            {
+                return false;
+            }
+
+            var deadline = DateTime.UtcNow.AddMilliseconds(ExistingDaemonReachabilityWaitMs);
+            var latestStatus = status;
+            while (DateTime.UtcNow < deadline)
+            {
+                if (TryProbeDaemonStatus(latestStatus))
+                {
+                    return true;
+                }
+
+                System.Threading.Thread.Sleep(ExistingDaemonRetryDelayMs);
+                latestStatus = ReadStatus() ?? latestStatus;
+                if (requireTrackedStatusDaemon && !IsTrackedStatusDaemonAlive(latestStatus))
+                {
+                    return false;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryProbeDaemonStatus(CodeIndexStatusSnapshot status)
+        {
+            if (status == null || string.IsNullOrWhiteSpace(status.Endpoint) || string.IsNullOrWhiteSpace(status.Token))
+            {
+                return false;
+            }
+
+            try
+            {
+                var request = (HttpWebRequest)WebRequest.Create(status.Endpoint.TrimEnd('/') + "/status");
+                request.Method = "GET";
+                request.Timeout = DaemonStatusProbeTimeoutMs;
+                request.ReadWriteTimeout = DaemonStatusProbeTimeoutMs;
+                request.Headers["X-AIBridge-CodeIndex-Token"] = status.Token;
+                using (var response = (HttpWebResponse)request.GetResponse())
+                {
+                    return response.StatusCode == HttpStatusCode.OK;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool IsTrackedStatusDaemonAlive(CodeIndexStatusSnapshot status)
+        {
+            if (status == null || status.DaemonPid <= 0)
+            {
+                return false;
+            }
+
+            var markerPath = GetDaemonProcessMarkerPath(status.DaemonPid);
+            if (!File.Exists(markerPath))
+            {
+                markerPath = GetDaemonProcessPath();
+            }
+
+            if (!TryGetCodeIndexProcess(status.DaemonPid, markerPath, out var process))
+            {
+                return false;
+            }
+
+            process.Dispose();
+            return true;
+        }
+
+        private static bool HasLiveCurrentProjectDaemonProcessMarker()
+        {
+            foreach (var markerPath in EnumerateDaemonProcessMarkerPaths())
+            {
+                try
+                {
+                    var json = File.Exists(markerPath) ? File.ReadAllText(markerPath, Encoding.UTF8) : null;
+                    if (!MarkerMatchesCurrentProject(json))
+                    {
+                        continue;
+                    }
+
+                    var daemonPid = ReadInt(json, "daemonPid");
+                    if (daemonPid <= 0)
+                    {
+                        continue;
+                    }
+
+                    if (TryGetCodeIndexProcess(daemonPid, markerPath, out var process))
+                    {
+                        // TryGetCodeIndexProcess 会通过 marker 的 daemonPid 和 startedAtUtcTicks 校验，避免 PID 复用误判。
+                        process.Dispose();
+                        return true;
+                    }
+                }
+                catch
+                {
+                    // marker 可能正被另一 Editor 写入；本次无法确认时继续检查其他 marker。
+                }
+            }
+
+            return false;
+        }
+
+        private static void CleanupStaleDaemonState(CodeIndexStatusSnapshot status)
+        {
+            if (status != null && status.DaemonPid > 0)
+            {
+                DeleteFileIfExists(GetDaemonProcessMarkerPath(status.DaemonPid));
+            }
+
+            DeleteFileIfExists(GetStatusPath());
+            DeleteFileIfExists(GetDaemonProcessPath());
+            DeleteFileIfExists(Path.Combine(GetIndexDirectory(), LockFileName));
+        }
+
+        private static string GetDaemonProcessMarkerPath(int daemonPid)
+        {
+            return Path.Combine(GetIndexDirectory(), DaemonProcessDirectoryName, daemonPid + ".json");
+        }
+
+        private static string ResolveDaemonPath()
+        {
+            var cliPath = ResolveCliPath();
+            if (string.IsNullOrWhiteSpace(cliPath))
+            {
+                return null;
+            }
+
+            var cliDirectory = Path.GetDirectoryName(Path.GetFullPath(cliPath));
+            if (string.IsNullOrWhiteSpace(cliDirectory))
+            {
+                return null;
+            }
+
+            var daemonPath = Path.Combine(cliDirectory, "CodeIndex", "AIBridgeCodeIndex" + Path.GetExtension(cliPath));
+            return File.Exists(daemonPath) ? daemonPath : null;
         }
 
         public static void ShutdownDaemon(string cleanupMode, int timeoutMs)
         {
             var status = ReadStatus();
-            if (status != null && !string.IsNullOrEmpty(status.Endpoint))
+            if (!IsStatusOwnedByCurrentEditor(status))
+            {
+                // status 是多个 Editor 共享的；身份无法同时由 PID 与启动时间确认时，绝不能触碰其 endpoint、进程或共享文件。
+                LogShutdownSkippedForForeignOrUnknownOwner(status);
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(status.Endpoint))
             {
                 TryPostShutdown(status.Endpoint, status.Token, timeoutMs);
             }
 
-            if (status != null && status.DaemonPid > 0)
+            if (status.DaemonPid > 0)
             {
-                WaitOrKillDaemon(status.DaemonPid, GetDaemonProcessPath(), timeoutMs);
+                WaitOrKillDaemon(status.DaemonPid, GetDaemonProcessMarkerPath(status.DaemonPid), timeoutMs);
             }
 
             CleanupIndexDirectory(cleanupMode);
@@ -547,13 +822,13 @@ namespace AIBridge.Editor
 #endif
         }
 
-        private static bool StartCli(string cliPath, string arguments, bool waitForExit, int timeoutMs)
+        private static bool StartDaemon(string daemonPath, string arguments, string priority)
         {
             try
             {
                 var startInfo = new ProcessStartInfo
                 {
-                    FileName = cliPath,
+                    FileName = daemonPath,
                     Arguments = arguments,
                     WorkingDirectory = GetProjectRoot(),
                     UseShellExecute = false,
@@ -567,21 +842,77 @@ namespace AIBridge.Editor
                     return false;
                 }
 
-                if (!waitForExit)
-                {
-                    process.Dispose();
-                    return true;
-                }
-
-                var exited = process.WaitForExit(timeoutMs);
+                ApplyDaemonPriority(process, priority);
+                WriteDaemonProcessMarker(process, daemonPath);
                 process.Dispose();
-                return exited;
+                return true;
             }
             catch (Exception ex)
             {
-                AIBridgeLogger.LogWarning("[CodeIndex] Failed to start CLI: " + ex.Message);
+                AIBridgeLogger.LogWarning("[CodeIndex] Failed to start daemon: " + ex.Message);
                 return false;
             }
+        }
+
+        private static void ApplyDaemonPriority(Process process, string priority)
+        {
+            if (process == null || !string.Equals(priority, "low", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            try
+            {
+                process.PriorityClass = ProcessPriorityClass.BelowNormal;
+            }
+            catch
+            {
+                // 进程优先级只是启动期优化；平台拒绝调整时仍继续完成预热。
+            }
+        }
+
+        private static void WriteDaemonProcessMarker(Process process, string daemonPath)
+        {
+            try
+            {
+                var startedAtUtcTicks = 0L;
+                try
+                {
+                    startedAtUtcTicks = process.StartTime.ToUniversalTime().Ticks;
+                }
+                catch
+                {
+                }
+
+                using (var ownerProcess = Process.GetCurrentProcess())
+                {
+                    var marker = "{\n"
+                                 + "  \"markerVersion\": 2,\n"
+                                 + "  \"projectRoot\": \"" + EscapeJson(GetProjectRoot()) + "\",\n"
+                                 + "  \"daemonPid\": " + process.Id + ",\n"
+                                 + "  \"startedAtUtcTicks\": " + startedAtUtcTicks + ",\n"
+                                 + "  \"ownerPid\": " + ownerProcess.Id + ",\n"
+                                 + "  \"ownerStartTicks\": " + GetProcessStartTicks(ownerProcess) + ",\n"
+                                 + "  \"daemonPath\": \"" + EscapeJson(daemonPath) + "\"\n"
+                                 + "}\n";
+                    var indexDirectory = GetIndexDirectory();
+                    Directory.CreateDirectory(indexDirectory);
+                    File.WriteAllText(GetDaemonProcessPath(), marker, Encoding.UTF8);
+                    var processDirectory = Path.Combine(indexDirectory, DaemonProcessDirectoryName);
+                    Directory.CreateDirectory(processDirectory);
+                    File.WriteAllText(Path.Combine(processDirectory, process.Id + ".json"), marker, Encoding.UTF8);
+                }
+            }
+            catch
+            {
+                // marker 仅用于退出和孤儿清理；写入失败不能阻止已启动 daemon 工作。
+            }
+        }
+
+        private static string QuoteProcessArgument(string value)
+        {
+            // ProcessStartInfo.Arguments 需要保留 Windows 路径分隔符；仅转义参数中的引号。
+            return "\"" + (value ?? string.Empty).Replace("\"", "\\\"") + "\"";
         }
 
         private static void TryPostShutdown(string endpoint, string token, int timeoutMs)
@@ -883,6 +1214,37 @@ namespace AIBridge.Editor
             }
         }
 
+        private static bool IsStatusOwnedByCurrentEditor(CodeIndexStatusSnapshot status)
+        {
+            if (status == null || status.OwnerPid <= 0 || status.OwnerStartTicks <= 0L)
+            {
+                return false;
+            }
+
+            try
+            {
+                using (var currentProcess = Process.GetCurrentProcess())
+                {
+                    var currentStartTicks = GetProcessStartTicks(currentProcess);
+                    return currentStartTicks > 0L
+                           && status.OwnerPid == currentProcess.Id
+                           && Math.Abs(currentStartTicks - status.OwnerStartTicks) <= OwnerStartTicksTolerance;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static void LogShutdownSkippedForForeignOrUnknownOwner(CodeIndexStatusSnapshot status)
+        {
+            var ownerState = status == null || status.OwnerPid <= 0 || status.OwnerStartTicks <= 0L
+                ? "unknown"
+                : "different";
+            AIBridgeLogger.LogDebug("[CodeIndex] Skipped daemon shutdown and shared-state cleanup because status owner is " + ownerState + ".");
+        }
+
         private static CodeIndexStatusSnapshot ReadStatus()
         {
             var path = GetStatusPath();
@@ -898,7 +1260,9 @@ namespace AIBridge.Editor
                 {
                     Endpoint = ReadString(json, "endpoint"),
                     Token = ReadString(json, "token"),
-                    DaemonPid = ReadInt(json, "daemonPid")
+                    DaemonPid = ReadInt(json, "daemonPid"),
+                    OwnerPid = ReadInt(json, "ownerPid"),
+                    OwnerStartTicks = ReadLong(json, "ownerStartTicks")
                 };
             }
             catch
@@ -1039,6 +1403,8 @@ namespace AIBridge.Editor
             public string Endpoint { get; set; }
             public string Token { get; set; }
             public int DaemonPid { get; set; }
+            public int OwnerPid { get; set; }
+            public long OwnerStartTicks { get; set; }
         }
     }
 }

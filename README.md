@@ -1,4 +1,4 @@
-<p align="center">
+﻿<p align="center">
   <img src="./Images/aibridge-banner.png" alt="AIBridge banner" width="100%">
 </p>
 
@@ -7,7 +7,7 @@
 English | [中文](./README_CN.md)
 
 ![Unity 2019.4+ ~ 6000.x](https://img.shields.io/badge/Unity-2019.4%2B%20~%206000.x-black?style=flat-square&logo=unity)
-![Package 1.5.10](https://img.shields.io/badge/Package-1.5.10-5b6cff?style=flat-square)
+![Package 1.5.11](https://img.shields.io/badge/Package-1.5.11-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
@@ -64,7 +64,7 @@ Use for: broad read-only review, multi-target Runtime validation, bug-hunter loo
 - **Prefab and scene automation**: use simple Inspector field edits, Prefab Patch dry-runs, multi-step batch scripts, and task continuation across domain reloads.
 - **UGUI runtime input simulation**: in Play Mode, the `input` command can click, click Unity screen coordinates, click normalized Unity screen coordinates, drag, and long-press EventSystem UI for button, inventory, and runtime panel checks.
 - **Player Runtime Bridge**: an `AIBridgeRuntime` component inside a built Player can expose runtime status, logs, screenshots, performance samples, UI snapshot/find/raycast/click, semantic key input, project allowlisted handlers, and HybridCLR-gated runtime code execution for Development Build and mobile debugging.
-- **Read-only Code Index**: when enabled, `code_index` uses Unity compilation snapshots as a lightweight C# declaration-name index. It only supports fast `symbol` and `definition` lookup for declaration files and declaration positions, then leaves real analysis to the AI reading `.cs` files directly.
+- **Read-only Code Index**: when enabled, `code_index` provides `symbol` and `definition` for lightweight C# declaration-name lookup, plus `status` and `doctor` for diagnostics. Read returned `.cs` files directly for real analysis.
 - **Workflow recipes and run artifacts**: `workflow` CLI commands can list, validate, plan, initialize, and run deterministic CLI steps from built-in Unity workflow recipes, then write a project-local run manifest, command results, artifacts, gates, and Markdown report under `.aibridge/workflows/runs/`.
 - **Roslyn temporary C# execution**: controlled `code execute` runs `.aibridge/code/*.cs` or `.csx` temporary scripts inside Unity Editor for complex one-off asset generation, structured analysis, diagnostics, and Runtime/Public API calls. It is enabled by default in Settings and can be disabled there for untrusted projects or callers.
 - **Visual and log validation**: capture Game/Scene view screenshots or GIFs, read Console logs, run Unity compilation, and invoke tests so agents can close the loop on changes.
@@ -378,11 +378,14 @@ $CLI gameview list_resolutions
 $CLI screenshot game
 $CLI screenshot scene_view
 $CLI screenshot scene_view --width 1920 --height 1080
+$CLI screenshot editor_window --target editor
+$CLI screenshot editor_window --target active
+$CLI screenshot editor_window --windowType MyNamespace.MyCustomEditorWindow
 $CLI screenshot gif --frameCount 50 --fps 20 --scale 0.5
 $CLI editor stop
 ```
 
-Game view screenshots, GIF capture, and `input` commands require Play Mode. Scene view screenshots work in Edit mode when a Scene view is open. A typical runtime UI flow is to enter Play Mode, inspect the scene hierarchy, run `input`, read Error logs, then verify the frame with a screenshot or GIF.
+Game view screenshots, GIF capture, and `input` commands require Play Mode. Scene view and Editor window screenshots work in Edit mode. `editor_window` captures only Unity-owned native window pixels on Windows 10 1803+ or macOS 12.3+; it does not capture the desktop. Use `--windowType`, `--title`, or `--instanceId` for built-in and custom Editor windows. A typical runtime UI flow is to enter Play Mode, inspect the scene hierarchy, run `input`, read Error logs, then verify the frame with a screenshot or GIF.
 
 ### Built Player Runtime Bridge
 

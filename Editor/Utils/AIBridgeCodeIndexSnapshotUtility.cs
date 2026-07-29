@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -87,11 +87,16 @@ namespace AIBridge.Editor
         {
             try
             {
-                var arguments = "code_index build_snapshot"
+                var workerPath = ResolveSnapshotWorkerPath(cliPath);
+                if (string.IsNullOrEmpty(workerPath))
+                {
+                    return new SnapshotResult(false, "snapshot worker executable was not found");
+                }
+
+                var arguments = "--worker snapshot"
                                 + " --input " + QuoteCliArgument(inputPath)
-                                + " --timeout " + SnapshotWorkerTimeoutMs.ToString(CultureInfo.InvariantCulture)
                                 + " --priority " + (request.Manual ? "normal" : "low")
-                                + " --workers " + Math.Max(1, request.WorkerCount).ToString(CultureInfo.InvariantCulture)
+                                + " --workers " + ClampSnapshotWorkerCount(request.WorkerCount).ToString(CultureInfo.InvariantCulture)
                                 + " --project-root " + QuoteCliArgument(request.ProjectRoot);
                 if (request.OwnerPid > 0)
                 {
@@ -105,7 +110,7 @@ namespace AIBridge.Editor
 
                 var startInfo = new ProcessStartInfo
                 {
-                    FileName = cliPath,
+                    FileName = workerPath,
                     Arguments = arguments,
                     WorkingDirectory = request.ProjectRoot,
                     UseShellExecute = false,
@@ -142,10 +147,29 @@ namespace AIBridge.Editor
                     return BuildWorkerResult(process.ExitCode, stdout, stderr);
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                return new SnapshotResult(false, GetExceptionMessage(ex));
+                return new SnapshotResult(false, "snapshot worker could not be started");
             }
+        }
+
+        private static string ResolveSnapshotWorkerPath(string cliPath)
+        {
+            if (string.IsNullOrWhiteSpace(cliPath))
+            {
+                return null;
+            }
+
+            var cliDirectory = Path.GetDirectoryName(Path.GetFullPath(cliPath));
+            if (string.IsNullOrWhiteSpace(cliDirectory))
+            {
+                return null;
+            }
+
+            var extension = Path.GetExtension(cliPath);
+            var workerName = "AIBridgeCodeIndex" + extension;
+            var candidate = Path.Combine(cliDirectory, "CodeIndex", workerName);
+            return File.Exists(candidate) ? candidate : null;
         }
 
         private static SnapshotResult BuildWorkerResult(int exitCode, string stdout, string stderr)
@@ -154,7 +178,7 @@ namespace AIBridge.Editor
             var message = ReadJsonString(stdout, "message");
             if (string.IsNullOrWhiteSpace(message))
             {
-                message = string.IsNullOrWhiteSpace(stderr) ? (stdout ?? string.Empty).Trim() : stderr.Trim();
+                message = success ? "snapshot generated" : "snapshot worker failed";
             }
 
             return new SnapshotResult(success, message);
@@ -424,11 +448,23 @@ namespace AIBridge.Editor
         }
 #endif
 
+        public static int ClampSnapshotWorkerCount(int workerCount)
+        {
+            return Math.Max(1, Math.Min(workerCount, ManualMaxWorkerCount));
+        }
+
         public static bool GenerateSnapshot(SnapshotRequest request, out string message)
         {
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             try
             {
+                if (!TryValidateSnapshotRequestPaths(request))
+                {
+                    message = "snapshot request contains an invalid project, snapshot, or output path";
+                    return false;
+                }
+
+                request.WorkerCount = ClampSnapshotWorkerCount(request.WorkerCount);
                 if (!IsOwnerProcessAlive(request))
                 {
                     message = "snapshot worker owner process is not alive";
@@ -981,6 +1017,87 @@ namespace AIBridge.Editor
             }
 
             AtomicReplace(tempPath, path);
+        }
+
+        private static bool TryValidateSnapshotRequestPaths(SnapshotRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.ProjectRoot) || string.IsNullOrWhiteSpace(request.SnapshotDirectory))
+            {
+                return false;
+            }
+
+            try
+            {
+                var projectRoot = Path.GetFullPath(request.ProjectRoot);
+                var snapshotDirectory = Path.GetFullPath(request.SnapshotDirectory);
+                var expectedSnapshotDirectory = Path.Combine(projectRoot, ".aibridge", "code-index", SnapshotDirectoryName);
+                if (!PathsEqual(snapshotDirectory, expectedSnapshotDirectory))
+                {
+                    return false;
+                }
+
+                for (var i = 0; i < request.Assemblies.Count; i++)
+                {
+                    var assembly = request.Assemblies[i];
+                    if (assembly == null
+                        || !TryGetContainedRelativePath(snapshotDirectory, assembly.SnapshotFile, out _)
+                        || !TryGetContainedRelativePath(snapshotDirectory, assembly.NameIndexFile, out _))
+                    {
+                        return false;
+                    }
+                }
+
+                request.ProjectRoot = projectRoot;
+                request.SnapshotDirectory = snapshotDirectory;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryGetContainedRelativePath(string parentPath, string relativePath, out string fullPath)
+        {
+            fullPath = null;
+            if (string.IsNullOrWhiteSpace(relativePath) || Path.IsPathRooted(relativePath))
+            {
+                return false;
+            }
+
+            var normalizedRelativePath = relativePath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+            var segments = normalizedRelativePath.Split(new[] { Path.DirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
+            for (var i = 0; i < segments.Length; i++)
+            {
+                if (string.Equals(segments[i], "..", StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            var parent = Path.GetFullPath(parentPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                         + Path.DirectorySeparatorChar;
+            fullPath = Path.GetFullPath(Path.Combine(parent, normalizedRelativePath));
+            if (!fullPath.StartsWith(parent, GetPathComparison()))
+            {
+                fullPath = null;
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool PathsEqual(string left, string right)
+        {
+            return string.Equals(
+                Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                GetPathComparison());
+        }
+
+        private static StringComparison GetPathComparison()
+        {
+            return Path.DirectorySeparatorChar == '\\' ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         }
 
         private static void WriteAssemblySnapshot(string path, AssemblyRecord record)

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -39,6 +39,7 @@ namespace AIBridgeCLI.Commands
         private const int ExistingDaemonReachabilityWaitMs = 1200;
         private const int ExistingDaemonRetryDelayMs = 100;
         private const int MaxCodeIndexTimeoutMs = 600000;
+        private const int MaxSnapshotWorkerCount = 4;
         private const string SnapshotMagic = "AIBCI";
         private const string DisabledMessage = "Code Index is disabled in AIBridge settings. Enable AIBridge > Settings > Code Index > Enable Code Index, or use rg and normal file reads.";
         private static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings
@@ -48,6 +49,11 @@ namespace AIBridgeCLI.Commands
 
         public static int Execute(string action, Dictionary<string, string> options, int timeout, bool noWait, OutputMode outputMode)
         {
+            return ExecuteCore(action, options, timeout, noWait, outputMode);
+        }
+
+        private static int ExecuteCore(string action, Dictionary<string, string> options, int timeout, bool noWait, OutputMode outputMode)
+        {
             var stopwatch = Stopwatch.StartNew();
             JObject result;
             try
@@ -56,9 +62,9 @@ namespace AIBridgeCLI.Commands
                 var effectiveTimeout = ResolveActionTimeout(normalizedAction, options, timeout);
                 result = ExecuteAsync(normalizedAction, options, effectiveTimeout, noWait).GetAwaiter().GetResult();
             }
-            catch (Exception ex)
+            catch
             {
-                result = BuildFailure(null, "code_index failed: " + ex.Message, "cli_error");
+                result = BuildFailure(null, "code_index failed.", "cli_error");
             }
 
             result["executionTime"] = stopwatch.ElapsedMilliseconds;
@@ -100,12 +106,6 @@ namespace AIBridgeCLI.Commands
                     return await BuildStatusAsync(context, timeout);
                 case "doctor":
                     return await BuildDoctorAsync(context, timeout);
-                case "build_snapshot":
-                    return await BuildSnapshotAsync(context, options, timeout, noWait);
-                case "warmup":
-                    return await WarmupAsync(context, timeout, noWait);
-                case "reset":
-                    return await ResetAsync(context, timeout);
                 case "symbol":
                 case "definition":
                     return await QueryAsync(context, normalizedAction, options, timeout);
@@ -120,9 +120,6 @@ namespace AIBridgeCLI.Commands
             {
                 case "status":
                 case "doctor":
-                case "build_snapshot":
-                case "warmup":
-                case "reset":
                 case "symbol":
                 case "definition":
                     return true;
@@ -462,10 +459,14 @@ namespace AIBridgeCLI.Commands
                 return BuildFailure(context, "Missing required parameter: --input");
             }
 
-            inputPath = Path.GetFullPath(inputPath);
+            if (!TryGetControlledSnapshotInputPath(context, inputPath, out inputPath))
+            {
+                return BuildFailure(context, "Snapshot compiler input must be inside the project Code Index temporary directory.", "invalid_snapshot_input");
+            }
+
             if (!File.Exists(inputPath))
             {
-                return BuildFailure(context, "Snapshot compiler input does not exist: " + inputPath);
+                return BuildFailure(context, "Snapshot compiler input does not exist.", "invalid_snapshot_input");
             }
 
             var daemon = CodeIndexDaemonExecutable.Resolve();
@@ -474,7 +475,7 @@ namespace AIBridgeCLI.Commands
                 return BuildDaemonUnavailableFailure(context, daemon);
             }
 
-            var workers = ResolveOptionInt(options, "workers", 0);
+            var workers = ResolveSnapshotWorkerCount(options);
             var startInfo = daemon.CreateStartInfo();
             startInfo.WorkingDirectory = context.ProjectRoot;
             startInfo.UseShellExecute = false;
@@ -2286,6 +2287,21 @@ namespace AIBridgeCLI.Commands
             return int.TryParse(value, out var result) ? result : defaultValue;
         }
 
+        private static int ResolveSnapshotWorkerCount(Dictionary<string, string> options)
+        {
+            if (options == null || !options.TryGetValue("workers", out var value) || string.IsNullOrWhiteSpace(value))
+            {
+                return 0;
+            }
+
+            if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var workers) || workers <= 0)
+            {
+                throw new ArgumentException("--workers must be a positive integer.");
+            }
+
+            return Math.Min(MaxSnapshotWorkerCount, workers);
+        }
+
         private static string ResolveStringOption(Dictionary<string, string> options, string key, string defaultValue)
         {
             if (options == null || !options.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
@@ -2440,6 +2456,29 @@ namespace AIBridgeCLI.Commands
         private static string NormalizePath(string path)
         {
             return (path ?? string.Empty).Replace('\\', '/').TrimStart('.', '/');
+        }
+
+        private static bool TryGetControlledSnapshotInputPath(CodeIndexContext context, string inputPath, out string fullInputPath)
+        {
+            fullInputPath = null;
+            if (context == null || string.IsNullOrWhiteSpace(inputPath) || Path.IsPathRooted(inputPath))
+            {
+                return false;
+            }
+
+            try
+            {
+                var tempDirectory = Path.Combine(context.IndexDirectory, "temp");
+                var parent = Path.GetFullPath(tempDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                             + Path.DirectorySeparatorChar;
+                fullInputPath = Path.GetFullPath(Path.Combine(parent, inputPath));
+                return fullInputPath.StartsWith(parent, Path.DirectorySeparatorChar == '\\' ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+            }
+            catch
+            {
+                fullInputPath = null;
+                return false;
+            }
         }
 
         private static string TrimPreview(string line)

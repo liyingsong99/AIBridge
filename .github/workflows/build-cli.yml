@@ -6,12 +6,14 @@ on:
     paths:
       - 'Tools~/AIBridgeCLI/**'
       - 'Tools~/AIBridgeCodeIndex/**'
+      - 'Tools~/AIBridgeEditorCapture/**'
       - '.github/workflows/build-cli.yml'
   pull_request:
     branches: [main, dev]
     paths:
       - 'Tools~/AIBridgeCLI/**'
       - 'Tools~/AIBridgeCodeIndex/**'
+      - 'Tools~/AIBridgeEditorCapture/**'
       - '.github/workflows/build-cli.yml'
   workflow_dispatch:
 
@@ -57,6 +59,33 @@ jobs:
             --self-contained false \
             -p:PublishSingleFile=false \
             -o Tools~/CLI/${{ matrix.rid }}/CodeIndex
+        shell: bash
+
+      - name: Build Editor capture helper (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          dotnet publish Tools~/AIBridgeEditorCapture/Windows/AIBridgeEditorCapture.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained false `
+            -p:PublishSingleFile=true `
+            -o Tools~/CLI/win-x64/EditorCapture
+        shell: pwsh
+
+      - name: Build Editor capture helper (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          if [ "${{ matrix.rid }}" = "osx-arm64" ]; then
+            arch="arm64"
+          else
+            arch="x86_64"
+          fi
+          mkdir -p "Tools~/CLI/${{ matrix.rid }}/EditorCapture"
+          xcrun swiftc -O \
+            -target "${arch}-apple-macos12.3" \
+            Tools~/AIBridgeEditorCapture/macOS/main.swift \
+            -o "Tools~/CLI/${{ matrix.rid }}/EditorCapture/AIBridgeEditorCapture"
+          chmod +x "Tools~/CLI/${{ matrix.rid }}/EditorCapture/AIBridgeEditorCapture"
         shell: bash
 
       - name: Upload artifact

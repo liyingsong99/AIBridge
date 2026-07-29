@@ -1,4 +1,4 @@
-# AIBridge 知识库文档索引
+﻿# AIBridge 知识库文档索引
 
 ## 状态
 
@@ -32,7 +32,7 @@
 | Runtime Bridge | `Runtime/AIBridgeRuntime.cs`、`Runtime/Transports/*`、`runtime status/logs/screenshot/perf/handlers/call` | 连接已编译 Player 或 Play Mode 目标，HTTP 为默认控制面，File transport 为 HTTP 未运行时的兼容回退，采集证据和调用白名单 handler |
 | Workflow | `Tools~/AIBridgeCLI/Workflow/*`、`Templates~/Workflows/*.aibridge-workflow.json`、`workflow list/validate/plan/init/begin/status/report/finish/import/export/clean` | 负责 recipes、run manifest、artifact、gate、report 和外部结果导入 |
 | Skills | `Skill~/aibridge-development-workflow`、`Skill~/aibridge-workflow-orchestration`、`Skill~/aibridge-code-index`、`Skill~/aibridge-prefab-patch`、`Skill~/aibridge-batch-script`、`Skill~/unity-yaml-editing` | 分别覆盖 workflow 短入口/分支路由、编排、轻量声明名检索、Prefab patch、批处理和 YAML 兜底 |
-| 文档 | `Doc~/README.md`、`Doc~/WorkflowsPanel.md`、`Doc~/WorkflowGraphPanel.md`、`Doc~/workflow-guide/README.md`、`Doc~/workflow-guide/ContextCompression.md`、`Doc~/workflow-guide/AIBridgeLoopsAnalysis.md` | 功能目录、面板定位、workflow 说明、上下文压缩策略和 FSM 分析 |
+| 文档 | `Doc~/README.md`、`Doc~/EditorWindowScreenshot.md`、`Doc~/WorkflowsPanel.md`、`Doc~/WorkflowGraphPanel.md`、`Doc~/workflow-guide/README.md`、`Doc~/workflow-guide/ContextCompression.md`、`Doc~/workflow-guide/AIBridgeLoopsAnalysis.md` | 功能目录、Editor 窗口截图、面板定位、workflow 说明、上下文压缩策略和 FSM 分析 |
 | 模板 | `Templates~/Rules/AIBridge.RootRule.md`、`Templates~/ProjectRules/AGENTS*.md`、`Templates~/Workflows/*.json` | RootRule、项目规则模板和内置 workflow recipes |
 | 生成与缓存 | `.aibridge/harness/capabilities.json`、`.aibridge/test-runs/`、`.aibridge/workflows/active-run.json`、`.aibridge/workflows/runs/`、`.aibridge/code-index/snapshot/`、`.aibridge/code/`、`.aibridge/plan/` | 当前项目的能力快照、测试队列状态、运行产物、代码索引、临时代码和方案底稿 |
 | Editor 实例状态 | `%LOCALAPPDATA%/AIBridge/instances/<projectKey>/editor-instance.json`（可用 `AIBRIDGE_STATE_DIR` 覆盖根目录） | Editor 心跳与 `focus` 多实例解析；高频状态写在项目外，避免触发 Git 工作区监听；CLI 仍兼容读取遗留 `.aibridge/editor-instance.json` |
@@ -139,7 +139,8 @@
 - `compile dotnet` 只是额外检查，不是 Unity 编译替代品。
 - `test run` 必须在 Editor 处于 Edit Mode 时启动；若当前处于 Play Mode，会直接失败并明确提示先退出 Play Mode。
 - `test run` 在并发请求下会持久化队列到 `.aibridge/test-runs/state.json`；已确认的 run 若后续变成 `unknown`，CLI 会快速失败并提示状态丢失，而不是一直等完整 timeout。
-- `code_index` 已收缩为默认关闭的只读轻量声明名检索入口；公开查询面只保留 `symbol` 和 `definition`，只负责把 C# 声明名快速定位到声明位置和文件路径，后续分析由 AI 自己读取 `.cs` 文件完成；公开查询响应默认精简，诊断细节走 `status` / `doctor`；Unity 已导入资源名称/类型查找继续使用 `asset search/find --format paths`，其中 `asset search <keyword>` 是 `asset search --keyword <keyword>` 的兼容简写。
+- `screenshot editor_window` 可在 Edit Mode 截取 Unity 主窗口或按活动窗口、类型、标题、实例定位的 `EditorWindow`；Windows 主路径使用 WGC，被 WGC 拒绝的 Unity 浮动容器仅回退到带非空校验的窗口级 PrintWindow，macOS 使用 ScreenCaptureKit，不回退到桌面截图，默认成功数据仅返回 `path`、`width`、`height`。
+- `code_index` 是默认关闭的只读轻量入口：`symbol`、`definition` 用于 C# 声明名定位，`status`、`doctor` 用于诊断；后续分析由 AI 直接读取 `.cs` 文件完成。Unity 已导入资源名称/类型查找继续使用 `asset search/find --format paths`，其中 `asset search <keyword>` 是 `asset search --keyword <keyword>` 的兼容简写。
 - `workflow run-cli` 不会自动执行 `agent` / `manual`，这些步骤仍需要外部执行器回流。
 - RootRule 必须简洁写明 `$CLI` 指向项目本地 AIBridge CLI 路径，并给出 PowerShell 调用方式。
 - `workflow run-cli` 和 `compile dotnet` 对子进程 stdout/stderr 使用有界流式读取；输出超限不会再使 CLI 内存随原始输出量线性增长。
@@ -153,23 +154,10 @@
 
 ## Code Index 收口
 
-- 当前公开动作：`symbol`、`definition`
-- 当前定位：只读、轻量、仅用于 C# 声明名到声明位置/文件路径的快速匹配
-- 查询约束：`--query` 必须是 C# 标识符或其子串；禁止自然语言、中文业务名、注释、字符串字面量、文件路径
-- 公开查询响应：默认精简为 `success` / `items`（及按需的 `error` / `warning` / `stale`）；daemon/快照/队列诊断留给 `status` / `doctor`
-- 推荐使用方式：先用 `symbol` 或 `definition` 找到候选 `.cs` 文件，再由 AI 直接读取文件分析上下文、调用链和真实行为
-- 内部生命周期：daemon 探活、恢复、snapshot 构建、warmup、reset 继续保留为 Editor/内部流程实现细节，不作为 AI / 普通用户公开契约
-- 非目标：引用关系、调用者、继承、实现、诊断聚合、全工程关系图、注释/文本内容搜索、非 C# 查询
-
-### 大型工程中不再公开承诺的能力
-
-- `references`
-- `callers`
-- `implementations`
-- `derived`
-- `diagnostics --all`
-- 首轮完整 Roslyn workspace 语义预热 / 语义建表
-- 基于单队列 daemon 的 `batch` 语义查询
+- 当前公开动作：`symbol`、`definition`、`status`、`doctor`；前两项用于 C# 声明名定位，后两项用于诊断
+- 推荐使用方式：先用 `symbol` 或 `definition` 找到候选 `.cs` 文件，再直接读取文件分析上下文和真实行为
+- 内部生命周期：`warmup`、`reset`、`build_snapshot` 仅供内部生命周期使用，不是普通 CLI 或 AI 用户能力
+- 非目标：引用、调用者、继承、实现、全工程关系图，以及注释、文本或非 C# 查询
 
 ## 当前已知漂移
 

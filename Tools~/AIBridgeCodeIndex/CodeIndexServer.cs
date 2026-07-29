@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Net.Http;
 using System.Net.Sockets;
 using System.Runtime;
 using System.Runtime.InteropServices;
@@ -20,6 +21,15 @@ namespace AIBridgeCodeIndex
         private const int StatusFileWriteRetryCount = 5;
         private const int StatusFileWriteRetryDelayMs = 20;
         private const int SourceFileCountForForcedMemoryCollection = 1000;
+        private const int MaxConcurrentClients = 32;
+        private const int MaxHttpHeaderBytes = 65536;
+        private const int MaxRequestBodyBytes = 262144;
+        private const int NetworkOperationTimeoutMs = 10000;
+        private const int BackgroundTaskStopTimeoutMs = 500;
+        private const int QuerySchedulerStopTimeoutMs = 500;
+        private const int DaemonLaunchLockWaitMs = 1500;
+        private const int DaemonLaunchLockRetryDelayMs = 100;
+        private const long ProcessStartTicksTolerance = TimeSpan.TicksPerSecond * 2L;
 
         private static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings
         {
@@ -34,7 +44,12 @@ namespace AIBridgeCodeIndex
         private readonly object _statusFileLock = new object();
         private readonly object _refreshLock = new object();
         private readonly object _workspaceLock = new object();
+        private readonly object _clientLock = new object();
         private readonly SemaphoreSlim _queryGate = new SemaphoreSlim(1, 1);
+        private readonly SemaphoreSlim _clientGate = new SemaphoreSlim(MaxConcurrentClients, MaxConcurrentClients);
+        private readonly CancellationTokenSource _shutdown = new CancellationTokenSource();
+        private readonly HashSet<TcpClient> _activeClients = new HashSet<TcpClient>();
+        private readonly HashSet<Task> _activeHandlers = new HashSet<Task>();
         private readonly CodeIndexQueryScheduler _queryScheduler;
         private CodeIndexWorkspace _workspace;
         private TcpListener _listener;
@@ -65,68 +80,59 @@ namespace AIBridgeCodeIndex
 
         public async Task RunAsync()
         {
-            _listener = new TcpListener(IPAddress.Loopback, 0);
-            _listener.Start();
-
-            var endpoint = "http://127.0.0.1:" + ((IPEndPoint)_listener.LocalEndpoint).Port;
-            _status = CreateInitialStatus(endpoint);
-            WriteStatus();
-
-            _warmupTask = WarmupAsync();
-            if (_options.OwnerPid > 0)
+            try
             {
-                _ownerMonitorTask = MonitorOwnerProcessAsync();
-            }
+                _listener = new TcpListener(IPAddress.Loopback, 0);
+                _listener.Start();
 
-            while (!_shutdownRequested)
-            {
-                TcpClient client = null;
-                try
+                var endpoint = "http://127.0.0.1:" + ((IPEndPoint)_listener.LocalEndpoint).Port;
+                _status = CreateInitialStatus(endpoint);
+                WriteStatus();
+
+                _warmupTask = WarmupAsync();
+                if (_options.OwnerPid > 0)
                 {
-                    client = await _listener.AcceptTcpClientAsync();
+                    _ownerMonitorTask = MonitorOwnerProcessAsync();
                 }
-                catch (ObjectDisposedException)
+
+                while (!_shutdownRequested)
                 {
-                    break;
-                }
-                catch (SocketException)
-                {
-                    if (_shutdownRequested)
+                    try
+                    {
+                        // 在 accept 前取得名额，避免慢客户端无限制地占用 handler 与 socket。
+                        await _clientGate.WaitAsync(_shutdown.Token);
+                        var client = await _listener.AcceptTcpClientAsync(_shutdown.Token);
+                        StartClientHandler(client);
+                    }
+                    catch (OperationCanceledException) when (_shutdownRequested)
                     {
                         break;
                     }
-
-                    throw;
+                    catch (ObjectDisposedException) when (_shutdownRequested)
+                    {
+                        break;
+                    }
+                    catch (SocketException) when (_shutdownRequested)
+                    {
+                        break;
+                    }
                 }
-
-                _ = Task.Run(() => HandleClientAsync(client));
             }
-
-            if (_warmupTask != null)
+            finally
             {
-                await Task.WhenAny(_warmupTask, Task.Delay(500));
+                RequestShutdown();
+                await WaitForHandlersAsync();
+                await WaitForBackgroundTaskAsync(_warmupTask, BackgroundTaskStopTimeoutMs);
+                await WaitForBackgroundTaskAsync(_ownerMonitorTask, BackgroundTaskStopTimeoutMs);
+                await WaitForBackgroundTaskAsync(_refreshTask, BackgroundTaskStopTimeoutMs);
+                await _queryScheduler.StopAsync(QuerySchedulerStopTimeoutMs);
+
+                DisposeWorkspace(GetWorkspace());
+                _queryScheduler.Dispose();
+                _shutdown.Dispose();
+                _clientGate.Dispose();
+                CleanupTransientState();
             }
-
-            if (_ownerMonitorTask != null)
-            {
-                await Task.WhenAny(_ownerMonitorTask, Task.Delay(100));
-            }
-
-            if (_refreshTask != null)
-            {
-                await Task.WhenAny(_refreshTask, Task.Delay(500));
-            }
-
-            await _queryScheduler.StopAsync(500);
-
-            var workspace = GetWorkspace();
-            if (workspace != null)
-            {
-                workspace.Dispose();
-            }
-
-            _queryScheduler.Dispose();
-            CleanupTransientState();
         }
 
         private async Task WarmupAsync()
@@ -217,66 +223,129 @@ namespace AIBridgeCodeIndex
             }
         }
 
-        private async Task HandleClientAsync(TcpClient client)
+        private void StartClientHandler(TcpClient client)
         {
-            using (client)
+            var completion = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (_clientLock)
             {
-                var stream = client.GetStream();
-                try
+                if (_shutdownRequested)
                 {
-                    var request = await ReadRequestAsync(stream);
-                    if (request == null)
-                    {
-                        return;
-                    }
+                    client.Dispose();
+                    _clientGate.Release();
+                    return;
+                }
 
-                    if (!IsAuthorized(request))
-                    {
-                        await WriteResponseAsync(stream, 403, new { success = false, error = "Forbidden" });
-                        return;
-                    }
+                _activeClients.Add(client);
+                _activeHandlers.Add(completion.Task);
+            }
 
-                    if (request.Method == "GET" && request.Path == "/status")
+            _ = Task.Run(() => HandleClientAsync(client, completion));
+        }
+
+        private void UnregisterClientHandler(TcpClient client, Task handler)
+        {
+            lock (_clientLock)
+            {
+                _activeClients.Remove(client);
+                _activeHandlers.Remove(handler);
+            }
+
+            _clientGate.Release();
+        }
+
+        private async Task HandleClientAsync(TcpClient client, TaskCompletionSource<object> completion)
+        {
+            Exception failure = null;
+            try
+            {
+                using (client)
+                {
+                    var stream = client.GetStream();
+                    try
                     {
-                        var refreshNeeded = MarkRefreshIfNeeded(GetWorkspace());
-                        await WriteResponseAsync(stream, 200, CodeIndexResponse.FromStatus(GetStatusSnapshot()));
-                        if (refreshNeeded)
+                        var request = await ReadRequestHeaderAsync(stream);
+                        if (request == null)
                         {
-                            ScheduleBackgroundRefresh();
+                            return;
                         }
 
-                        return;
-                    }
+                        // 仅解析完 header 就认证；未认证请求不再读取可能很大的正文。
+                        if (!IsAuthorized(request))
+                        {
+                            await WriteResponseAsync(stream, 403, new { success = false, error = "Forbidden" });
+                            return;
+                        }
 
-                    if (request.Method == "POST" && request.Path == "/query")
+                        if (request.Method == "GET" && request.Path == "/status")
+                        {
+                            var refreshNeeded = MarkRefreshIfNeeded(GetWorkspace());
+                            await WriteResponseAsync(stream, 200, CodeIndexResponse.FromStatus(GetStatusSnapshot()));
+                            if (refreshNeeded)
+                            {
+                                ScheduleBackgroundRefresh();
+                            }
+
+                            return;
+                        }
+
+                        if (request.Method == "POST" && request.Path == "/query")
+                        {
+                            var bodyText = await ReadRequestBodyAsync(stream, request);
+                            var query = JsonConvert.DeserializeObject<CodeIndexRequest>(bodyText);
+                            var response = await ExecuteQueryAsync(query);
+                            await WriteResponseAsync(stream, response.success ? 200 : 409, response);
+                            return;
+                        }
+
+                        if (request.Method == "POST" && request.Path == "/shutdown")
+                        {
+                            UpdateStatus("stopping", null);
+                            await WriteResponseAsync(stream, 200, CodeIndexResponse.FromStatus(GetStatusSnapshot()));
+                            RequestShutdown();
+                            return;
+                        }
+
+                        // Connection: close 模式下，未知路由不需要也不应等待请求正文。
+                        await WriteResponseAsync(stream, 404, new { success = false, error = "Not found" });
+                    }
+                    catch (HttpRequestException ex)
                     {
-                        var query = JsonConvert.DeserializeObject<CodeIndexRequest>(request.BodyText);
-                        var response = await ExecuteQueryAsync(query);
-                        await WriteResponseAsync(stream, response.success ? 200 : 409, response);
-                        return;
+                        Log("Invalid HTTP request: " + ex);
+                        await TryWriteResponseAsync(stream, 400, new { success = false, error = "Bad request" });
                     }
-
-                    if (request.Method == "POST" && request.Path == "/shutdown")
+                    catch (OperationCanceledException) when (_shutdownRequested)
                     {
-                        UpdateStatus("stopping", null);
-                        await WriteResponseAsync(stream, 200, CodeIndexResponse.FromStatus(GetStatusSnapshot()));
-                        RequestShutdown();
-                        return;
                     }
-
-                    await WriteResponseAsync(stream, 404, new { success = false, error = "Not found" });
-                }
-                catch (IOException ex)
-                {
-                    if (!IsClientDisconnect(ex))
+                    catch (IOException ex)
+                    {
+                        if (!IsClientDisconnect(ex))
+                        {
+                            Log("Request failed: " + ex);
+                        }
+                    }
+                    catch (Exception ex)
                     {
                         Log("Request failed: " + ex);
+                        await TryWriteResponseAsync(stream, 500, new { success = false, error = "Internal server error" });
                     }
                 }
-                catch (Exception ex)
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+                throw;
+            }
+            finally
+            {
+                // handler 无论在读取、执行还是写回阶段失败，finally 都会注销并归还客户端名额。
+                UnregisterClientHandler(client, completion.Task);
+                if (failure == null)
                 {
-                    Log("Request failed: " + ex);
-                    await WriteResponseAsync(stream, 500, new { success = false, error = ex.Message });
+                    completion.TrySetResult(null);
+                }
+                else
+                {
+                    completion.TrySetException(failure);
                 }
             }
         }
@@ -284,7 +353,7 @@ namespace AIBridgeCodeIndex
         private async Task<CodeIndexResponse> ExecuteQueryAsync(CodeIndexRequest query)
         {
             AttachCurrentGeneration(query);
-            return await _queryScheduler.EnqueueAsync(query, CancellationToken.None);
+            return await _queryScheduler.EnqueueAsync(query, _shutdown.Token);
         }
 
         private void AttachCurrentGeneration(CodeIndexRequest query)
@@ -830,18 +899,71 @@ namespace AIBridgeCodeIndex
 
         private void RequestShutdown()
         {
-            _shutdownRequested = true;
-            _ = Task.Run(async () =>
+            if (_shutdownRequested)
             {
-                await Task.Delay(100);
+                return;
+            }
+
+            _shutdownRequested = true;
+            _shutdown.Cancel();
+            try
+            {
+                _listener?.Stop();
+            }
+            catch
+            {
+            }
+
+            TcpClient[] clients;
+            lock (_clientLock)
+            {
+                clients = new TcpClient[_activeClients.Count];
+                _activeClients.CopyTo(clients);
+            }
+
+            // 关闭 socket 以打断不支持 CancellationToken 的底层网络读写，随后再等待 handler 退出。
+            foreach (var client in clients)
+            {
                 try
                 {
-                    _listener.Stop();
+                    client.Close();
                 }
                 catch
                 {
                 }
-            });
+            }
+        }
+
+        private async Task WaitForHandlersAsync()
+        {
+            Task[] handlers;
+            lock (_clientLock)
+            {
+                handlers = new Task[_activeHandlers.Count];
+                _activeHandlers.CopyTo(handlers);
+            }
+
+            if (handlers.Length == 0)
+            {
+                return;
+            }
+
+            try
+            {
+                await Task.WhenAll(handlers);
+            }
+            catch (Exception ex)
+            {
+                Log("Client handler ended with an error during shutdown: " + ex);
+            }
+        }
+
+        private static async Task WaitForBackgroundTaskAsync(Task task, int timeoutMs)
+        {
+            if (task != null)
+            {
+                await Task.WhenAny(task, Task.Delay(timeoutMs));
+            }
         }
 
         private CodeIndexStatus CreateInitialStatus(string endpoint)
@@ -973,15 +1095,26 @@ namespace AIBridgeCodeIndex
                 lock (_statusFileLock)
                 {
                     var directory = Path.GetDirectoryName(_options.StatusPath);
-                    var json = JsonConvert.SerializeObject(GetStatusSnapshot(), Formatting.Indented, JsonSettings);
-                    if (!string.IsNullOrEmpty(directory))
+                    if (string.IsNullOrEmpty(directory))
                     {
+                        return;
+                    }
+
+                    // status 发布也必须加入 Editor 的启动临界区，保证退出时的“校验后删除”不会与新实例发布交错。
+                    using (var launchLock = TryAcquireDaemonLaunchLock(directory))
+                    {
+                        if (launchLock == null)
+                        {
+                            Log("Skipped status write because the daemon launch lock is unavailable.");
+                            return;
+                        }
+
+                        var json = JsonConvert.SerializeObject(GetStatusSnapshot(), Formatting.Indented, JsonSettings);
                         Directory.CreateDirectory(directory);
                         var lockPath = Path.Combine(directory, "lock.json");
                         WriteAllTextAtomic(lockPath, json);
+                        WriteAllTextAtomic(_options.StatusPath, json);
                     }
-
-                    WriteAllTextAtomic(_options.StatusPath, json);
                 }
             }
             catch (Exception ex)
@@ -1073,21 +1206,256 @@ namespace AIBridgeCodeIndex
                     return;
                 }
 
-                DeleteFileIfExists(_options.StatusPath);
-                DeleteFileIfExists(Path.Combine(directory, "lock.json"));
-                DeleteFileIfExists(Path.Combine(directory, "daemon-process.json"));
-                DeleteFileIfExists(Path.Combine(directory, "daemon-processes", Process.GetCurrentProcess().Id.ToString() + ".json"));
-
-                var tempDirectory = Path.Combine(directory, "temp");
-                if (Directory.Exists(tempDirectory))
+                // 与 Editor 的启动临界区使用同一把跨进程锁。拿不到锁时宁可遗留文件，不能删除新 daemon 已接管的共享状态。
+                using (var launchLock = TryAcquireDaemonLaunchLock(directory))
                 {
-                    Directory.Delete(tempDirectory, true);
+                    if (launchLock == null)
+                    {
+                        Log("Skipped shared transient-state cleanup because the daemon launch lock is unavailable.");
+                    }
+                    else
+                    {
+                        DeleteSharedFileIfOwned(_options.StatusPath, SharedStateFileKind.Status);
+                        DeleteSharedFileIfOwned(Path.Combine(directory, "lock.json"), SharedStateFileKind.Lock);
+                        DeleteLegacyMarkerIfOwned(Path.Combine(directory, "daemon-process.json"));
+                    }
                 }
+
+                // PID 专属 marker 不参与共享接管；只校验并删除当前 PID 对应的实例记录。
+                DeletePidMarkerIfOwned(Path.Combine(directory, "daemon-processes", GetCurrentDaemonPid() + ".json"));
+                DeletePrivateTemporaryFiles(directory);
             }
             catch (Exception ex)
             {
                 Log("Failed to clean transient state: " + ex.Message);
             }
+        }
+
+        private FileStream TryAcquireDaemonLaunchLock(string directory)
+        {
+            var deadline = DateTime.UtcNow.AddMilliseconds(DaemonLaunchLockWaitMs);
+            var launchLockPath = Path.Combine(directory, "daemon-launch.lock");
+            while (DateTime.UtcNow < deadline)
+            {
+                try
+                {
+                    return new FileStream(launchLockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                }
+                catch (IOException)
+                {
+                    Thread.Sleep(DaemonLaunchLockRetryDelayMs);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    Thread.Sleep(DaemonLaunchLockRetryDelayMs);
+                }
+            }
+
+            return null;
+        }
+
+        private void DeleteSharedFileIfOwned(string path, SharedStateFileKind kind)
+        {
+            string json;
+            if (!TryReadAllText(path, out json) || !SharedStateMatchesCurrentDaemon(json, kind))
+            {
+                return;
+            }
+
+            // 在 launch lock 内重读，避免身份检查和删除之间的 TOCTOU 覆盖窗口。
+            string verifiedJson;
+            if (!TryReadAllText(path, out verifiedJson)
+                || !string.Equals(json, verifiedJson, StringComparison.Ordinal)
+                || !SharedStateMatchesCurrentDaemon(verifiedJson, kind))
+            {
+                return;
+            }
+
+            DeleteFileIfExists(path);
+        }
+
+        private void DeleteLegacyMarkerIfOwned(string path)
+        {
+            string json;
+            if (!TryReadAllText(path, out json) || !LegacyMarkerMatchesCurrentDaemon(json))
+            {
+                return;
+            }
+
+            string verifiedJson;
+            if (!TryReadAllText(path, out verifiedJson)
+                || !string.Equals(json, verifiedJson, StringComparison.Ordinal)
+                || !LegacyMarkerMatchesCurrentDaemon(verifiedJson))
+            {
+                return;
+            }
+
+            DeleteFileIfExists(path);
+        }
+
+        private void DeletePidMarkerIfOwned(string path)
+        {
+            string json;
+            if (TryReadAllText(path, out json) && LegacyMarkerMatchesCurrentDaemon(json))
+            {
+                DeleteFileIfExists(path);
+            }
+        }
+
+        private bool SharedStateMatchesCurrentDaemon(string json, SharedStateFileKind kind)
+        {
+            int daemonPid;
+            string token;
+            if (!TryReadInt32JsonProperty(json, "daemonPid", out daemonPid) || daemonPid != GetCurrentDaemonPid())
+            {
+                return false;
+            }
+
+            // status/lock 由同一快照写入；token 是当前 daemon 的稳定实例身份，绝不能记录到日志。
+            return TryReadStringJsonProperty(json, "token", out token)
+                   && !string.IsNullOrEmpty(_options.Token)
+                   && string.Equals(token, _options.Token, StringComparison.Ordinal);
+        }
+
+        private bool LegacyMarkerMatchesCurrentDaemon(string json)
+        {
+            int daemonPid;
+            long startedAtUtcTicks;
+            if (!TryReadInt32JsonProperty(json, "daemonPid", out daemonPid)
+                || daemonPid != GetCurrentDaemonPid()
+                || !TryReadInt64JsonProperty(json, "startedAtUtcTicks", out startedAtUtcTicks)
+                || startedAtUtcTicks <= 0L)
+            {
+                return false;
+            }
+
+            long currentStartedAtUtcTicks;
+            return TryGetCurrentProcessStartUtcTicks(out currentStartedAtUtcTicks)
+                   && Math.Abs(currentStartedAtUtcTicks - startedAtUtcTicks) <= ProcessStartTicksTolerance;
+        }
+
+        private static int GetCurrentDaemonPid()
+        {
+            using (var process = Process.GetCurrentProcess())
+            {
+                return process.Id;
+            }
+        }
+
+        private static bool TryGetCurrentProcessStartUtcTicks(out long startedAtUtcTicks)
+        {
+            startedAtUtcTicks = 0L;
+            try
+            {
+                using (var process = Process.GetCurrentProcess())
+                {
+                    startedAtUtcTicks = process.StartTime.ToUniversalTime().Ticks;
+                    return startedAtUtcTicks > 0L;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryReadAllText(string path, out string contents)
+        {
+            contents = null;
+            try
+            {
+                if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                {
+                    return false;
+                }
+
+                contents = File.ReadAllText(path, Encoding.UTF8);
+                return !string.IsNullOrEmpty(contents);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryReadInt32JsonProperty(string json, string propertyName, out int value)
+        {
+            value = 0;
+            try
+            {
+                var valueObject = JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
+                if (valueObject == null || !valueObject.TryGetValue(propertyName, out var raw) || raw == null)
+                {
+                    return false;
+                }
+
+                return int.TryParse(Convert.ToString(raw, System.Globalization.CultureInfo.InvariantCulture), out value);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryReadInt64JsonProperty(string json, string propertyName, out long value)
+        {
+            value = 0L;
+            try
+            {
+                var valueObject = JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
+                if (valueObject == null || !valueObject.TryGetValue(propertyName, out var raw) || raw == null)
+                {
+                    return false;
+                }
+
+                return long.TryParse(Convert.ToString(raw, System.Globalization.CultureInfo.InvariantCulture), out value);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryReadStringJsonProperty(string json, string propertyName, out string value)
+        {
+            value = null;
+            try
+            {
+                var valueObject = JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
+                if (valueObject == null || !valueObject.TryGetValue(propertyName, out var raw) || raw == null)
+                {
+                    return false;
+                }
+
+                value = Convert.ToString(raw, System.Globalization.CultureInfo.InvariantCulture);
+                return value != null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static void DeletePrivateTemporaryFiles(string directory)
+        {
+            try
+            {
+                var pidPrefix = "." + GetCurrentDaemonPid() + ".";
+                foreach (var path in Directory.EnumerateFiles(directory, "*" + pidPrefix + "*.tmp", SearchOption.TopDirectoryOnly))
+                {
+                    DeleteFileIfExists(path);
+                }
+            }
+            catch
+            {
+                // 临时文件清理失败不应影响共享状态的安全退出。
+            }
+        }
+
+        private enum SharedStateFileKind
+        {
+            Status,
+            Lock
         }
 
         private static void DeleteFileIfExists(string path)
@@ -1109,88 +1477,107 @@ namespace AIBridgeCodeIndex
                 && string.Equals(token, _options.Token, StringComparison.Ordinal);
         }
 
-        private async Task<HttpRequestData> ReadRequestAsync(NetworkStream stream)
+        private async Task<HttpRequestData> ReadRequestHeaderAsync(NetworkStream stream)
         {
-            var buffer = new byte[4096];
-            var memory = new MemoryStream();
-            var headerEnd = -1;
-
-            while (headerEnd < 0)
+            // 必须在认证和路由判定前停止于 CRLFCRLF，避免错误路由或未认证请求的正文被提前读入。
+            var buffer = new byte[1];
+            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token))
+            using (var memory = new MemoryStream())
             {
-                var read = await stream.ReadAsync(buffer, 0, buffer.Length);
-                if (read <= 0)
+                timeout.CancelAfter(NetworkOperationTimeoutMs);
+                var headerEnd = -1;
+                while (headerEnd < 0)
                 {
-                    return null;
+                    var read = await stream.ReadAsync(buffer, 0, buffer.Length, timeout.Token);
+                    if (read <= 0)
+                    {
+                        return null;
+                    }
+
+                    memory.WriteByte(buffer[0]);
+                    if (memory.Length > MaxHttpHeaderBytes)
+                    {
+                        throw new HttpRequestException("HTTP header is too large.");
+                    }
+
+                    headerEnd = FindHeaderEnd(memory.GetBuffer(), (int)memory.Length);
                 }
 
-                memory.Write(buffer, 0, read);
-                if (memory.Length > 65536)
+                var bytes = memory.ToArray();
+                var headerText = Encoding.ASCII.GetString(bytes, 0, headerEnd);
+                var lines = headerText.Split(new[] { "\r\n" }, StringSplitOptions.None);
+                if (lines.Length == 0)
                 {
-                    throw new InvalidOperationException("HTTP header is too large.");
+                    throw new HttpRequestException("HTTP request line is missing.");
                 }
 
-                headerEnd = FindHeaderEnd(memory.GetBuffer(), (int)memory.Length);
-            }
-
-            var bytes = memory.ToArray();
-            var headerText = Encoding.ASCII.GetString(bytes, 0, headerEnd);
-            var lines = headerText.Split(new[] { "\r\n" }, StringSplitOptions.None);
-            if (lines.Length == 0)
-            {
-                return null;
-            }
-
-            var requestLine = lines[0].Split(' ');
-            if (requestLine.Length < 2)
-            {
-                return null;
-            }
-
-            var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 1; i < lines.Length; i++)
-            {
-                var line = lines[i];
-                var colon = line.IndexOf(':');
-                if (colon <= 0)
+                var requestLine = lines[0].Split(' ');
+                if (requestLine.Length < 3)
                 {
-                    continue;
+                    throw new HttpRequestException("HTTP request line is invalid.");
                 }
 
-                headers[line.Substring(0, colon).Trim()] = line.Substring(colon + 1).Trim();
-            }
-
-            var contentLength = 0;
-            if (headers.TryGetValue("Content-Length", out var contentLengthText))
-            {
-                int.TryParse(contentLengthText, out contentLength);
-            }
-
-            var bodyOffset = headerEnd + 4;
-            var body = new MemoryStream();
-            if (bytes.Length > bodyOffset)
-            {
-                body.Write(bytes, bodyOffset, bytes.Length - bodyOffset);
-            }
-
-            while (body.Length < contentLength)
-            {
-                var remaining = Math.Min(buffer.Length, contentLength - (int)body.Length);
-                var read = await stream.ReadAsync(buffer, 0, remaining);
-                if (read <= 0)
+                var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                for (var i = 1; i < lines.Length; i++)
                 {
-                    break;
+                    var line = lines[i];
+                    var colon = line.IndexOf(':');
+                    if (colon <= 0)
+                    {
+                        throw new HttpRequestException("HTTP header is invalid.");
+                    }
+
+                    headers[line.Substring(0, colon).Trim()] = line.Substring(colon + 1).Trim();
                 }
 
-                body.Write(buffer, 0, read);
+                var contentLength = 0;
+                if (headers.TryGetValue("Content-Length", out var contentLengthText)
+                    && (!int.TryParse(contentLengthText, out contentLength) || contentLength < 0))
+                {
+                    throw new HttpRequestException("Content-Length is invalid.");
+                }
+
+                if (contentLength > MaxRequestBodyBytes)
+                {
+                    throw new HttpRequestException("Request body is too large.");
+                }
+
+                return new HttpRequestData
+                {
+                    Method = requestLine[0].ToUpperInvariant(),
+                    Path = requestLine[1],
+                    Headers = headers,
+                    ContentLength = contentLength
+                };
+            }
+        }
+
+        private async Task<string> ReadRequestBodyAsync(NetworkStream stream, HttpRequestData request)
+        {
+            if (request == null || request.ContentLength == 0)
+            {
+                return string.Empty;
             }
 
-            return new HttpRequestData
+            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token))
+            using (var body = new MemoryStream(request.ContentLength))
             {
-                Method = requestLine[0].ToUpperInvariant(),
-                Path = requestLine[1],
-                Headers = headers,
-                BodyText = Encoding.UTF8.GetString(body.ToArray())
-            };
+                timeout.CancelAfter(NetworkOperationTimeoutMs);
+                var buffer = new byte[Math.Min(4096, request.ContentLength)];
+                while (body.Length < request.ContentLength)
+                {
+                    var remaining = Math.Min(buffer.Length, request.ContentLength - (int)body.Length);
+                    var read = await stream.ReadAsync(buffer, 0, remaining, timeout.Token);
+                    if (read <= 0)
+                    {
+                        throw new HttpRequestException("Request body ended unexpectedly.");
+                    }
+
+                    body.Write(buffer, 0, read);
+                }
+
+                return Encoding.UTF8.GetString(body.GetBuffer(), 0, (int)body.Length);
+            }
         }
 
         private static int FindHeaderEnd(byte[] bytes, int length)
@@ -1209,9 +1596,23 @@ namespace AIBridgeCodeIndex
             return -1;
         }
 
-        private static async Task WriteResponseAsync(NetworkStream stream, int statusCode, object body)
+        private async Task TryWriteResponseAsync(NetworkStream stream, int statusCode, object body)
         {
-            var statusText = statusCode == 200 ? "OK" : statusCode == 403 ? "Forbidden" : statusCode == 404 ? "Not Found" : "Error";
+            try
+            {
+                await WriteResponseAsync(stream, statusCode, body);
+            }
+            catch (OperationCanceledException) when (_shutdownRequested)
+            {
+            }
+            catch (IOException ex) when (IsClientDisconnect(ex))
+            {
+            }
+        }
+
+        private async Task WriteResponseAsync(NetworkStream stream, int statusCode, object body)
+        {
+            var statusText = statusCode == 200 ? "OK" : statusCode == 400 ? "Bad Request" : statusCode == 403 ? "Forbidden" : statusCode == 404 ? "Not Found" : "Error";
             var json = JsonConvert.SerializeObject(body, Formatting.None, JsonSettings);
             var bodyBytes = Encoding.UTF8.GetBytes(json);
             var header = "HTTP/1.1 " + statusCode + " " + statusText + "\r\n"
@@ -1219,8 +1620,12 @@ namespace AIBridgeCodeIndex
                          + "Content-Length: " + bodyBytes.Length + "\r\n"
                          + "Connection: close\r\n\r\n";
             var headerBytes = Encoding.ASCII.GetBytes(header);
-            await stream.WriteAsync(headerBytes, 0, headerBytes.Length);
-            await stream.WriteAsync(bodyBytes, 0, bodyBytes.Length);
+            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token))
+            {
+                timeout.CancelAfter(NetworkOperationTimeoutMs);
+                await stream.WriteAsync(headerBytes, 0, headerBytes.Length, timeout.Token);
+                await stream.WriteAsync(bodyBytes, 0, bodyBytes.Length, timeout.Token);
+            }
         }
 
         private static bool IsClientDisconnect(Exception ex)
@@ -1276,7 +1681,7 @@ namespace AIBridgeCodeIndex
             public string Method { get; set; }
             public string Path { get; set; }
             public Dictionary<string, string> Headers { get; set; }
-            public string BodyText { get; set; }
+            public int ContentLength { get; set; }
         }
     }
 }

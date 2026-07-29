@@ -8,8 +8,8 @@ using UnityEngine;
 namespace AIBridge.Editor
 {
     /// <summary>
-    /// Screenshot command: capture Game view, Scene view screenshots and GIF recordings.
-    /// Supports runtime (Play mode) screenshots, Scene view screenshots and animated GIF capture.
+    /// Screenshot command: capture Game view, Scene view, Editor windows and GIF recordings.
+    /// Supports runtime screenshots, Edit mode Editor UI screenshots and animated GIF capture.
     /// </summary>
     public class ScreenshotCommand : ICommand
     {
@@ -24,11 +24,18 @@ Files saved to `.aibridge/screenshots/`.
 $CLI screenshot game  # Capture Game view screenshot (JPG)
 $CLI screenshot scene_view  # Capture Scene view screenshot (JPG, Edit/Play mode)
 $CLI screenshot scene_view --width 1920 --height 1080
+$CLI screenshot editor_window --target editor  # Capture the Unity main window (PNG, Edit/Play mode)
+$CLI screenshot editor_window --target active
+$CLI screenshot editor_window --windowType MyNamespace.MyCustomEditorWindow
 $CLI screenshot gif --frameCount 50  # Record GIF
 $CLI screenshot gif --frameCount 100 --fps 25 --scale 0.5 --colorCount 128
 ```
 
-`game` and `gif` require Play mode. `scene_view` captures the last active Scene view and works in Edit mode.
+`game` and `gif` require Play mode. `scene_view` and `editor_window` work in Edit mode. `editor_window` captures Unity-owned window pixels rather than the OS desktop.
+
+**Editor Window Parameters:**
+
+Use `--target editor|active`, or filter with `--windowType`, `--title`, and `--instanceId`. Type and title filters may be combined. Add `--instanceId` when multiple windows match.
 
 **Scene View Parameters:**
 
@@ -72,10 +79,12 @@ $CLI screenshot gif --frameCount 100 --fps 25 --scale 0.5 --colorCount 128
                         return CaptureGameView(request);
                     case "scene_view":
                         return CaptureSceneView(request);
+                    case "editor_window":
+                        return EditorWindowCaptureCoordinator.Begin(request, WriteResultFile);
                     case "gif":
                         return CaptureGif(request);
                     default:
-                        return CommandResult.Failure(request.id, $"Unknown action: {action}. Supported: game, scene_view, gif");
+                        return CommandResult.Failure(request.id, $"Unknown action: {action}. Supported: game, scene_view, editor_window, gif");
                 }
             }
             catch (Exception ex)
@@ -214,7 +223,7 @@ $CLI screenshot gif --frameCount 100 --fps 25 --scale 0.5 --colorCount 128
         }
 
         /// <summary>
-        /// Write result file directly to the results directory.
+        /// Write an asynchronous screenshot or GIF result directly to the results directory.
         /// </summary>
         private static void WriteResultFile(CommandResult result)
         {
@@ -230,11 +239,11 @@ $CLI screenshot gif --frameCount 100 --fps 25 --scale 0.5 --colorCount 128
                 var json = AIBridgeJson.Serialize(result, pretty: true);
                 AIBridgeAtomicFile.WriteTextAtomic(filePath, json, System.Text.Encoding.UTF8);
 
-                AIBridgeLogger.LogInfo($"GIF recording result written: {result.id}, success={result.success}");
+                AIBridgeLogger.LogInfo($"Async screenshot result written: {result.id}, success={result.success}");
             }
             catch (Exception ex)
             {
-                AIBridgeLogger.LogError($"Failed to write GIF result for {result.id}: {ex.Message}");
+                AIBridgeLogger.LogError($"Failed to write async screenshot result for {result.id}: {ex.Message}");
             }
         }
     }
