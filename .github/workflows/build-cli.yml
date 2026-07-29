@@ -127,11 +127,16 @@ jobs:
           fi
         shell: bash
 
+      - name: Archive platform artifact
+        run: |
+          tar -cf "Tools~/cli-${{ matrix.rid }}.tar" -C "Tools~/CLI/${{ matrix.rid }}" .
+        shell: bash
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: cli-${{ matrix.rid }}
-          path: Tools~/CLI/${{ matrix.rid }}
+          path: Tools~/cli-${{ matrix.rid }}.tar
           retention-days: 30
 
   commit-binaries:
@@ -148,22 +153,21 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: Tools~/CLI
+          path: Tools~/artifacts
           pattern: cli-*
-          merge-multiple: false
+          merge-multiple: true
 
       - name: Reorganize artifacts
         run: |
-          cd Tools~/CLI
-          for dir in cli-*; do
-            rid="${dir#cli-}"
-            if [ -d "$dir" ]; then
-              mkdir -p "$rid"
-              mv "$dir"/* "$rid"/ 2>/dev/null || true
-              rm -rf "$dir"
-            fi
+          for archive in Tools~/artifacts/cli-*.tar; do
+            [ -f "$archive" ] || continue
+            rid="$(basename "$archive" .tar | sed 's/^cli-//')"
+            rm -rf "Tools~/CLI/$rid"
+            mkdir -p "Tools~/CLI/$rid"
+            tar -xf "$archive" -C "Tools~/CLI/$rid"
           done
-          ls -la */
+          rm -rf Tools~/artifacts
+          ls -la Tools~/CLI/*/
 
       - name: Verify final Editor capture helper layout
         run: |
