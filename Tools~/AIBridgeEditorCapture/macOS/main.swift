@@ -279,7 +279,7 @@ private func capture(options: CaptureOptions) {
     writeJson(["success": true, "width": image.width, "height": image.height])
 }
 
-let options = parseOptions()
+private let options = parseOptions()
 guard #available(macOS 12.3, *) else {
     fail("unsupported_platform", "Editor window capture requires macOS 12.3 or newer.", exitCode: 2)
 }
