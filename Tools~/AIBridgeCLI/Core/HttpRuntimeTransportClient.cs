@@ -16,8 +16,11 @@ namespace AIBridgeCLI.Core
         private const string TransportName = "http";
         private const string CheckPassed = "passed";
         private const string CheckFailed = "failed";
-        private const int HealthProbeTimeoutMs = 100;
-        private const int CachedHealthProbeTimeoutMs = 500;
+        private const int HealthProbeTimeoutMs = 500;
+        private const int CachedHealthProbeTimeoutMs = 1000;
+        private const int HealthProbeAttemptCount = 3;
+        private const int HealthProbeRetryDelayMs = 80;
+        private const int LocalPortHealthProbeTimeoutMs = 100;
         private const int LocalPortScanIdleMissLimit = 8;
         private const int DiagnosticCommandTimeoutMs = 3000;
 
@@ -40,7 +43,7 @@ namespace AIBridgeCLI.Core
         {
             options = options ?? RuntimeTargetQueryOptions.Quick;
             var targets = new List<RuntimeTargetInfo>();
-            var cached = RuntimeDiscoveryClient.ReadFreshCache(RuntimeDiscoveryClient.DefaultCacheSeconds);
+            var cached = RuntimeDiscoveryClient.ReadFreshCache(_options.DiscoveryCacheSeconds);
             var cachedHealthTimeout = options.ProbeLocalPorts ? CachedHealthProbeTimeoutMs : HealthProbeTimeoutMs;
             AddTargetFromHealth(targets, _options.HttpUrl, TryGetHealth(_options.HttpUrl), FindCachedTargetByUrl(cached, _options.HttpUrl));
             for (var i = 0; i < cached.Count; i++)
@@ -54,7 +57,7 @@ namespace AIBridgeCLI.Core
                     continue;
                 }
 
-                AddTargetFromHealth(targets, targetUrl, TryGetHealth(targetUrl, cachedHealthTimeout), target);
+                AddTargetFromHealth(targets, targetUrl, TryGetCachedTargetHealth(targetUrl, cachedHealthTimeout), target);
             }
 
             if (options.ProbeLocalPorts && !_options.HttpUrlExplicit && !HasPreferredFilters())
@@ -109,7 +112,7 @@ namespace AIBridgeCLI.Core
                 }
 
                 var beforeCount = targets.Count;
-                AddTargetFromHealth(targets, url, TryGetHealth(url), null);
+                AddTargetFromHealth(targets, url, TryGetLocalPortHealth(url), null);
                 if (targets.Count > beforeCount)
                 {
                     foundAny = true;
@@ -449,6 +452,58 @@ namespace AIBridgeCLI.Core
         }
 
         private bool TryGetHealth(string baseUrl, int timeoutMs, out JObject health, out string error, out int statusCode)
+        {
+            health = null;
+            error = null;
+            statusCode = 0;
+            var effectiveTimeoutMs = Math.Max(HealthProbeTimeoutMs, timeoutMs);
+            for (var attempt = 0; attempt < HealthProbeAttemptCount; attempt++)
+            {
+                if (TryGetHealthOnce(baseUrl, effectiveTimeoutMs, out health, out error, out statusCode))
+                {
+                    return true;
+                }
+
+                if (attempt + 1 >= HealthProbeAttemptCount || !ShouldRetryHealthProbe(statusCode))
+                {
+                    break;
+                }
+
+                Thread.Sleep(HealthProbeRetryDelayMs * (attempt + 1));
+            }
+
+            return false;
+        }
+
+        private JObject TryGetCachedTargetHealth(string baseUrl, int timeoutMs)
+        {
+            JObject health;
+            string error;
+            int statusCode;
+            return TryGetHealthOnce(baseUrl, timeoutMs, out health, out error, out statusCode)
+                ? health
+                : null;
+        }
+
+        private JObject TryGetLocalPortHealth(string baseUrl)
+        {
+            JObject health;
+            string error;
+            int statusCode;
+            return TryGetHealthOnce(baseUrl, LocalPortHealthProbeTimeoutMs, out health, out error, out statusCode)
+                ? health
+                : null;
+        }
+
+        private static bool ShouldRetryHealthProbe(int statusCode)
+        {
+            return statusCode == 0
+                || statusCode == 408
+                || statusCode == 429
+                || statusCode >= 500;
+        }
+
+        private bool TryGetHealthOnce(string baseUrl, int timeoutMs, out JObject health, out string error, out int statusCode)
         {
             health = null;
             error = null;

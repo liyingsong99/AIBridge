@@ -10,6 +10,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using AIBridge.Runtime.Internal;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -19,15 +20,21 @@ namespace AIBridgeCLI.Core
     {
         public const int DefaultDiscoveryPort = 27183;
         public const int DefaultDiscoveryTimeoutMs = 1500;
-        public const int DefaultCacheSeconds = 30;
+        public const int DefaultCacheSeconds = 300;
         public const int DefaultHttpPort = 27182;
         public const int DefaultPortScanCount = 50;
 
         private const int MinReceiveSleepMs = 10;
         private const int HealthCheckMinTimeoutMs = 500;
         private const int HealthCheckMaxTimeoutMs = 2000;
+        private const int AutoDiscoveryTimeoutMs = 1000;
+        private const int CacheLockTimeoutMs = 3000;
+        private const int CacheLockRetryDelayMs = 25;
+        private const int MaxDiscoveryCacheTargets = 64;
         private const string DiscoveryProtocol = "aibridge-runtime-discovery";
         private const string DiscoveryCacheFileName = "discovery-cache.json";
+        private const string DiscoveryCacheLockSuffix = ".lock";
+        private const string DiscoveryRefreshLockSuffix = ".refresh.lock";
 
         public RuntimeDiscoveryResult Discover(int timeoutMs, int udpPort, string projectHint = null)
         {
@@ -140,7 +147,7 @@ namespace AIBridgeCLI.Core
             var cacheTargets = responses
                 .Where(target => target.reachable)
                 .ToList();
-            WriteCache(cacheTargets);
+            WriteCache(cacheTargets, options.cacheSeconds);
 
             var reachableCount = responses.Count(target => target.reachable);
             return new RuntimeDiscoveryResult
@@ -191,6 +198,7 @@ namespace AIBridgeCLI.Core
                 }
 
                 var maxAge = TimeSpan.FromSeconds(Math.Max(1, cacheSeconds <= 0 ? DefaultCacheSeconds : cacheSeconds));
+                var now = DateTimeOffset.UtcNow;
                 var results = new List<RuntimeDiscoveryTarget>();
                 foreach (var token in targetsToken.OfType<JObject>())
                 {
@@ -205,8 +213,10 @@ namespace AIBridgeCLI.Core
                         continue;
                     }
 
-                    if (DateTimeOffset.TryParse(target.lastSeenUtc, out var seen)
-                        && DateTimeOffset.UtcNow - seen > maxAge)
+                    DateTimeOffset seen;
+                    if (!DateTimeOffset.TryParse(target.lastSeenUtc, out seen)
+                        || now - seen > maxAge
+                        || seen - now > maxAge)
                     {
                         continue;
                     }
@@ -220,6 +230,60 @@ namespace AIBridgeCLI.Core
             catch
             {
                 return new List<RuntimeDiscoveryTarget>();
+            }
+        }
+
+        public static List<RuntimeDiscoveryTarget> ReadFreshCacheOrDiscover(
+            int cacheSeconds,
+            int udpPort,
+            string target,
+            string platform,
+            string projectHint,
+            string token)
+        {
+            var effectiveCacheSeconds = Math.Max(1, cacheSeconds <= 0 ? DefaultCacheSeconds : cacheSeconds);
+            var effectiveUdpPort = udpPort <= 0 ? DefaultDiscoveryPort : udpPort;
+            var cached = ReadFreshCache(effectiveCacheSeconds);
+            if (SelectCachedTarget(cached, target, platform, projectHint) != null)
+            {
+                return cached;
+            }
+
+            var cachePath = GetCachePath();
+            var refreshLockPath = cachePath + DiscoveryRefreshLockSuffix;
+            using (var refreshLock = TryAcquireLock(refreshLockPath, CacheLockTimeoutMs))
+            {
+                if (refreshLock == null)
+                {
+                    return ReadFreshCache(effectiveCacheSeconds);
+                }
+
+                // 只有第一个 CLI 进程执行 LAN 扫描，其余并发请求复用它写入的 cache。
+                cached = ReadFreshCache(effectiveCacheSeconds);
+                if (SelectCachedTarget(cached, target, platform, projectHint) != null)
+                {
+                    return cached;
+                }
+
+                try
+                {
+                    new RuntimeDiscoveryClient().Discover(new RuntimeDiscoveryOptions
+                    {
+                        timeoutMs = AutoDiscoveryTimeoutMs,
+                        udpPort = effectiveUdpPort,
+                        cacheSeconds = effectiveCacheSeconds,
+                        projectHint = projectHint,
+                        token = token,
+                        scanAllInterfaces = true
+                    });
+                }
+                catch
+                {
+                    // 自动发现失败时保留已有新鲜缓存，避免瞬时网络异常把 --target latest 解析成空。
+                    return ReadFreshCache(effectiveCacheSeconds);
+                }
+
+                return ReadFreshCache(effectiveCacheSeconds);
             }
         }
 
@@ -263,6 +327,7 @@ namespace AIBridgeCLI.Core
             options = options ?? new RuntimeDiscoveryOptions();
             options.timeoutMs = Math.Max(100, options.timeoutMs <= 0 ? DefaultDiscoveryTimeoutMs : options.timeoutMs);
             options.udpPort = options.udpPort <= 0 ? DefaultDiscoveryPort : options.udpPort;
+            options.cacheSeconds = Math.Max(1, options.cacheSeconds <= 0 ? DefaultCacheSeconds : options.cacheSeconds);
             options.projectHint = NormalizeOption(options.projectHint);
             options.localIp = NormalizeOption(options.localIp);
             options.interfaceName = NormalizeOption(options.interfaceName);
@@ -678,7 +743,7 @@ namespace AIBridgeCLI.Core
             return target;
         }
 
-        private static void WriteCache(List<RuntimeDiscoveryTarget> targets)
+        private static void WriteCache(List<RuntimeDiscoveryTarget> targets, int cacheSeconds)
         {
             var path = GetCachePath();
             var directory = Path.GetDirectoryName(path);
@@ -687,11 +752,118 @@ namespace AIBridgeCLI.Core
                 Directory.CreateDirectory(directory);
             }
 
-            File.WriteAllText(path, JsonConvert.SerializeObject(new
+            using (var cacheLock = TryAcquireLock(path + DiscoveryCacheLockSuffix, CacheLockTimeoutMs))
             {
-                updatedAtUtc = DateTime.UtcNow.ToString("o"),
-                targets = targets ?? new List<RuntimeDiscoveryTarget>()
-            }, Formatting.Indented, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore }));
+                if (cacheLock == null)
+                {
+                    return;
+                }
+
+                var mergedTargets = MergeCacheTargets(ReadFreshCache(cacheSeconds), targets);
+                var json = JsonConvert.SerializeObject(new
+                {
+                    updatedAtUtc = DateTime.UtcNow.ToString("o"),
+                    targets = mergedTargets
+                }, Formatting.Indented, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
+                AIBridgeAtomicFile.WriteTextAtomic(path, json, Encoding.UTF8);
+            }
+        }
+
+        private static List<RuntimeDiscoveryTarget> MergeCacheTargets(
+            List<RuntimeDiscoveryTarget> existing,
+            List<RuntimeDiscoveryTarget> incoming)
+        {
+            var merged = existing == null
+                ? new List<RuntimeDiscoveryTarget>()
+                : new List<RuntimeDiscoveryTarget>(existing);
+            if (incoming == null)
+            {
+                return merged;
+            }
+
+            for (var i = 0; i < incoming.Count; i++)
+            {
+                var target = incoming[i];
+                if (target == null)
+                {
+                    continue;
+                }
+
+                var index = merged.FindIndex(existingTarget => SameTarget(existingTarget, target));
+                if (index >= 0)
+                {
+                    merged[index] = SelectFreshestTarget(merged[index], target);
+                }
+                else
+                {
+                    merged.Add(target);
+                }
+            }
+
+            merged.Sort(CompareTargets);
+            if (merged.Count > MaxDiscoveryCacheTargets)
+            {
+                merged.RemoveRange(MaxDiscoveryCacheTargets, merged.Count - MaxDiscoveryCacheTargets);
+            }
+
+            return merged;
+        }
+
+        private static RuntimeDiscoveryTarget SelectFreshestTarget(
+            RuntimeDiscoveryTarget existing,
+            RuntimeDiscoveryTarget incoming)
+        {
+            if (existing == null)
+            {
+                return incoming;
+            }
+
+            if (incoming == null)
+            {
+                return existing;
+            }
+
+            DateTimeOffset existingSeen;
+            DateTimeOffset incomingSeen;
+            var existingHasSeen = DateTimeOffset.TryParse(existing.lastSeenUtc, out existingSeen);
+            var incomingHasSeen = DateTimeOffset.TryParse(incoming.lastSeenUtc, out incomingSeen);
+            if (existingHasSeen && (!incomingHasSeen || existingSeen > incomingSeen))
+            {
+                return existing;
+            }
+
+            return incoming;
+        }
+
+        private static FileStream TryAcquireLock(string path, int timeoutMs)
+        {
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(0, timeoutMs));
+            while (true)
+            {
+                try
+                {
+                    return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                }
+                catch (IOException)
+                {
+                    if (DateTime.UtcNow >= deadline)
+                    {
+                        return null;
+                    }
+
+                    Thread.Sleep(CacheLockRetryDelayMs);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    return null;
+                }
+            }
         }
 
         private static bool SameTarget(RuntimeDiscoveryTarget left, RuntimeDiscoveryTarget right)
@@ -1110,6 +1282,7 @@ namespace AIBridgeCLI.Core
     {
         public int timeoutMs { get; set; } = RuntimeDiscoveryClient.DefaultDiscoveryTimeoutMs;
         public int udpPort { get; set; } = RuntimeDiscoveryClient.DefaultDiscoveryPort;
+        public int cacheSeconds { get; set; } = RuntimeDiscoveryClient.DefaultCacheSeconds;
         public string projectHint { get; set; }
         public string localIp { get; set; }
         public string interfaceName { get; set; }

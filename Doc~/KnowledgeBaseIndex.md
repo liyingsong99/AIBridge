@@ -3,7 +3,7 @@
 ## 状态
 
 - 状态：当前索引
-- 更新时间：2026-07-29
+- 更新时间：2026-07-31
 - 维护范围：`Packages/cn.lys.aibridge`
 
 ## 目的
@@ -148,9 +148,10 @@
 - Skill 和 RootRule 的 AI 规则 Markdown 不保留普通规则行末尾的 `。` / `.`；源模板、安装副本和生成器输出保持一致
 - Runtime HTTP transport 正常运行时不再轮询 file command 目录，也不为 HTTP command 默认写 result 文件；旧 File transport 仅作为 HTTP 未运行时的兼容回退路径。
 - Runtime HTTP command 成功、timeout、Runtime not-ready 和 CLI cleanup 都会关闭 pending id，迟到的 HTTP 异步结果不会回落到 file result 落盘。
-- Runtime heartbeat 默认间隔为 2 秒；File heartbeat stale 判定保留 15 秒窗口，不会因默认心跳降频触发误判。
+- Runtime heartbeat 默认间隔为 5 秒；Editor 实例心跳同样为 5 秒；File heartbeat stale 判定保留 15 秒窗口，不会因默认心跳降频触发误判。
 - Editor 实例心跳写在项目外用户状态目录（Windows 默认 `%LOCALAPPDATA%/AIBridge/instances/<projectKey>/editor-instance.json`，可用 `AIBRIDGE_STATE_DIR` 覆盖）；`.aibridge` 只保留命令交换与项目产物；禁用 AIBridge 后不再刷新心跳；CLI `focus` 优先读外部路径，并兼容遗留 `.aibridge/editor-instance.json`。
 - Runtime UI snapshot/find 默认不做逐按钮 raycast；需要遮挡诊断时显式传入 `includeRaycastDetails=true`。
+- HTTP Runtime quick health probe 使用 500ms 基础超时和有限退避重试；本地端口扫描与缓存目标探测保持单次短时预算；自动发现遵循 `runtime-config.json` 的 `discovery.udpPort`；CLI 与 Editor Players 面板共用 discovery cache，均通过跨进程锁串行更新、合并仍新鲜的历史目标并原子发布，因此并发 CLI/`AIBridge/Players` 发现不会互相覆盖远程或手机 Player；自动发现失败时回退已有新鲜缓存，保证 `--target latest` 稳定；HTTP 命令队列上限为 128，重复活动/近期 id 返回 409、队列满返回 429，health/status 暴露当前队列深度。
 - Agent 和脚本的短生命周期输出统一写入 `.aibridge/tmp/`，由 Cache 清理按保留期清理；兼容清理仅处理过期的顶层 `tmp_*` / `tmp-*` 文件，不会扫描或删除其他顶层产物。
 
 ## Code Index 收口

@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading;
 using AIBridge.Internal.Json;
 using AIBridge.Runtime;
+using AIBridge.Runtime.Internal;
 using UnityEditor;
 using UnityEngine;
 
@@ -78,7 +79,7 @@ namespace AIBridge.Editor
         public const string ResultsDirectoryName = "results";
         public const string RuntimeConfigFileName = "runtime-config.json";
         public const string DiscoveryCacheFileName = "discovery-cache.json";
-        public const int DiscoveryCacheFreshSeconds = 30;
+        public const int DiscoveryCacheFreshSeconds = 300;
         public const int DefaultLanDiscoveryTimeoutMs = 1500;
         private const int DefaultRuntimeHttpPort = 27182;
         private const int LanDiscoveryPortScanCount = 50;
@@ -86,7 +87,11 @@ namespace AIBridge.Editor
         private const int MinReceiveSleepMs = 10;
         private const int HealthCheckMinTimeoutMs = 500;
         private const int HealthCheckMaxTimeoutMs = 2000;
+        private const int MaxDiscoveryCacheTargets = 64;
+        private const int DiscoveryCacheLockTimeoutMs = 3000;
+        private const int DiscoveryCacheLockRetryDelayMs = 25;
         private const string DiscoveryProtocol = "aibridge-runtime-discovery";
+        private const string DiscoveryCacheLockSuffix = ".lock";
         private static readonly TimeSpan StaleHeartbeatTimeout = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan DiscoveryCacheStaleTimeout = TimeSpan.FromSeconds(DiscoveryCacheFreshSeconds);
 
@@ -412,33 +417,6 @@ namespace AIBridge.Editor
 
             try
             {
-                var cache = ReadDiscoveryCache();
-                var rawTargets = GetList(cache, "targets");
-                if (cache == null || rawTargets == null)
-                {
-                    return true;
-                }
-
-                var keptTargets = new List<object>();
-                var removed = false;
-                for (var i = 0; i < rawTargets.Count; i++)
-                {
-                    var item = rawTargets[i] as Dictionary<string, object>;
-                    if (item != null && IsSameDiscoveredTarget(item, target))
-                    {
-                        removed = true;
-                        continue;
-                    }
-
-                    keptTargets.Add(rawTargets[i]);
-                }
-
-                if (!removed)
-                {
-                    return true;
-                }
-
-                cache["targets"] = keptTargets;
                 var path = GetDiscoveryCachePath();
                 var directory = Path.GetDirectoryName(path);
                 if (!string.IsNullOrEmpty(directory))
@@ -446,8 +424,48 @@ namespace AIBridge.Editor
                     Directory.CreateDirectory(directory);
                 }
 
-                File.WriteAllText(path, AIBridgeJson.Serialize(cache, pretty: true));
-                return true;
+                using (var cacheLock = TryAcquireDiscoveryCacheLock(path + DiscoveryCacheLockSuffix, DiscoveryCacheLockTimeoutMs))
+                {
+                    if (cacheLock == null)
+                    {
+                        error = "Discovery cache is busy. Retry delete after concurrent CLI/Editor writers finish.";
+                        return false;
+                    }
+
+                    var cache = ReadDiscoveryCache();
+                    var rawTargets = GetList(cache, "targets");
+                    if (cache == null || rawTargets == null)
+                    {
+                        return true;
+                    }
+
+                    var keptTargets = new List<object>();
+                    var removed = false;
+                    for (var i = 0; i < rawTargets.Count; i++)
+                    {
+                        var item = rawTargets[i] as Dictionary<string, object>;
+                        if (item != null && IsSameDiscoveredTarget(item, target))
+                        {
+                            removed = true;
+                            continue;
+                        }
+
+                        keptTargets.Add(rawTargets[i]);
+                    }
+
+                    if (!removed)
+                    {
+                        return true;
+                    }
+
+                    cache["targets"] = keptTargets;
+                    cache["updatedAtUtc"] = DateTime.UtcNow.ToString("o");
+                    AIBridgeAtomicFile.WriteTextAtomic(
+                        path,
+                        AIBridgeJson.Serialize(cache, pretty: true),
+                        new UTF8Encoding(false));
+                    return true;
+                }
             }
             catch (Exception exception)
             {
@@ -934,12 +952,214 @@ namespace AIBridge.Editor
                 Directory.CreateDirectory(directory);
             }
 
-            var cache = new Dictionary<string, object>
+            // 与 CLI discovery cache 共用同一文件；必须加锁合并，避免 Players 面板扫描覆盖仍新鲜的手机/远程目标。
+            using (var cacheLock = TryAcquireDiscoveryCacheLock(path + DiscoveryCacheLockSuffix, DiscoveryCacheLockTimeoutMs))
             {
-                ["updatedAtUtc"] = DateTime.UtcNow.ToString("o"),
-                ["targets"] = targets ?? new List<AIBridgeRuntimeLanDiscoveryTarget>()
+                if (cacheLock == null)
+                {
+                    return;
+                }
+
+                var mergedTargets = MergeDiscoveryCacheTargets(ReadFreshDiscoveryCacheTargets(), targets);
+                var cache = new Dictionary<string, object>
+                {
+                    ["updatedAtUtc"] = DateTime.UtcNow.ToString("o"),
+                    ["targets"] = mergedTargets
+                };
+                AIBridgeAtomicFile.WriteTextAtomic(
+                    path,
+                    AIBridgeJson.Serialize(cache, pretty: true),
+                    new UTF8Encoding(false));
+            }
+        }
+
+        private static List<AIBridgeRuntimeLanDiscoveryTarget> ReadFreshDiscoveryCacheTargets()
+        {
+            var results = new List<AIBridgeRuntimeLanDiscoveryTarget>();
+            var cache = ReadDiscoveryCache();
+            var rawTargets = GetList(cache, "targets");
+            if (rawTargets == null)
+            {
+                return results;
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            for (var i = 0; i < rawTargets.Count; i++)
+            {
+                var item = rawTargets[i] as Dictionary<string, object>;
+                var target = ParseLanDiscoveryTarget(item);
+                if (target == null)
+                {
+                    continue;
+                }
+
+                DateTimeOffset seen;
+                if (!DateTimeOffset.TryParse(target.lastSeenUtc, out seen)
+                    || now - seen > DiscoveryCacheStaleTimeout
+                    || seen - now > DiscoveryCacheStaleTimeout)
+                {
+                    continue;
+                }
+
+                results.Add(target);
+            }
+
+            return results;
+        }
+
+        private static List<AIBridgeRuntimeLanDiscoveryTarget> MergeDiscoveryCacheTargets(
+            List<AIBridgeRuntimeLanDiscoveryTarget> existing,
+            List<AIBridgeRuntimeLanDiscoveryTarget> incoming)
+        {
+            var merged = existing == null
+                ? new List<AIBridgeRuntimeLanDiscoveryTarget>()
+                : new List<AIBridgeRuntimeLanDiscoveryTarget>(existing);
+            if (incoming == null)
+            {
+                return TrimDiscoveryCacheTargets(merged);
+            }
+
+            for (var i = 0; i < incoming.Count; i++)
+            {
+                var target = incoming[i];
+                if (target == null)
+                {
+                    continue;
+                }
+
+                var index = merged.FindIndex(existingTarget => IsSameLanDiscoveryTarget(existingTarget, target));
+                if (index >= 0)
+                {
+                    merged[index] = SelectFreshestLanDiscoveryTarget(merged[index], target);
+                }
+                else
+                {
+                    merged.Add(target);
+                }
+            }
+
+            return TrimDiscoveryCacheTargets(merged);
+        }
+
+        private static List<AIBridgeRuntimeLanDiscoveryTarget> TrimDiscoveryCacheTargets(
+            List<AIBridgeRuntimeLanDiscoveryTarget> targets)
+        {
+            if (targets == null)
+            {
+                return new List<AIBridgeRuntimeLanDiscoveryTarget>();
+            }
+
+            targets.Sort(CompareLanDiscoveryTargets);
+            if (targets.Count > MaxDiscoveryCacheTargets)
+            {
+                targets.RemoveRange(MaxDiscoveryCacheTargets, targets.Count - MaxDiscoveryCacheTargets);
+            }
+
+            return targets;
+        }
+
+        private static AIBridgeRuntimeLanDiscoveryTarget SelectFreshestLanDiscoveryTarget(
+            AIBridgeRuntimeLanDiscoveryTarget existing,
+            AIBridgeRuntimeLanDiscoveryTarget incoming)
+        {
+            if (existing == null)
+            {
+                return incoming;
+            }
+
+            if (incoming == null)
+            {
+                return existing;
+            }
+
+            DateTimeOffset existingSeen;
+            DateTimeOffset incomingSeen;
+            var existingHasSeen = DateTimeOffset.TryParse(existing.lastSeenUtc, out existingSeen);
+            var incomingHasSeen = DateTimeOffset.TryParse(incoming.lastSeenUtc, out incomingSeen);
+            if (existingHasSeen && (!incomingHasSeen || existingSeen > incomingSeen))
+            {
+                return existing;
+            }
+
+            return incoming;
+        }
+
+        private static AIBridgeRuntimeLanDiscoveryTarget ParseLanDiscoveryTarget(Dictionary<string, object> item)
+        {
+            if (item == null)
+            {
+                return null;
+            }
+
+            var url = GetString(item, "url");
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                url = GetString(item, "reachableUrl");
+            }
+
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                return null;
+            }
+
+            return new AIBridgeRuntimeLanDiscoveryTarget
+            {
+                targetId = GetString(item, "targetId") ?? "http",
+                source = GetString(item, "source"),
+                transport = GetString(item, "transport"),
+                url = url.TrimEnd('/'),
+                reachableUrl = (GetString(item, "reachableUrl") ?? url).TrimEnd('/'),
+                bindUrl = GetString(item, "bindUrl"),
+                platform = GetString(item, "platform"),
+                projectName = GetString(item, "projectName"),
+                applicationVersion = GetString(item, "applicationVersion"),
+                deviceName = GetString(item, "deviceName"),
+                requiresToken = GetBool(item, "requiresToken"),
+                lastSeenUtc = GetString(item, "lastSeenUtc"),
+                lastHealthCheckUtc = GetString(item, "lastHealthCheckUtc"),
+                reachable = !item.ContainsKey("reachable") || GetBool(item, "reachable"),
+                healthUrl = GetString(item, "healthUrl"),
+                healthError = GetString(item, "healthError"),
+                remoteEndPoint = GetString(item, "remoteEndPoint"),
+                sourceInterface = GetString(item, "sourceInterface"),
+                sourceInterfaceDescription = GetString(item, "sourceInterfaceDescription"),
+                sourceInterfaceAddress = GetString(item, "sourceInterfaceAddress"),
+                sourceInterfaceBroadcast = GetString(item, "sourceInterfaceBroadcast"),
+                isLocal = GetBool(item, "isLocal"),
+                isVirtualInterface = GetBool(item, "isVirtualInterface"),
+                targetKind = GetString(item, "targetKind")
             };
-            File.WriteAllText(path, AIBridgeJson.Serialize(cache, pretty: true));
+        }
+
+        private static FileStream TryAcquireDiscoveryCacheLock(string path, int timeoutMs)
+        {
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(0, timeoutMs));
+            while (true)
+            {
+                try
+                {
+                    return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                }
+                catch (IOException)
+                {
+                    if (DateTime.UtcNow >= deadline)
+                    {
+                        return null;
+                    }
+
+                    Thread.Sleep(DiscoveryCacheLockRetryDelayMs);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    return null;
+                }
+            }
         }
 
         private static Dictionary<string, object> ReadHeartbeat(string heartbeatPath)

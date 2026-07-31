@@ -197,8 +197,9 @@ namespace AIBridgeCLI.Core
                     suggestions = new[]
                     {
                         "Run: $CLI runtime list_targets --probe true",
-                        "Run: $CLI runtime discover --timeout 500",
-                        "Run: $CLI runtime diagnose --target " + _target
+                        "Run: $CLI runtime discover --timeout 1000 --projectHint <project>",
+                        "Run: $CLI runtime diagnose --target " + _target,
+                        "If the target is a phone, verify the PC and Player share the same WLAN and port 27182 is reachable."
                     }
                 }
             };

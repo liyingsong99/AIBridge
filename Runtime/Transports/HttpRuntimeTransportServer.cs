@@ -327,7 +327,17 @@ namespace AIBridge.Runtime.Transports
             string enqueueError;
             if (!_runtime.EnqueueHttpCommand(command, out enqueueError))
             {
-                WriteJson(stream, 503, BuildRuntimeNotReadyResult(command.Id, enqueueError, mainThreadAgeMs));
+                var duplicateCommandId = string.Equals(enqueueError, "duplicate_command_id", StringComparison.OrdinalIgnoreCase);
+                var commandQueueFull = string.Equals(enqueueError, "command_queue_full", StringComparison.OrdinalIgnoreCase);
+                var statusCode = duplicateCommandId
+                    ? 409
+                    : commandQueueFull
+                        ? 429
+                        : 503;
+                var rejectionResult = duplicateCommandId || commandQueueFull
+                    ? BuildCommandRejectedResult(command.Id, enqueueError, mainThreadAgeMs)
+                    : BuildRuntimeNotReadyResult(command.Id, enqueueError, mainThreadAgeMs);
+                WriteJson(stream, statusCode, rejectionResult);
                 return;
             }
 
@@ -385,6 +395,19 @@ namespace AIBridge.Runtime.Transports
             var result = AIBridgeRuntimeCommandResult.FromFailure(
                 commandId,
                 string.IsNullOrEmpty(reason) ? "runtime_not_ready" : "runtime_not_ready: " + reason);
+            result.Data = new Dictionary<string, object>
+            {
+                ["reason"] = reason,
+                ["lastMainThreadTickAgeMs"] = mainThreadAgeMs == long.MaxValue ? (object)null : mainThreadAgeMs
+            };
+            return result;
+        }
+
+        private static AIBridgeRuntimeCommandResult BuildCommandRejectedResult(string commandId, string reason, long mainThreadAgeMs)
+        {
+            var result = AIBridgeRuntimeCommandResult.FromFailure(
+                commandId,
+                string.IsNullOrEmpty(reason) ? "command_rejected" : reason);
             result.Data = new Dictionary<string, object>
             {
                 ["reason"] = reason,
@@ -716,6 +739,12 @@ namespace AIBridge.Runtime.Transports
                     return "Unauthorized";
                 case 404:
                     return "Not Found";
+                case 409:
+                    return "Conflict";
+                case 429:
+                    return "Too Many Requests";
+                case 503:
+                    return "Service Unavailable";
                 case 504:
                     return "Gateway Timeout";
                 default:

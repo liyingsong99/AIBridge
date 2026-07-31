@@ -5,7 +5,7 @@ namespace AIBridge.Runtime
     [Serializable]
     public class AIBridgeRuntimeSettings
     {
-        public const float DefaultHeartbeatIntervalSeconds = 2f;
+        public const float DefaultHeartbeatIntervalSeconds = 5f;
 
         public bool enableRuntimeBridge = true;
         public bool allowInReleaseBuild = false;

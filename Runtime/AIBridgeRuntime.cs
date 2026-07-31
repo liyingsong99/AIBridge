@@ -46,6 +46,7 @@ namespace AIBridge.Runtime
         private const int MaxRuntimeCodeCollectionItems = 512;
         private const int CommandPumpStaleMilliseconds = 3000;
         private const int ClosedHttpCommandIdCapacity = 512;
+        private const int MaxHttpCommandQueueLength = 128;
         private const float MinFileTransportPollIntervalSeconds = 0.5f;
 
         private static readonly string[] BuiltInActions =
@@ -1844,6 +1845,12 @@ namespace AIBridge.Runtime
             data["lastMainThreadTickUtc"] = GetLastMainThreadTickUtc();
             data["lastMainThreadTickAgeMs"] = ageMs == long.MaxValue ? (object)null : ageMs;
             data["processingCommands"] = Interlocked.CompareExchange(ref _processingCommands, 0, 0);
+            lock (_commandQueue)
+            {
+                data["queuedCommands"] = _commandQueue.Count;
+                data["maxHttpCommandQueueLength"] = MaxHttpCommandQueueLength;
+            }
+
             data["stopReason"] = _runtimeStopReason;
         }
 
@@ -2157,12 +2164,32 @@ namespace AIBridge.Runtime
             {
                 lock (_pendingHttpResultsSyncRoot)
                 {
+                    if (_httpCommandIds.Contains(command.Id) || _closedHttpCommandIds.Contains(command.Id))
+                    {
+                        error = "duplicate_command_id";
+                        return false;
+                    }
+
                     _httpCommandIds.Add(command.Id);
                 }
             }
 
             lock (_commandQueue)
             {
+                if (_commandQueue.Count >= MaxHttpCommandQueueLength)
+                {
+                    if (!string.IsNullOrEmpty(command.Id))
+                    {
+                        lock (_pendingHttpResultsSyncRoot)
+                        {
+                            _httpCommandIds.Remove(command.Id);
+                        }
+                    }
+
+                    error = "command_queue_full";
+                    return false;
+                }
+
                 _commandQueue.Enqueue(command);
             }
 

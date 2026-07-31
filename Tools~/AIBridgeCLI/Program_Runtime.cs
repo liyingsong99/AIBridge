@@ -69,6 +69,9 @@ namespace AIBridgeCLI
                 ? RuntimeDiscoveryClient.DefaultDiscoveryPort
                 : config.discovery.udpPort;
             var udpPort = parsed.GetInt("udpPort", defaultUdpPort);
+            var cacheSeconds = config.discovery == null || config.discovery.cacheSeconds <= 0
+                ? RuntimeDiscoveryClient.DefaultCacheSeconds
+                : config.discovery.cacheSeconds;
             parsed.Options.TryGetValue("projectHint", out var projectHint);
             parsed.Options.TryGetValue("localIp", out var localIp);
             parsed.Options.TryGetValue("interface", out var interfaceName);
@@ -85,6 +88,7 @@ namespace AIBridgeCLI
                 {
                     timeoutMs = timeoutMs,
                     udpPort = udpPort,
+                    cacheSeconds = cacheSeconds,
                     projectHint = projectHint,
                     localIp = localIp,
                     interfaceName = interfaceName,

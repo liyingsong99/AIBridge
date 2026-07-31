@@ -38,7 +38,9 @@ namespace AIBridgeCLI.Core
                         {
                             enabled = ReadBool(discoveryToken, "enabled") ?? true,
                             udpPort = ReadInt(discoveryToken, "udpPort") ?? RuntimeDiscoveryClient.DefaultDiscoveryPort,
-                            cacheSeconds = ReadInt(discoveryToken, "cacheSeconds") ?? RuntimeDiscoveryClient.DefaultCacheSeconds
+                            cacheSeconds = Math.Max(
+                                RuntimeDiscoveryClient.DefaultCacheSeconds,
+                                ReadInt(discoveryToken, "cacheSeconds") ?? RuntimeDiscoveryClient.DefaultCacheSeconds)
                         }
                 };
             }

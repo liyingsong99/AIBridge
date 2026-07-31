@@ -33,6 +33,7 @@ namespace AIBridgeCLI.Tests
                 WorkflowReport_IncludesFailedRuntimePerformanceEvidence();
                 ArtifactRequiredGate_MatchesSemanticKind();
                 AtomicFile_WriteTextAtomic_ReplacesExistingFileAndRemovesTemp();
+                RuntimeDiscoveryCache_StaysFreshAndMergesConcurrentWrites();
                 CommandSender_TryGetResult_RetriesIncompleteJson();
                 AssetSearch_PositionalKeywordShortcut_MapsToKeyword();
                 AssetSearch_PositionalKeywordShortcut_RejectsDuplicateKeyword();
@@ -364,6 +365,142 @@ namespace AIBridgeCLI.Tests
                 {
                     Directory.Delete(directory, true);
                 }
+            }
+        }
+
+        private static void RuntimeDiscoveryCache_StaysFreshAndMergesConcurrentWrites()
+        {
+            const int cacheSeconds = 300;
+            var previousRoot = Environment.GetEnvironmentVariable("UNITY_PROJECT_ROOT");
+            var previousDirectory = Directory.GetCurrentDirectory();
+            var projectRoot = Path.Combine(Path.GetTempPath(), "AIBridgeCLI.DiscoveryCache.Tests." + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Directory.CreateDirectory(projectRoot);
+                Environment.SetEnvironmentVariable("UNITY_PROJECT_ROOT", projectRoot);
+                Directory.SetCurrentDirectory(projectRoot);
+                ResetPathHelperCache();
+
+                var writeCache = typeof(RuntimeDiscoveryClient).GetMethod(
+                    "WriteCache",
+                    BindingFlags.Static | BindingFlags.NonPublic);
+                AssertTrue(writeCache != null, "Discovery cache writer should remain available for cache regression coverage.");
+
+                var now = DateTime.UtcNow;
+                var firstTargets = new List<RuntimeDiscoveryTarget>
+                {
+                    new RuntimeDiscoveryTarget
+                    {
+                        targetId = "phone-a",
+                        url = "http://192.0.2.10:27182",
+                        reachableUrl = "http://192.0.2.10:27182",
+                        reachable = true,
+                        lastSeenUtc = now.ToString("o")
+                    }
+                };
+                var secondTargets = new List<RuntimeDiscoveryTarget>
+                {
+                    new RuntimeDiscoveryTarget
+                    {
+                        targetId = "phone-b",
+                        url = "http://192.0.2.11:27182",
+                        reachableUrl = "http://192.0.2.11:27182",
+                        reachable = true,
+                        lastSeenUtc = now.AddMilliseconds(1).ToString("o")
+                    }
+                };
+
+                Exception writeFailure = null;
+                var failureSyncRoot = new object();
+                using (var startGate = new ManualResetEvent(false))
+                {
+                    var firstWriter = new Thread(() =>
+                    {
+                        startGate.WaitOne();
+                        try
+                        {
+                            writeCache.Invoke(null, new object[] { firstTargets, cacheSeconds });
+                        }
+                        catch (Exception ex)
+                        {
+                            lock (failureSyncRoot)
+                            {
+                                if (writeFailure == null)
+                                {
+                                    writeFailure = ex.InnerException ?? ex;
+                                }
+                            }
+                        }
+                    });
+                    var secondWriter = new Thread(() =>
+                    {
+                        startGate.WaitOne();
+                        try
+                        {
+                            writeCache.Invoke(null, new object[] { secondTargets, cacheSeconds });
+                        }
+                        catch (Exception ex)
+                        {
+                            lock (failureSyncRoot)
+                            {
+                                if (writeFailure == null)
+                                {
+                                    writeFailure = ex.InnerException ?? ex;
+                                }
+                            }
+                        }
+                    });
+
+                    firstWriter.Start();
+                    secondWriter.Start();
+                    startGate.Set();
+                    firstWriter.Join();
+                    secondWriter.Join();
+                }
+
+                AssertTrue(writeFailure == null, "Concurrent discovery cache writes should not fail: " + writeFailure);
+                var freshTargets = RuntimeDiscoveryClient.ReadFreshCache(cacheSeconds);
+                AssertEqual(2, freshTargets.Count, "Concurrent discovery cache writes should retain both fresh targets.");
+                AssertTrue(
+                    freshTargets.Exists(target => string.Equals(target.targetId, "phone-a", StringComparison.OrdinalIgnoreCase)),
+                    "Merged discovery cache should retain the first target.");
+                AssertTrue(
+                    freshTargets.Exists(target => string.Equals(target.targetId, "phone-b", StringComparison.OrdinalIgnoreCase)),
+                    "Merged discovery cache should retain the second target.");
+
+                writeCache.Invoke(null, new object[] { new List<RuntimeDiscoveryTarget>(), cacheSeconds });
+                var preservedAfterEmptyWrite = RuntimeDiscoveryClient.ReadFreshCache(cacheSeconds);
+                AssertEqual(2, preservedAfterEmptyWrite.Count, "Empty discovery write should preserve existing fresh targets.");
+
+                var cachePath = RuntimeDiscoveryClient.GetCachePath();
+                var expiredCache = new JObject
+                {
+                    ["targets"] = new JArray
+                    {
+                        new JObject
+                        {
+                            ["targetId"] = "stale-target",
+                            ["url"] = "http://192.0.2.12:27182",
+                            ["reachable"] = true,
+                            ["lastSeenUtc"] = now.AddSeconds(-cacheSeconds - 1).ToString("o")
+                        },
+                        new JObject
+                        {
+                            ["targetId"] = "missing-timestamp",
+                            ["url"] = "http://192.0.2.13:27182",
+                            ["reachable"] = true
+                        }
+                    }
+                };
+                File.WriteAllText(cachePath, expiredCache.ToString(), new UTF8Encoding(false));
+                AssertEqual(0, RuntimeDiscoveryClient.ReadFreshCache(cacheSeconds).Count, "Discovery cache must ignore stale or timestamp-less targets.");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("UNITY_PROJECT_ROOT", previousRoot);
+                Directory.SetCurrentDirectory(previousDirectory);
+                ResetPathHelperCache();
+                TryDeleteDirectory(projectRoot);
             }
         }
 
@@ -884,7 +1021,7 @@ namespace AIBridgeCLI.Tests
                     "AIBRIDGE_STATE_DIR should override the state root.");
 
                 var key = AIBridgeEditorInstancePaths.BuildProjectKey(projectRoot);
-                AssertTrue(key.StartsWith("DemoGame_", StringComparison.Ordinal), "Project key should start with sanitized project folder name.");
+                AssertTrue(key.StartsWith("DemoGame_", StringComparison.OrdinalIgnoreCase), "Project key should start with sanitized project folder name.");
                 AssertEqual(key, AIBridgeEditorInstancePaths.BuildProjectKey(projectRoot), "Project key must be stable for the same project root.");
 
                 var metadataPath = AIBridgeEditorInstancePaths.GetMetadataPath(projectRoot);

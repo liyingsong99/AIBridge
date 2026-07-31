@@ -7,7 +7,7 @@
 [English](./README.md) | 中文
 
 ![Unity 2019.4+ ~ 6000.x](https://img.shields.io/badge/Unity-2019.4%2B%20~%206000.x-black?style=flat-square&logo=unity)
-![Package 1.5.11](https://img.shields.io/badge/Package-1.5.11-5b6cff?style=flat-square)
+![Package 1.5.13](https://img.shields.io/badge/Package-1.5.13-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
@@ -391,9 +391,9 @@ Game 视图截图、GIF 捕获和 `input` 命令都需要 Play Mode。Scene 视�
 
 `runtime` 命令用于连接 Player 或 Play Mode 中的 `AIBridgeRuntime`。HTTP transport 是默认 Runtime 控制面，默认入口为 `http://127.0.0.1:27182`；端口被占用时 Runtime Bridge 会在小范围内自动递增，并把实际 URL 写入 heartbeat，方便同项目 CLI 自动解析当前目标。LAN discovery 从 UDP `27183` 开始，也会用同样方式自动递增，因此同一台机器上可同时运行多个 Editor 或已编译 Player，且不会共用一个发现端口。File transport 保留为本机兼容回退路径，但 Runtime 只会在 HTTP transport 未运行时轮询文件命令目录，HTTP command 结果会通过内存 pending 通道返回，不默认写入 file transport 的 `results` 目录。使用 File transport 时，已编译 Player 仍可通过启动参数 `--aibridge-runtime-dir <path>` 和 `--aibridge-target-id <id>` 指定目标。
 
-默认情况下，HTTP `runtime list_targets` 使用 quick 路径：检查项目 heartbeat/cache 和已配置或显式传入的 URL，但不扫描本机自动递增端口范围。需要本机端口扫描时执行 `runtime list_targets --probe true`，需要局域网 UDP 发现时执行 `runtime discover`。多个本机 Player 同时运行时，先执行 `runtime list_targets`，再传返回的 target id，例如 `runtime status --target AIBridgeDev_12345`；`runtime diagnose --target <id>` 会解析并深度检查该目标的实际 URL。
+默认情况下，HTTP `runtime list_targets` 使用 quick 路径：检查项目 heartbeat/cache 和已配置或显式传入的 URL，但不扫描本机自动递增端口范围。quick HTTP 健康检查使用短时有界重试；自动发现会遵循配置的 `discovery.udpPort`；并发 CLI 或 `AIBridge/Players` 发现请求会串行化缓存更新、合并仍新鲜的目标并原子发布缓存，使远程或手机 Player 的 `--target latest` 解析保持稳定。HTTP Runtime 最多接收 128 个排队 HTTP 命令；重复的活动/近期 command id 会以 `409` 拒绝，队列满会以 `429` 拒绝，health/status 会返回当前队列深度。需要本机端口扫描时执行 `runtime list_targets --probe true`，需要局域网 UDP 发现时执行 `runtime discover`。多个本机 Player 同时运行时，先执行 `runtime list_targets`，再传返回的 target id，例如 `runtime status --target AIBridgeDev_12345`；`runtime diagnose --target <id>` 会解析并深度检查该目标的实际 URL。
 
-可在 `AIBridge/Settings > Runtime` 配置默认开关、HTTP 监听地址/端口、局域网发现、Editor Play Mode 自动注入、Development Build 自动注入、Release Build 允许项、后台保持运行、TargetId、Auth Token、Allowed Actions、heartbeat 间隔和日志缓存。Runtime heartbeat 默认 2 秒。Settings 页可写入 `.aibridge/runtime-config.json`，让 CLI 直接使用项目默认 Runtime 配置。`AIBridge/Players` 面板可查看 File heartbeat 目标、本机 HTTP 入口、局域网发现缓存、状态、场景、平台和常用 CLI 命令。已过期的 File/CACHE 条目会显示 `删除缓存` 按钮，可清理旧 target 目录或 discovery-cache 条目，不影响在线 Player。Editor Play Mode 自动注入默认启用，进入 Play Mode 且场景内没有 `AIBridgeRuntime` 时会创建临时隐藏 Runtime 对象。`后台保持运行` 默认对 Editor Play Mode 和 Development Build 启用，避免 Unity 失焦后 heartbeat 和 runtime 命令停止响应。UI 自动化建议先用 `runtime.ui.snapshot`，按钮条目会带屏幕坐标和屏幕矩形，后续就能直接点固定像素位置。snapshot/find 默认不做逐按钮 raycast；需要遮挡诊断时传入 `includeRaycastDetails=true`。
+可在 `AIBridge/Settings > Runtime` 配置默认开关、HTTP 监听地址/端口、局域网发现、Editor Play Mode 自动注入、Development Build 自动注入、Release Build 允许项、后台保持运行、TargetId、Auth Token、Allowed Actions、heartbeat 间隔和日志缓存。Runtime heartbeat 默认 5 秒。Settings 页可写入 `.aibridge/runtime-config.json`，让 CLI 直接使用项目默认 Runtime 配置。`AIBridge/Players` 面板可查看 File heartbeat 目标、本机 HTTP 入口、局域网发现缓存、状态、场景、平台和常用 CLI 命令。已过期的 File/CACHE 条目会显示 `删除缓存` 按钮，可清理旧 target 目录或 discovery-cache 条目，不影响在线 Player。Editor Play Mode 自动注入默认启用，进入 Play Mode 且场景内没有 `AIBridgeRuntime` 时会创建临时隐藏 Runtime 对象。`后台保持运行` 默认对 Editor Play Mode 和 Development Build 启用，避免 Unity 失焦后 heartbeat 和 runtime 命令停止响应。UI 自动化建议先用 `runtime.ui.snapshot`，按钮条目会带屏幕坐标和屏幕矩形，后续就能直接点固定像素位置。snapshot/find 默认不做逐按钮 raycast；需要遮挡诊断时传入 `includeRaycastDetails=true`。
 
 ```bash
 $CLI runtime list_targets

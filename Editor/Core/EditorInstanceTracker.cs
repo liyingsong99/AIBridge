@@ -10,7 +10,7 @@ namespace AIBridge.Editor
 {
     internal static class EditorInstanceTracker
     {
-        private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(2);
+        private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(5);
 
         private static string _metadataPath;
         private static string _metadataDirectory;

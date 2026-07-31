@@ -15,6 +15,7 @@ namespace AIBridgeCLI.Core
         public const string DefaultHttpUrl = "http://127.0.0.1:27182";
         public const string HttpUrlEnvironment = "AIBRIDGE_RUNTIME_URL";
         public const string TokenEnvironment = "AIBRIDGE_RUNTIME_TOKEN";
+        public const int MinimumDiscoveryCacheSeconds = 300;
 
         public RuntimeTransportKind Kind { get; private set; }
         public string RuntimeDirectory { get; private set; }
@@ -24,6 +25,7 @@ namespace AIBridgeCLI.Core
         public string HttpUrl { get; private set; }
         public string Token { get; private set; }
         public bool HttpUrlExplicit { get; private set; }
+        public int DiscoveryCacheSeconds { get; private set; }
         public string PreferredPlatform { get; private set; }
         public string PreferredProjectHint { get; private set; }
 
@@ -45,8 +47,9 @@ namespace AIBridgeCLI.Core
             var runtimeDirectory = RuntimePathHelper.ResolveRuntimeDirectory(runtimeDirectoryOverride);
             var preferredPlatform = ResolveOption(commandLineOptions, "platform");
             var preferredProjectHint = ResolveOption(commandLineOptions, "projectHint");
+            var token = ResolveOption(commandLineOptions, "token", TokenEnvironment, config.token);
             var httpUrlExplicit = HasExplicitHttpUrl(commandLineOptions);
-            var httpUrl = ResolveHttpUrl(commandLineOptions, config, resolvedTarget, runtimeDirectory, preferredPlatform, preferredProjectHint);
+            var httpUrl = ResolveHttpUrl(commandLineOptions, config, resolvedTarget, runtimeDirectory, preferredPlatform, preferredProjectHint, token);
             return new RuntimeTransportOptions
             {
                 Kind = ParseTransportKind(resolvedTransport),
@@ -56,7 +59,8 @@ namespace AIBridgeCLI.Core
                 PollIntervalMs = pollIntervalMs,
                 HttpUrl = NormalizeHttpUrl(httpUrl),
                 HttpUrlExplicit = httpUrlExplicit,
-                Token = ResolveOption(commandLineOptions, "token", TokenEnvironment, config.token),
+                DiscoveryCacheSeconds = ResolveDiscoveryCacheSeconds(config),
+                Token = token,
                 PreferredPlatform = preferredPlatform,
                 PreferredProjectHint = preferredProjectHint
             };
@@ -114,7 +118,8 @@ namespace AIBridgeCLI.Core
             string target,
             string runtimeDirectory,
             string preferredPlatform,
-            string preferredProjectHint)
+            string preferredProjectHint,
+            string token)
         {
             var explicitUrl = ResolveOption(options, "url", HttpUrlEnvironment, null);
             if (!string.IsNullOrWhiteSpace(explicitUrl))
@@ -123,9 +128,18 @@ namespace AIBridgeCLI.Core
             }
 
             var discoveryEnabled = config?.discovery == null || config.discovery.enabled;
-            var cacheSeconds = config?.discovery == null ? RuntimeDiscoveryClient.DefaultCacheSeconds : config.discovery.cacheSeconds;
+            var cacheSeconds = ResolveDiscoveryCacheSeconds(config);
+            var discoveryUdpPort = config?.discovery == null
+                ? RuntimeDiscoveryClient.DefaultDiscoveryPort
+                : config.discovery.udpPort;
             var cachedTargets = discoveryEnabled
-                ? RuntimeDiscoveryClient.ReadFreshCache(cacheSeconds)
+                ? RuntimeDiscoveryClient.ReadFreshCacheOrDiscover(
+                    cacheSeconds,
+                    discoveryUdpPort,
+                    target,
+                    preferredPlatform,
+                    preferredProjectHint,
+                    token)
                 : null;
 
             // latest 默认走 discovery cache 的 Android/远端优先排序，避免本机 Player heartbeat 抢占局域网目标。
@@ -159,6 +173,14 @@ namespace AIBridgeCLI.Core
             }
 
             return DefaultHttpUrl;
+        }
+
+        private static int ResolveDiscoveryCacheSeconds(RuntimeConfig config)
+        {
+            var configured = config == null || config.discovery == null
+                ? RuntimeDiscoveryClient.DefaultCacheSeconds
+                : config.discovery.cacheSeconds;
+            return Math.Max(MinimumDiscoveryCacheSeconds, configured);
         }
 
         private static string ResolveOption(System.Collections.Generic.Dictionary<string, string> options, string key, string environmentName, string configValue)
