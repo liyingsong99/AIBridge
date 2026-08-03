@@ -31,6 +31,7 @@ $CLI editor log --message "Hello" --logType Warning
 **{{PROJECT_VERSION_TITLE}}**:
 - {{UNITY_VERSION_RULE}}
 - {{CSHARP_VERSION_RULE}}
+- {{OBJECT_ID_RULE}}
 
 **{{CAPABILITIES_TITLE}}**:
 - {{HARNESS_CAPABILITY_RULE}}

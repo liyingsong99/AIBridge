@@ -144,6 +144,7 @@ namespace AIBridge.Editor.Tests
             Assert.That(source, Does.Contain("new ParameterInfo(\"target\""));
             Assert.That(source, Does.Contain("new ParameterInfo(\"windowType\""));
             Assert.That(source, Does.Contain("new ParameterInfo(\"title\""));
+            Assert.That(source, Does.Contain("new ParameterInfo(\"entityId\""));
             Assert.That(source, Does.Contain("new ParameterInfo(\"instanceId\""));
         }
 

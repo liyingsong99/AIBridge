@@ -35,6 +35,7 @@
 4. 避免重复代码；同一业务规则重复出现时应提取公共方法或工具类
 5. 新增或修改 Unity Editor/Runtime API 调用时，禁止直接依赖高版本 API 破坏低版本编译；版本差异必须用 Unity 版本宏、反射或集中封装处理
 6. Unity 6000.x API 兼容必须按具体版本边界处理；例如 Unity 6000.4+ 对象标识应使用 `GetEntityId` / `EntityId` 路径，Unity 6000.5+ 场景查找应使用无 `FindObjectsSortMode` 的 `FindObjectsByType`（经 `AIBridgeObjectQuery`），并保留 Unity 2019.4 到旧 6000.x 的兼容分支
+7. AI 面（CLI help / Skill / RootRule）对象 ID 只展示当前版本主键：Unity 6000.4+ 为 `entityId`，更旧为 `instanceId`；线协议继续双接受，展示策略集中在 `AIBridgeObjectIdPresentation`
 
 ## SkillDoc 生成规则
 1. 主 `Skill~/SKILL.md` 保持轻量，只放 CLI 调用入口、核心规则和 reference 索引

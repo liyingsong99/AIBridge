@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using AIBridge.Runtime.Internal;
 using AIBridgeCLI.Core;
 using Newtonsoft.Json;
 
@@ -143,12 +144,34 @@ namespace AIBridgeCLI.Commands
 
                 if (ActionParameters != null && ActionParameters.TryGetValue(action, out var parameters))
                 {
+                    var unityVersion = AIBridgeObjectIdPresentation.ResolveUnityVersion(PathHelper.TryGetUnityProjectRoot());
+                    var showedObjectId = false;
                     sb.AppendLine("Parameters:");
                     foreach (var param in parameters)
                     {
+                        if (!AIBridgeObjectIdPresentation.ShouldShowInHelp(param.Name, unityVersion))
+                        {
+                            continue;
+                        }
+
+                        if (AIBridgeObjectIdPresentation.IsObjectIdParamName(param.Name))
+                        {
+                            showedObjectId = true;
+                        }
+
                         var required = param.Required ? "(required)" : "(optional)";
                         var defaultVal = param.DefaultValue != null ? $" [default: {param.DefaultValue}]" : "";
-                        sb.AppendLine($"  --{param.Name,-20} {required} {param.Description}{defaultVal}");
+                        var description = AIBridgeObjectIdPresentation.NormalizeHelpDescription(
+                            param.Name,
+                            param.Description,
+                            unityVersion);
+                        sb.AppendLine($"  --{param.Name,-20} {required} {description}{defaultVal}");
+                    }
+
+                    if (showedObjectId)
+                    {
+                        sb.AppendLine();
+                        sb.AppendLine(AIBridgeObjectIdPresentation.BuildCompatibilityNote(unityVersion));
                     }
                 }
 

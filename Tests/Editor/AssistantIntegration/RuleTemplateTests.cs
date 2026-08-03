@@ -26,6 +26,7 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("{{SKILL_ROOT_RULE}}", template.Body);
             StringAssert.Contains("{{UNITY_VERSION_RULE}}", template.Body);
             StringAssert.Contains("{{CSHARP_VERSION_RULE}}", template.Body);
+            StringAssert.Contains("{{OBJECT_ID_RULE}}", template.Body);
             StringAssert.DoesNotContain("HOST_EXEC", template.Body);
             StringAssert.Contains("{{HARNESS_CAPABILITY_RULE}}", template.Body);
             StringAssert.Contains("{{CODE_INDEX_CAPABILITY_RULE}}", template.Body);

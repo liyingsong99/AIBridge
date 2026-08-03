@@ -31,6 +31,7 @@
     <Compile Include="..\..\Runtime\Internal\AIBridgeAtomicFile.cs" Link="Shared\AIBridgeAtomicFile.cs" />
     <Compile Include="..\..\Runtime\Internal\AIBridgeCacheCleanup.cs" Link="Shared\AIBridgeCacheCleanup.cs" />
     <Compile Include="..\..\Runtime\Internal\AIBridgeEditorInstancePaths.cs" Link="Shared\AIBridgeEditorInstancePaths.cs" />
+    <Compile Include="..\..\Runtime\Internal\AIBridgeObjectIdPresentation.cs" Link="Shared\AIBridgeObjectIdPresentation.cs" />
   </ItemGroup>
 
 </Project>

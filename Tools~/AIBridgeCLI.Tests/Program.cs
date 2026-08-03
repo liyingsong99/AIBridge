@@ -38,6 +38,8 @@ namespace AIBridgeCLI.Tests
                 AssetSearch_PositionalKeywordShortcut_MapsToKeyword();
                 AssetSearch_PositionalKeywordShortcut_RejectsDuplicateKeyword();
                 AssetSearch_Help_ListsPositionalKeywordUsage();
+                ObjectIdHelp_FiltersByUnityVersion();
+                ObjectIdText_RewritesPrimaryParamByUnityVersion();
                 LostTestRunStatus_IsRecognizedAfterAck();
                 DialogButtonInfo_ExposesStrictLogicalChoices();
                 DialogButtonInfo_DoesNotExposeChoicesForDisabledButtons();
@@ -602,6 +604,60 @@ namespace AIBridgeCLI.Tests
             AssertContains(help, "AIBridgeCLI asset search --keyword <keyword> [options]", "Asset search help should still show explicit keyword usage.");
         }
 
+        private static void ObjectIdHelp_FiltersByUnityVersion()
+        {
+            var previous = Environment.GetEnvironmentVariable("UNITY_PROJECT_ROOT");
+            var tempRoot = Path.Combine(Path.GetTempPath(), "aibridge-object-id-help-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Directory.CreateDirectory(Path.Combine(tempRoot, "Assets"));
+                Directory.CreateDirectory(Path.Combine(tempRoot, "ProjectSettings"));
+                File.WriteAllText(Path.Combine(tempRoot, "ProjectSettings", "ProjectSettings.asset"), "PlayerSettings:\n");
+                File.WriteAllText(
+                    Path.Combine(tempRoot, "ProjectSettings", "ProjectVersion.txt"),
+                    "m_EditorVersion: 6000.0.51f1\n");
+                Environment.SetEnvironmentVariable("UNITY_PROJECT_ROOT", tempRoot);
+
+                var legacyHelp = new ScreenshotCommandBuilder().GetHelp("editor_window");
+                AssertTrue(HasHelpParameterLine(legacyHelp, "instanceId"), "Legacy Unity help should expose instanceId.");
+                AssertTrue(!HasHelpParameterLine(legacyHelp, "entityId"), "Legacy Unity help should hide entityId.");
+
+                File.WriteAllText(
+                    Path.Combine(tempRoot, "ProjectSettings", "ProjectVersion.txt"),
+                    "m_EditorVersion: 6000.5.0f1\n");
+                var modernHelp = new ScreenshotCommandBuilder().GetHelp("editor_window");
+                AssertTrue(HasHelpParameterLine(modernHelp, "entityId"), "Unity 6000.4+ help should expose entityId.");
+                AssertTrue(!HasHelpParameterLine(modernHelp, "instanceId"), "Unity 6000.4+ help should hide instanceId parameter line.");
+                AssertContains(modernHelp, "compatible alias", "Unity 6000.4+ help should note the alias.");
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("UNITY_PROJECT_ROOT", previous);
+                try
+                {
+                    if (Directory.Exists(tempRoot))
+                    {
+                        Directory.Delete(tempRoot, true);
+                    }
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        private static void ObjectIdText_RewritesPrimaryParamByUnityVersion()
+        {
+            const string source = "Use `--entityId`/`--instanceId`. Add `--instanceId` when multiple windows match.";
+            var modern = AIBridgeObjectIdPresentation.RewriteAiFacingText(source, "6000.5.0f1");
+            var legacy = AIBridgeObjectIdPresentation.RewriteAiFacingText(source, "2021.3.0f1");
+
+            AssertContains(modern, "--entityId", "Modern rewrite should keep entityId.");
+            AssertTrue(modern.IndexOf("--instanceId", StringComparison.Ordinal) < 0, "Modern rewrite should remove instanceId flags.");
+            AssertContains(legacy, "--instanceId", "Legacy rewrite should keep instanceId.");
+            AssertTrue(legacy.IndexOf("--entityId", StringComparison.Ordinal) < 0, "Legacy rewrite should remove entityId flags.");
+        }
+
         private static JObject CreateRuntimePerfCommandResult()
         {
             return new JObject
@@ -995,6 +1051,30 @@ namespace AIBridgeCLI.Tests
             {
                 throw new InvalidOperationException(message + " Expected: " + expected + ", actual: " + actual);
             }
+        }
+
+        private static bool HasHelpParameterLine(string help, string parameterName)
+        {
+            if (string.IsNullOrEmpty(help) || string.IsNullOrEmpty(parameterName))
+            {
+                return false;
+            }
+
+            using (var reader = new StringReader(help))
+            {
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    var trimmed = line.TrimStart();
+                    if (trimmed.StartsWith("--" + parameterName + " ", StringComparison.Ordinal)
+                        || trimmed.StartsWith("--" + parameterName + "\t", StringComparison.Ordinal))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         private static void AssertTrue(bool condition, string message)
