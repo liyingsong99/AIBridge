@@ -145,7 +145,6 @@ namespace AIBridgeCLI.Commands
                 if (ActionParameters != null && ActionParameters.TryGetValue(action, out var parameters))
                 {
                     var unityVersion = AIBridgeObjectIdPresentation.ResolveUnityVersion(PathHelper.TryGetUnityProjectRoot());
-                    var showedObjectId = false;
                     sb.AppendLine("Parameters:");
                     foreach (var param in parameters)
                     {
@@ -154,24 +153,14 @@ namespace AIBridgeCLI.Commands
                             continue;
                         }
 
-                        if (AIBridgeObjectIdPresentation.IsObjectIdParamName(param.Name))
-                        {
-                            showedObjectId = true;
-                        }
-
                         var required = param.Required ? "(required)" : "(optional)";
                         var defaultVal = param.DefaultValue != null ? $" [default: {param.DefaultValue}]" : "";
+                        // 只展示当前版本主键；别名提示写在参数描述里，不再追加整段 Object identity 说明
                         var description = AIBridgeObjectIdPresentation.NormalizeHelpDescription(
                             param.Name,
                             param.Description,
                             unityVersion);
                         sb.AppendLine($"  --{param.Name,-20} {required} {description}{defaultVal}");
-                    }
-
-                    if (showedObjectId)
-                    {
-                        sb.AppendLine();
-                        sb.AppendLine(AIBridgeObjectIdPresentation.BuildCompatibilityNote(unityVersion));
                     }
                 }
 

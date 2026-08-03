@@ -4,8 +4,8 @@
 
 - 状态：当前索引
 - 更新时间：2026-08-03
-- 对象 ID 展示：CLI help / Skill / RootRule 按 Unity 版本只暴露主键（6000.4+ 为 `entityId`，更旧为 `instanceId`）；线协议仍双接受
-- 维护范围：`Packages/cn.lys.aibridge`
+- 对象 ID 展示：CLI help / Skill 按 Unity 版本只暴露主键参数名（6000.4+ 为 `entityId`，更旧为 `instanceId`）；兼容策略只在 RootRule 写一行，不在每个 Skill reference / CLI action help 重复；线协议仍双接受
+- 维护范围：`Packages/cn.lys.aibridge`（知识库维护规则仅写在包内 `AGENTS.md` / 本文，不得写入 RootRule 或用户项目 `AGENTS` 模板）
 
 ## 目的
 
@@ -142,10 +142,10 @@
 - `test run` 在并发请求下会持久化队列到 `.aibridge/test-runs/state.json`；已确认的 run 若后续变成 `unknown`，CLI 会快速失败并提示状态丢失，而不是一直等完整 timeout。
 - `screenshot editor_window` 可在 Edit Mode 截取 Unity 主窗口或按活动窗口、类型、标题、对象 ID 定位的 `EditorWindow`；Unity 6000.4+ 对象标识走 `GetEntityId`/`EntityId`（`instanceId` 为兼容别名）；Windows 主路径使用 WGC，被 WGC 拒绝的 Unity 浮动容器仅回退到带非空校验的窗口级 PrintWindow，macOS 使用 ScreenCaptureKit，不回退到桌面截图，默认成功数据仅返回 `path`、`width`、`height`。
 - Unity 6000.5+：`GetInstanceID` 与带 `FindObjectsSortMode` 的查找 API 会触发编译错误或弃用；包内统一经 `AIBridgeObjectIdentity` / `AIBridgeObjectQuery` 做版本分支。
-- AI 面对象 ID：CLI help、Skill `command-reference`、RootRule 按当前 Unity 版本只展示主键（6000.4+ `entityId`，更旧 `instanceId`）；线协议继续双接受。
+- AI 面对象 ID：CLI help 与 Skill `command-reference` 只按当前 Unity 版本展示主键参数名（6000.4+ `entityId`，更旧 `instanceId`）；对象 ID 兼容策略仅出现在 RootRule 一行，Skill/CLI help 不重复整段说明；线协议继续双接受。
 - `code_index` 是默认关闭的只读轻量入口：`symbol`、`definition` 用于 C# 声明名定位，`status`、`doctor` 用于诊断；后续分析由 AI 直接读取 `.cs` 文件完成。Unity 已导入资源名称/类型查找继续使用 `asset search/find --format paths`，其中 `asset search <keyword>` 是 `asset search --keyword <keyword>` 的兼容简写。
 - `workflow run-cli` 不会自动执行 `agent` / `manual`，这些步骤仍需要外部执行器回流。
-- RootRule 必须简洁写明 `$CLI` 指向项目本地 AIBridge CLI 路径，并给出 PowerShell 调用方式。
+- RootRule 必须简洁写明 `$CLI` 指向项目本地 AIBridge CLI 路径，并给出 PowerShell 调用方式；包维护用知识库规则不得写入 RootRule 或用户项目 `AGENTS` 模板。
 - `workflow run-cli` 和 `compile dotnet` 对子进程 stdout/stderr 使用有界流式读取；输出超限不会再使 CLI 内存随原始输出量线性增长。
 - `aibridge-development-workflow` 使用短入口，Harness 采用 compact gate；Preflight / Skill Routing 只作为内部选路步骤，对外默认直接进入业务分支输出；完整探测矩阵、fallback、resume 和证据 schema 移入 `harness-readiness-detail.md` 按需加载。
 - Skill 和 RootRule 的 AI 规则 Markdown 不保留普通规则行末尾的 `。` / `.`；源模板、安装副本和生成器输出保持一致

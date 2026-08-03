@@ -209,22 +209,6 @@ namespace AIBridge.Runtime.Internal
             return rewritten;
         }
 
-        public static string BuildCompatibilityNote(string unityVersion)
-        {
-            Version version;
-            if (!TryParseUnityVersion(unityVersion, out version))
-            {
-                return "Object identity: on Unity 6000.4+ prefer `--entityId`; on older Unity use `--instanceId`. The other name remains a wire-compatible alias.";
-            }
-
-            if (version >= EntityIdPrimaryMinVersion)
-            {
-                return "Object identity: prefer `--entityId` on this Unity version. `--instanceId` remains a wire-compatible alias.";
-            }
-
-            return "Object identity: prefer `--instanceId` on this Unity version. `--entityId` is ignored here and only applies on Unity 6000.4+.";
-        }
-
         public static string BuildRootRuleObjectIdLine(string unityVersion, bool chinese)
         {
             Version version;

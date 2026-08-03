@@ -10,7 +10,13 @@
 
 `Templates~/ProjectRules/AGENTS.zh-CN.md` 和 `Templates~/ProjectRules/AGENTS.en-US.md`
 
-不要把 AIBridge 包内部设计规则写入项目模板，避免污染使用者项目
+不要把 AIBridge 包内部设计规则写入项目模板（含 RootRule 与 ProjectRules/AGENTS），避免污染使用者项目
+
+## 知识库规则
+- 开始任何 AIBridge 功能调整、命令/菜单/Workflow/Skill/Runtime/模板/文档变更前，先查看 `Doc~/KnowledgeBaseIndex.md`，必要时联读 `Doc~/README.md` 和对应专题文档
+- 凡新增、修改或删除用户可见能力、CLI 命令、Editor 菜单、Runtime 能力、workflow recipe、Skill、模板、生成产物路径或公开文档，必须在同一次改动中自动更新 `KnowledgeBaseIndex.md` 和相关 README / `Doc~` / `Skill~` / `Templates~` 文档，不需要用户额外提醒
+- 若实现与知识库不一致，先以当前代码、CLI 输出或 `workflow list` 核实事实，再修正实现或知识库；不得把漂移留给后续
+- 方案型或跨模块调整先写 `.aibridge/plan/<slug>.md` 工作底稿，再同步正式知识库文档
 
 ## 开发任务工作流
 开发、修改、修复、重构 C# 代码、Unity 资源、Prefab、Editor 工具、包结构、测试、AGENTS 模板或 Skills 时，必须优先使用：
@@ -35,7 +41,7 @@
 4. 避免重复代码；同一业务规则重复出现时应提取公共方法或工具类
 5. 新增或修改 Unity Editor/Runtime API 调用时，禁止直接依赖高版本 API 破坏低版本编译；版本差异必须用 Unity 版本宏、反射或集中封装处理
 6. Unity 6000.x API 兼容必须按具体版本边界处理；例如 Unity 6000.4+ 对象标识应使用 `GetEntityId` / `EntityId` 路径，Unity 6000.5+ 场景查找应使用无 `FindObjectsSortMode` 的 `FindObjectsByType`（经 `AIBridgeObjectQuery`），并保留 Unity 2019.4 到旧 6000.x 的兼容分支
-7. AI 面（CLI help / Skill / RootRule）对象 ID 只展示当前版本主键：Unity 6000.4+ 为 `entityId`，更旧为 `instanceId`；线协议继续双接受，展示策略集中在 `AIBridgeObjectIdPresentation`
+7. AI 面对象 ID：CLI help / Skill 只展示当前版本主键参数名（Unity 6000.4+ 为 `entityId`，更旧为 `instanceId`）；兼容策略只在 RootRule 写一行，禁止在每个 Skill reference 或 CLI action help 重复；线协议继续双接受，展示策略集中在 `AIBridgeObjectIdPresentation`
 
 ## SkillDoc 生成规则
 1. 主 `Skill~/SKILL.md` 保持轻量，只放 CLI 调用入口、核心规则和 reference 索引
