@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using AIBridge.Runtime.Internal;
 using UnityEditor;
 using UnityEngine;
 
@@ -1580,6 +1581,7 @@ namespace AIBridge.Editor
                 { "CSHARP_LANGUAGE_VERSION", csharpLanguageVersion },
                 { "UNITY_VERSION_RULE", AIBridgeEditorText.For(language, "Current Unity version: " + unityVersion, "当前项目 Unity 版本：" + unityVersion) },
                 { "CSHARP_VERSION_RULE", AIBridgeEditorText.For(language, "Current C# language requirement: compatible with " + csharpLanguageVersion + "; do not use newer syntax.", "当前项目 C# 语言版本要求：兼容 " + csharpLanguageVersion + "，禁止使用更高版本语法。") },
+                { "OBJECT_ID_RULE", AIBridgeObjectIdPresentation.BuildRootRuleObjectIdLine(unityVersion, language == AIBridgeEditorLanguage.SimplifiedChinese) },
                 { "CAPABILITIES_TITLE", AIBridgeEditorText.For(language, "Current Capabilities", "当前能力状态") },
                 { "HARNESS_CAPABILITY_RULE", harnessCapabilityRule },
                 { "CODE_INDEX_CAPABILITY_RULE", BuildCodeIndexCapabilityRule(language) },

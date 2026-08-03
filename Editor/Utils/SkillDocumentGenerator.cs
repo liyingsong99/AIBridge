@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using AIBridge.Runtime.Internal;
+using UnityEngine;
 
 namespace AIBridge.Editor
 {
@@ -87,17 +89,20 @@ namespace AIBridge.Editor
 
         private static string BuildReferenceFileContent(IEnumerable<CommandSkillDoc> docs)
         {
+            var unityVersion = Application.unityVersion;
             var sb = new StringBuilder();
             sb.AppendLine(GeneratedHeader);
             sb.AppendLine("# AIBridge Command Reference");
             sb.AppendLine();
             sb.AppendLine("此文件由 AIBridge 自动生成。需要修改命令说明时，请修改对应 ICommand 的 SkillDoc/SkillDescription。");
             sb.AppendLine("`$CLI` 表示当前平台的 AIBridge CLI 调用方式，Windows 项目通常是 `./.aibridge/cli/AIBridgeCLI.exe`。");
+            sb.AppendLine(AIBridgeObjectIdPresentation.BuildCompatibilityNote(unityVersion));
             sb.AppendLine();
 
             foreach (var doc in docs)
             {
-                sb.AppendLine(doc.Content.Trim());
+                // 按当前 Unity 版本只保留对象 ID 主键，避免 AI 同时看到 entityId/instanceId
+                sb.AppendLine(AIBridgeObjectIdPresentation.RewriteAiFacingText(doc.Content.Trim(), unityVersion));
                 sb.AppendLine();
             }
 

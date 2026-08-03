@@ -7,13 +7,13 @@ $CLI screenshot editor_window --target editor
 $CLI screenshot editor_window --target active
 $CLI screenshot editor_window --windowType MyNamespace.MyCustomEditorWindow
 $CLI screenshot editor_window --title "My Tool"
-$CLI screenshot editor_window --instanceId 12345
-$CLI screenshot editor_window --entityId 12345
+$CLI screenshot editor_window --entityId 12345   # Unity 6000.4+ primary
+$CLI screenshot editor_window --instanceId 12345 # older Unity primary; alias on 6000.4+
 ```
 
 - `--target editor` captures the Unity main window, including the menu bar and docked panels. Floating windows and transient popups are not composed into this image.
 - `--target active` uses the last focused Unity `EditorWindow`, not the OS foreground window.
-- `--windowType`, `--title`, and `--entityId`/`--instanceId` are AND filters. On Unity 6000.4+ prefer `--entityId` (`--instanceId` remains a compatible alias). Multiple matches fail with `target_ambiguous`.
+- `--windowType`, `--title`, and the object-id filter are AND filters. AI-facing help/Skill only expose the primary id for the current Unity version (`--entityId` on 6000.4+, `--instanceId` earlier); the other name remains a wire-compatible alias. Multiple matches fail with `target_ambiguous`.
 - Selecting an inactive docked tab temporarily focuses it for two Editor repaint cycles, captures its host area including the tab strip, and restores the previous focus.
 - PNG files are written to `.aibridge/screenshots/`. Success data contains only `path`, `width`, and `height`.
 
