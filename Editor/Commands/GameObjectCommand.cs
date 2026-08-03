@@ -148,12 +148,7 @@ $CLI gameobject get_info --path ""Player""
             }
             else
             {
-                GameObject[] allObjects;
-#if UNITY_2022_3_OR_NEWER
-                allObjects = UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
-#else
-                allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
-#endif
+                var allObjects = AIBridgeObjectQuery.FindObjectsByTypeNoSort<GameObject>();
 
                 foreach (GameObject obj in allObjects)
                 {

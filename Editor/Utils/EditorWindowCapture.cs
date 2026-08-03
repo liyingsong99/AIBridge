@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using AIBridge.Internal.Json;
+using AIBridge.Runtime;
 using UnityEditor;
 using UnityEngine;
 using PackageManagerPackageInfo = UnityEditor.PackageManager.PackageInfo;
@@ -106,17 +107,18 @@ namespace AIBridge.Editor
             var targetName = request.GetParam("target", string.Empty);
             var windowType = request.GetParam("windowType", string.Empty);
             var title = request.GetParam("title", string.Empty);
-            var hasInstanceId = request.HasParam("instanceId");
-            var instanceId = request.GetParam("instanceId", 0);
+            // Unity 6000.4+ 优先 entityId；instanceId 作为兼容别名
+            var hasObjectId = AIBridgeEditorObjectIdentity.HasRequestObjectId(request, "instanceId");
+            var serializedObjectId = AIBridgeEditorObjectIdentity.GetRequestObjectId(request, "instanceId");
             var hasExplicitSelector = !string.IsNullOrWhiteSpace(windowType)
                 || !string.IsNullOrWhiteSpace(title)
-                || hasInstanceId;
+                || hasObjectId;
 
             if (!string.IsNullOrWhiteSpace(targetName) && hasExplicitSelector)
             {
                 return EditorWindowCaptureResolution.Failed(
                     EditorWindowCaptureErrorCodes.CaptureFailed,
-                    "--target cannot be combined with --windowType, --title, or --instanceId.");
+                    "--target cannot be combined with --windowType, --title, or --entityId/--instanceId.");
             }
 
             if (!string.IsNullOrWhiteSpace(targetName))
@@ -150,7 +152,7 @@ namespace AIBridge.Editor
             {
                 return EditorWindowCaptureResolution.Failed(
                     EditorWindowCaptureErrorCodes.CaptureFailed,
-                    "Specify --target, --windowType, --title, or --instanceId.");
+                    "Specify --target, --windowType, --title, or --entityId/--instanceId.");
             }
 
             var candidates = new List<EditorWindow>();
@@ -181,9 +183,10 @@ namespace AIBridge.Editor
                     StringComparison.OrdinalIgnoreCase));
             }
 
-            if (hasInstanceId)
+            if (hasObjectId)
             {
-                candidates.RemoveAll(window => window.GetInstanceID() != instanceId);
+                candidates.RemoveAll(window =>
+                    !AIBridgeObjectIdentity.MatchesSerializedId(window, serializedObjectId));
             }
 
             if (candidates.Count == 0)
@@ -197,7 +200,7 @@ namespace AIBridge.Editor
             {
                 return EditorWindowCaptureResolution.Failed(
                     EditorWindowCaptureErrorCodes.TargetAmbiguous,
-                    "Multiple Editor windows matched. Use --instanceId to select one instance.");
+                    "Multiple Editor windows matched. Use --entityId/--instanceId to select one instance.");
             }
 
             return BuildWindowTarget(candidates[0], resolveScreenRect);

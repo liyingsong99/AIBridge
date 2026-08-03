@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using AIBridge.Runtime;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -86,7 +87,7 @@ namespace AIBridge.Editor.Tests
             var result = Resolve(new Dictionary<string, object>
             {
                 { "windowType", nameof(FirstTestWindow) },
-                { "instanceId", expected.GetInstanceID() }
+                { "instanceId", AIBridgeObjectIdentity.GetSerializedId(expected) }
             });
 
             Assert.That(result.Success, Is.True, result.ErrorMessage);

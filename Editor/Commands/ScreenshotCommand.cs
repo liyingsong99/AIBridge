@@ -35,7 +35,7 @@ $CLI screenshot gif --frameCount 100 --fps 25 --scale 0.5 --colorCount 128
 
 **Editor Window Parameters:**
 
-Use `--target editor|active`, or filter with `--windowType`, `--title`, and `--instanceId`. Type and title filters may be combined. Add `--instanceId` when multiple windows match.
+Use `--target editor|active`, or filter with `--windowType`, `--title`, and `--entityId`/`--instanceId`. Type and title filters may be combined. Add `--entityId`/`--instanceId` when multiple windows match.
 
 **Scene View Parameters:**
 

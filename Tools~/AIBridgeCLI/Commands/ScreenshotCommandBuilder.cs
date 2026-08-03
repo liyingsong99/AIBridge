@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using AIBridgeCLI.Core;
 
 namespace AIBridgeCLI.Commands
 {
@@ -31,7 +32,8 @@ namespace AIBridgeCLI.Commands
                 new ParameterInfo("target", "Unity target: editor or active", false),
                 new ParameterInfo("windowType", "EditorWindow full type name or simple type name", false),
                 new ParameterInfo("title", "Exact window title (case-insensitive)", false),
-                new ParameterInfo("instanceId", "EditorWindow instance ID used to disambiguate matches", false)
+                new ParameterInfo("entityId", "EditorWindow entity ID on Unity 6000.4+", false),
+                new ParameterInfo("instanceId", "Entity ID on Unity 6000.4+ or legacy instance ID on older Unity", false)
             },
             ["gif"] = new List<ParameterInfo>
             {
@@ -41,5 +43,22 @@ namespace AIBridgeCLI.Commands
                 new ParameterInfo("colorCount", "GIF palette color count (64-256)", false, "256")
             }
         };
+
+        public override CommandRequest Build(string action, Dictionary<string, string> options)
+        {
+            var request = base.Build(action, options);
+            CopyParam(request.@params, "entityId", "instanceId");
+            return request;
+        }
+
+        private static void CopyParam(Dictionary<string, object> @params, string sourceKey, string targetKey)
+        {
+            if (@params == null || !@params.ContainsKey(sourceKey) || @params.ContainsKey(targetKey))
+            {
+                return;
+            }
+
+            @params[targetKey] = @params[sourceKey];
+        }
     }
 }

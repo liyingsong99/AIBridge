@@ -205,7 +205,7 @@ namespace AIBridge.Runtime
 
         private List<object> BuildCanvasSnapshots(Dictionary<string, int> buttonCountsByCanvasPath)
         {
-            var canvases = UnityEngine.Object.FindObjectsOfType<Canvas>();
+            var canvases = AIBridgeObjectQuery.FindObjectsByTypeNoSort<Canvas>();
             var entries = new List<UiCanvasSnapshotEntry>(canvases == null ? 0 : canvases.Length);
 
             if (canvases != null)
@@ -347,7 +347,7 @@ namespace AIBridge.Runtime
 
         private UiButtonSnapshotCollection CollectButtonSnapshots(string keyword, bool includeDisabled, int maxResults, bool includeRaycastDetails)
         {
-            var buttons = UnityEngine.Object.FindObjectsOfType<Button>();
+            var buttons = AIBridgeObjectQuery.FindObjectsByTypeNoSort<Button>();
             var result = new UiButtonSnapshotCollection();
             if (buttons == null || buttons.Length == 0)
             {
@@ -1320,22 +1320,23 @@ namespace AIBridge.Runtime
 
         private static GameObject FindGameObjectBySerializedId(object serializedId)
         {
-            var gameObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
-            if (gameObjects == null)
+#if UNITY_6000_4_OR_NEWER
+            ulong entityId;
+            if (!AIBridgeObjectIdentity.TryParseSerializedEntityId(serializedId, out entityId) || entityId == 0UL)
             {
                 return null;
             }
 
-            for (var i = 0; i < gameObjects.Length; i++)
+            return Resources.EntityIdToObject(EntityId.FromULong(entityId)) as GameObject;
+#else
+            int instanceId;
+            if (!AIBridgeObjectIdentity.TryParseLegacyInstanceId(serializedId, out instanceId) || instanceId == 0)
             {
-                var candidate = gameObjects[i];
-                if (AIBridgeObjectIdentity.MatchesSerializedId(candidate, serializedId))
-                {
-                    return candidate;
-                }
+                return null;
             }
 
-            return null;
+            return Resources.InstanceIDToObject(instanceId) as GameObject;
+#endif
         }
 
         private sealed class UiButtonSnapshotCollection

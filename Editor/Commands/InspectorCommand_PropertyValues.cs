@@ -544,21 +544,10 @@ namespace AIBridge.Editor
                 return true;
             }
 
-            if (value is double doubleId)
+            // Unity 6000.4+ EntityId 为 64 位，禁止截断为 int
+            if (value is double || value is float || value is long || value is ulong || value is int || value is uint)
             {
-                var id = (int)doubleId;
-                return TryResolveObjectReferenceByInstanceId(id, out resolved, out error);
-            }
-
-            if (value is long longId)
-            {
-                var id = (int)longId;
-                return TryResolveObjectReferenceByInstanceId(id, out resolved, out error);
-            }
-
-            if (value is int intId)
-            {
-                return TryResolveObjectReferenceByInstanceId(intId, out resolved, out error);
+                return TryResolveObjectReferenceByInstanceId(value, out resolved, out error);
             }
 
             var str = value.ToString();
@@ -620,7 +609,7 @@ namespace AIBridge.Editor
             return false;
         }
 
-        private static bool TryResolveObjectReferenceByInstanceId(int instanceId, out UnityEngine.Object resolved, out string error)
+        private static bool TryResolveObjectReferenceByInstanceId(object instanceId, out UnityEngine.Object resolved, out string error)
         {
             resolved = GetObjectByInstanceId(instanceId);
             if (resolved != null)
@@ -629,7 +618,7 @@ namespace AIBridge.Editor
                 return true;
             }
 
-            error = $"Object reference instanceId not found: {instanceId}";
+            error = $"Object reference entityId/instanceId not found: {instanceId}";
             return false;
         }
 

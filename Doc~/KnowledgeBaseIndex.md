@@ -3,7 +3,7 @@
 ## 状态
 
 - 状态：当前索引
-- 更新时间：2026-07-31
+- 更新时间：2026-08-03
 - 维护范围：`Packages/cn.lys.aibridge`
 
 ## 目的
@@ -139,7 +139,8 @@
 - `compile dotnet` 只是额外检查，不是 Unity 编译替代品。
 - `test run` 必须在 Editor 处于 Edit Mode 时启动；若当前处于 Play Mode，会直接失败并明确提示先退出 Play Mode。
 - `test run` 在并发请求下会持久化队列到 `.aibridge/test-runs/state.json`；已确认的 run 若后续变成 `unknown`，CLI 会快速失败并提示状态丢失，而不是一直等完整 timeout。
-- `screenshot editor_window` 可在 Edit Mode 截取 Unity 主窗口或按活动窗口、类型、标题、实例定位的 `EditorWindow`；Windows 主路径使用 WGC，被 WGC 拒绝的 Unity 浮动容器仅回退到带非空校验的窗口级 PrintWindow，macOS 使用 ScreenCaptureKit，不回退到桌面截图，默认成功数据仅返回 `path`、`width`、`height`。
+- `screenshot editor_window` 可在 Edit Mode 截取 Unity 主窗口或按活动窗口、类型、标题、`entityId`/`instanceId` 定位的 `EditorWindow`；Unity 6000.4+ 对象标识走 `GetEntityId`/`EntityId`（`instanceId` 为兼容别名）；Windows 主路径使用 WGC，被 WGC 拒绝的 Unity 浮动容器仅回退到带非空校验的窗口级 PrintWindow，macOS 使用 ScreenCaptureKit，不回退到桌面截图，默认成功数据仅返回 `path`、`width`、`height`。
+- Unity 6000.5+：`GetInstanceID` 与带 `FindObjectsSortMode` 的查找 API 会触发编译错误或弃用；包内统一经 `AIBridgeObjectIdentity` / `AIBridgeObjectQuery` 做版本分支。
 - `code_index` 是默认关闭的只读轻量入口：`symbol`、`definition` 用于 C# 声明名定位，`status`、`doctor` 用于诊断；后续分析由 AI 直接读取 `.cs` 文件完成。Unity 已导入资源名称/类型查找继续使用 `asset search/find --format paths`，其中 `asset search <keyword>` 是 `asset search --keyword <keyword>` 的兼容简写。
 - `workflow run-cli` 不会自动执行 `agent` / `manual`，这些步骤仍需要外部执行器回流。
 - RootRule 必须简洁写明 `$CLI` 指向项目本地 AIBridge CLI 路径，并给出 PowerShell 调用方式。

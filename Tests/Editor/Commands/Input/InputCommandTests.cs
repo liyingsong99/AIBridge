@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using AIBridge.Internal.Json;
+using AIBridge.Runtime;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -215,7 +216,7 @@ namespace AIBridge.Editor.Tests
 
         private static void DestroyExistingEventSystems()
         {
-            var eventSystems = UnityEngine.Object.FindObjectsOfType<EventSystem>();
+            var eventSystems = AIBridgeObjectQuery.FindObjectsByTypeNoSort<EventSystem>();
             for (var i = 0; i < eventSystems.Length; i++)
             {
                 if (eventSystems[i] != null)
