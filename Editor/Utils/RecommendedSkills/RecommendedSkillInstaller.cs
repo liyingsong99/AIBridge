@@ -28,10 +28,7 @@ namespace AIBridge.Editor
 
                 var root = target.GetResolvedSkillRootDirectoryRelativePath(projectRoot);
                 AddUniqueRoot(result, root);
-                if (!target.SupportsPluginManifest)
-                {
-                    AddUniqueRoot(result, target.GetDefaultSkillRootDirectoryRelativePath());
-                }
+                AddUniqueRoot(result, target.GetDefaultSkillRootDirectoryRelativePath());
             }
 
             if (result.Count == 0)

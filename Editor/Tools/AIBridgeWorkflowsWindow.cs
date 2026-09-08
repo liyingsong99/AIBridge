@@ -420,8 +420,8 @@ namespace AIBridge.Editor
             EditorGUILayout.LabelField(AIBridgeEditorText.T("Custom Skills Directory", "自定义 Skills 目录"), EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 AIBridgeEditorText.T(
-                    "Leave this empty to keep the shared Skill root at .aibridge/skills. Claude, Cursor, and Codex discover it through plugin.json. A custom directory still uses the same plugin index.",
-                    "留空时 Skill 实体保持在 .aibridge/skills。Claude、Cursor、Codex 通过 plugin.json 发现；自定义目录仍走同一套 plugin 索引。"),
+                    "Leave this empty to keep the canonical Skill copy at .aibridge/skills. Selected tools still receive a native skills-directory copy for auto-discovery. A custom directory replaces the canonical copy; native mirrors still follow each tool.",
+                    "留空时权威副本保持在 .aibridge/skills。已选工具仍会镜像到各自原生 skills 目录以便自动发现。自定义目录会替换权威副本，原生镜像仍按各工具目录同步。"),
                 MessageType.Info);
 
             EditorGUILayout.BeginHorizontal();
@@ -693,11 +693,6 @@ namespace AIBridge.Editor
             }
 
             var sharedPath = selection.SkillRootDirectory.TrimEnd('/', '\\') + "/" + skillDirectoryName;
-            if (selection.Target.SupportsPluginManifest)
-            {
-                return sharedPath;
-            }
-
             var nativeRoot = selection.Target.GetDefaultSkillRootDirectoryRelativePath();
             if (string.IsNullOrEmpty(nativeRoot)
                 || string.Equals(nativeRoot, selection.SkillRootDirectory, StringComparison.OrdinalIgnoreCase))
@@ -717,8 +712,8 @@ namespace AIBridge.Editor
             }
 
             return AIBridgeEditorText.T(
-                "Shared plugin directory: " + AIBridgeProjectSettings.CanonicalSharedSkillRootDirectory,
-                "共享 plugin 目录：" + AIBridgeProjectSettings.CanonicalSharedSkillRootDirectory);
+                "Canonical copy: " + AIBridgeProjectSettings.CanonicalSharedSkillRootDirectory + "; selected tools also get a native skills copy",
+                "权威副本：" + AIBridgeProjectSettings.CanonicalSharedSkillRootDirectory + "；已选工具再镜像到原生 skills 目录");
         }
 
         private static string GetProjectRoot()

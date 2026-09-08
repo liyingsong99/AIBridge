@@ -7,7 +7,7 @@
 English | [中文](./README_CN.md)
 
 ![Unity 2019.4+ ~ 6000.x](https://img.shields.io/badge/Unity-2019.4%2B%20~%206000.x-black?style=flat-square&logo=unity)
-![Package 1.5.16](https://img.shields.io/badge/Package-1.5.16-5b6cff?style=flat-square)
+![Package 1.5.17](https://img.shields.io/badge/Package-1.5.17-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
@@ -125,9 +125,9 @@ You can also clone this repository into a Unity project's `Packages` folder.
 4. Click `Install Selected Integrations`.
 5. Optionally click `Install Unity Project AGENTS.md Template` to create a root `AGENTS.md`.
 
-Installed AIBridge Skills are written once to `.aibridge/skills/`. Claude, Cursor, and Codex discover that shared root through a thin project-root plugin manifest (`.claude-plugin/plugin.json`, `.cursor-plugin/plugin.json`, `.codex-plugin/plugin.json`). Cline has no equivalent plugin index, so a selected Cline integration also receives a copy under `.clinerules/skills/`. You can override the shared directory in the `Workflows > Skills` tab; the plugin index then points at the custom path. Each AI tool still receives a minimal RootRule. The RootRule includes the fixed project-root-relative CLI path, an explicit `$CLI` binding, common commands, Skill root, and `aibridge-development-workflow` entry point. Multi-branch routing, targeted checklists, advanced workflow orchestration guidance, and command references live in the installed workflow Skill and its `references/` directory.
+Installed AIBridge Skills are generated once to `.aibridge/skills/`, then mirrored to each selected tool's native skills directory (`.claude/skills/`, `.cursor/skills/`, `.codex/skills/`, `.clinerules/skills/`). Project-root plugin manifests (`.claude-plugin/plugin.json`, `.cursor-plugin/plugin.json`, `.codex-plugin/plugin.json`) are optional extras; auto-discovery uses the native directories. You can override the canonical copy in the `Workflows > Skills` tab; selected tools still receive native mirrors. Each AI tool still receives a minimal RootRule. The RootRule includes the fixed project-root-relative CLI path, an explicit `$CLI` binding, common commands, Skill root, and `aibridge-development-workflow` entry point. Multi-branch routing, targeted checklists, advanced workflow orchestration guidance, and command references live in the installed workflow Skill and its `references/` directory.
 
-You can also open the `Workflows > Recommended Library` tab, refresh the default `obra/superpowers` repository, and install third-party Skills into the shared Skill root.
+You can also open the `Workflows > Recommended Library` tab, refresh the default `obra/superpowers` repository, and install third-party Skills into the shared Skill root and selected native directories.
 
 `Workflows > Workflow Options` stores project-level workflow preferences. Applying these options refreshes generated files under the installed `aibridge-development-workflow` Skill, including `references/project-workflow-preferences.md` and the generated branch selection rules.
 

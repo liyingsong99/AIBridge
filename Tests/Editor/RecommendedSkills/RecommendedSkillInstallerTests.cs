@@ -32,7 +32,7 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void InstallerUsesSharedSkillRootForSelectedTools()
+        public void InstallerUsesSharedAndNativeSkillRootsForSelectedTools()
         {
             AssistantIntegrationSelectionSettings.SetSelected("codex", true);
             AssistantIntegrationSelectionSettings.SetSelected("cursor", true);
@@ -63,20 +63,20 @@ namespace AIBridge.Editor.Tests
 
             Assert.IsTrue(result.Success);
             Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".aibridge", "skills", "tdd", "SKILL.md")));
-            Assert.IsFalse(Directory.Exists(Path.Combine(ProjectRoot, ".codex", "skills", "tdd")));
-            Assert.IsFalse(Directory.Exists(Path.Combine(ProjectRoot, ".cursor", "skills", "tdd")));
+            Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".codex", "skills", "tdd", "SKILL.md")));
+            Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".cursor", "skills", "tdd", "SKILL.md")));
             Assert.IsFalse(Directory.Exists(Path.Combine(ProjectRoot, ".skills", "tdd")));
         }
 
         [Test]
-        public void InstallerMirrorsSharedRootToClineNativeDirectory()
+        public void InstallerMirrorsSharedRootToSelectedNativeDirectories()
         {
             AssistantIntegrationSelectionSettings.SetSelected("codex", true);
             AssistantIntegrationSelectionSettings.SetSelected("cline", true);
 
             var roots = RecommendedSkillInstaller.GetSelectedInstallRootDirectories(ProjectRoot);
 
-            CollectionAssert.AreEqual(new[] { ".aibridge/skills", ".clinerules/skills" }, roots);
+            CollectionAssert.AreEqual(new[] { ".aibridge/skills", ".codex/skills", ".clinerules/skills" }, roots);
         }
 
         [Test]

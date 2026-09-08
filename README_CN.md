@@ -7,7 +7,7 @@
 [English](./README.md) | 中文
 
 ![Unity 2019.4+ ~ 6000.x](https://img.shields.io/badge/Unity-2019.4%2B%20~%206000.x-black?style=flat-square&logo=unity)
-![Package 1.5.16](https://img.shields.io/badge/Package-1.5.16-5b6cff?style=flat-square)
+![Package 1.5.17](https://img.shields.io/badge/Package-1.5.17-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
@@ -125,9 +125,9 @@ https://gitee.com/lijoujou99_admin/AIBridge.git
 4. 点击 `Install Selected Integrations`。
 5. 可选：点击 `Install Unity Project AGENTS.md Template`，在项目根目录创建 `AGENTS.md`。
 
-安装后的 AIBridge Skills 只会写入一份到 `.aibridge/skills/`。Claude、Cursor、Codex 通过项目根的薄 plugin 清单（`.claude-plugin/plugin.json`、`.cursor-plugin/plugin.json`、`.codex-plugin/plugin.json`）发现该共享目录。Cline 没有等价 plugin 索引，勾选后会再同步一份到 `.clinerules/skills/`。也可以在 `Workflows > Skills` 页签覆盖共享目录，plugin 索引会指向自定义路径。不同 AI 工具仍会收到各自的最小 RootRule。RootRule 包含固定的项目根目录相对 CLI 路径、明确的 `$CLI` 绑定、常用命令、Skill 根目录和 `aibridge-development-workflow` 入口。多分支路由、针对性检查清单、高级 workflow 编排规则和命令说明都放在已安装 workflow Skill 及其 `references/` 目录中。
+安装后的 AIBridge Skills 只会生成一份到 `.aibridge/skills/`，再镜像到已选工具的原生 skills 目录（`.claude/skills/`、`.cursor/skills/`、`.codex/skills/`、`.clinerules/skills/`）。项目根 plugin 清单（`.claude-plugin/plugin.json`、`.cursor-plugin/plugin.json`、`.codex-plugin/plugin.json`）只是可选辅助，自动发现以原生目录为准。也可以在 `Workflows > Skills` 页签覆盖权威副本路径，已选工具仍会收到原生镜像。不同 AI 工具仍会收到各自的最小 RootRule。RootRule 包含固定的项目根目录相对 CLI 路径、明确的 `$CLI` 绑定、常用命令、Skill 根目录和 `aibridge-development-workflow` 入口。多分支路由、针对性检查清单、高级 workflow 编排规则和命令说明都放在已安装 workflow Skill 及其 `references/` 目录中。
 
-如果项目有需要，也可以在 `Workflows > 推荐库` 页签刷新默认的 `obra/superpowers` 推荐仓库，并将其中的第三方 Skill 安装到共享 Skill 根目录。
+如果项目有需要，也可以在 `Workflows > 推荐库` 页签刷新默认的 `obra/superpowers` 推荐仓库，并将其中的第三方 Skill 安装到共享 Skill 根目录和已选工具的原生 skills 目录。
 
 `Workflows > Workflow 选项` 会保存项目级工作流偏好。应用这些选项时，会刷新已安装的 `aibridge-development-workflow` Skill 下的生成文件，包括 `references/project-workflow-preferences.md` 和根据分支开关生成的分支选择规则。
 

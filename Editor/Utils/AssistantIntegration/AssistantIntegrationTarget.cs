@@ -70,7 +70,7 @@ namespace AIBridge.Editor
                 return customSkillRootDirectory;
             }
 
-            // 默认只维护一份 Skill 实体，各 plugin 工具通过项目根 plugin.json 发现。
+            // 权威副本只维护一份；各工具靠原生 skills 目录自动发现。
             return AIBridgeProjectSettings.CanonicalSharedSkillRootDirectory;
         }
 

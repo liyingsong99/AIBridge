@@ -84,7 +84,7 @@
 用途：
 
 - 为所选 AI 工具安装或刷新 AIBridge Skills
-- 默认把 Skill 实体装到 `.aibridge/skills/`，再用 plugin.json 或 Cline 原生目录发现
+- 默认把 Skill 实体装到 `.aibridge/skills/`，再镜像到已选工具的原生 skills 目录；plugin.json 仅为可选辅助
 - 用用户能理解的方式显示当前集成目标
 
 典型操作：
@@ -102,7 +102,7 @@
 
 - 打开安装目录
 - 刷新推荐库来源
-- 将推荐 Skill 安装到共享 Skill 根目录（Cline 勾选时再同步原生目录）
+- 将推荐 Skill 安装到共享 Skill 根目录，并同步到已选工具的原生 skills 目录
 
 #### 3. Workflow Options
 
