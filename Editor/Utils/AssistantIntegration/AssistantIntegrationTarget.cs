@@ -13,6 +13,9 @@ namespace AIBridge.Editor
         public string Id { get; set; }
         public string DisplayName { get; set; }
         public bool SupportsSkillDirectory { get; set; }
+        public bool SupportsPluginManifest { get; set; }
+        public string PluginManifestDirectoryName { get; set; }
+        public bool UsesCursorPluginPayload { get; set; }
         public string RootRuleFileName { get; set; }
         public string SkillDirectoryRelativePath { get; set; }
         public string SkillFileName { get; set; }
@@ -67,8 +70,8 @@ namespace AIBridge.Editor
                 return customSkillRootDirectory;
             }
 
-            // 默认使用各工具自己的 Skills 根目录，保证 Codex/Cursor/Claude 能按原生规则发现 Skill。
-            return GetDefaultSkillRootDirectoryRelativePath();
+            // 默认只维护一份 Skill 实体，各 plugin 工具通过项目根 plugin.json 发现。
+            return AIBridgeProjectSettings.CanonicalSharedSkillRootDirectory;
         }
 
         public string GetResolvedSkillDirectoryRelativePath(string projectRoot)

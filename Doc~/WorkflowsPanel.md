@@ -84,6 +84,7 @@
 用途：
 
 - 为所选 AI 工具安装或刷新 AIBridge Skills
+- 默认把 Skill 实体装到 `.aibridge/skills/`，再用 plugin.json 或 Cline 原生目录发现
 - 用用户能理解的方式显示当前集成目标
 
 典型操作：
@@ -101,7 +102,7 @@
 
 - 打开安装目录
 - 刷新推荐库来源
-- 将推荐 Skill 安装到所选工具目标
+- 将推荐 Skill 安装到共享 Skill 根目录（Cline 勾选时再同步原生目录）
 
 #### 3. Workflow Options
 
@@ -121,8 +122,8 @@
 
 生效方式：
 
-- `Workflow Options` 的项目设置必须在安装或刷新 Skills 时生成到已安装的 assistant Skill 目录中。
-- 生成文件包括 `aibridge-development-workflow/references/project-workflow-preferences.md` 和根据分支开关生成的 `references/branch-selection.md`。
+- `Workflow Options` 的项目设置必须在安装或刷新 Skills 时生成到共享 Skill 根下的 workflow Skill 目录中。
+- 生成文件包括 `aibridge-development-workflow/references/project-workflow-preferences.md` 和根据分支开关生成的 `references/branch-selection.md`；preferences 是项目级一份，包含全部已选工具的专属提示词。
 - `aibridge-development-workflow` 入口必须先读取生成的项目偏好，再进行分支判定。
 - 进入某个分支后，只读取该分支对应的 `references/branches/<branch>.md`，避免默认加载所有分支文档。
 - 如果用户关闭某个分支，assistant 不能自动进入该分支；用户明确要求时，应先提示该分支已关闭并请求确认。

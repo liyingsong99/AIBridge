@@ -32,7 +32,7 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void InstallerUsesSelectedToolSkillRoots()
+        public void InstallerUsesSharedSkillRootForSelectedTools()
         {
             AssistantIntegrationSelectionSettings.SetSelected("codex", true);
             AssistantIntegrationSelectionSettings.SetSelected("cursor", true);
@@ -62,13 +62,25 @@ namespace AIBridge.Editor.Tests
             var result = RecommendedSkillInstaller.Install(ProjectRoot, repository, skill, true);
 
             Assert.IsTrue(result.Success);
-            Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".codex", "skills", "tdd", "SKILL.md")));
-            Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".cursor", "skills", "tdd", "SKILL.md")));
+            Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".aibridge", "skills", "tdd", "SKILL.md")));
+            Assert.IsFalse(Directory.Exists(Path.Combine(ProjectRoot, ".codex", "skills", "tdd")));
+            Assert.IsFalse(Directory.Exists(Path.Combine(ProjectRoot, ".cursor", "skills", "tdd")));
             Assert.IsFalse(Directory.Exists(Path.Combine(ProjectRoot, ".skills", "tdd")));
         }
 
         [Test]
-        public void InstallerFallsBackToCodexSkillRootWhenNoToolIsSelected()
+        public void InstallerMirrorsSharedRootToClineNativeDirectory()
+        {
+            AssistantIntegrationSelectionSettings.SetSelected("codex", true);
+            AssistantIntegrationSelectionSettings.SetSelected("cline", true);
+
+            var roots = RecommendedSkillInstaller.GetSelectedInstallRootDirectories(ProjectRoot);
+
+            CollectionAssert.AreEqual(new[] { ".aibridge/skills", ".clinerules/skills" }, roots);
+        }
+
+        [Test]
+        public void InstallerFallsBackToSharedSkillRootWhenNoToolIsSelected()
         {
             foreach (var target in AssistantIntegrationRegistry.GetTargets())
             {
@@ -77,7 +89,7 @@ namespace AIBridge.Editor.Tests
 
             var roots = RecommendedSkillInstaller.GetSelectedInstallRootDirectories(ProjectRoot);
 
-            CollectionAssert.AreEqual(new[] { ".codex/skills" }, roots);
+            CollectionAssert.AreEqual(new[] { ".aibridge/skills" }, roots);
         }
 
         [Test]

@@ -20,13 +20,18 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void DoesNotGeneratePluginIndexForDefaultToolDirectories()
+        public void GeneratesPluginIndexForDefaultSharedDirectory()
         {
             SkillPluginAdapter.GenerateAll(ProjectRoot);
 
-            Assert.IsFalse(File.Exists(Path.Combine(ProjectRoot, ".claude-plugin", "plugin.json")));
-            Assert.IsFalse(File.Exists(Path.Combine(ProjectRoot, ".codex-plugin", "plugin.json")));
-            Assert.IsFalse(File.Exists(Path.Combine(ProjectRoot, ".cursor-plugin", "plugin.json")));
+            var claudePluginJson = File.ReadAllText(Path.Combine(ProjectRoot, ".claude-plugin", "plugin.json"));
+            var codexPluginJson = File.ReadAllText(Path.Combine(ProjectRoot, ".codex-plugin", "plugin.json"));
+            var cursorPluginJson = File.ReadAllText(Path.Combine(ProjectRoot, ".cursor-plugin", "plugin.json"));
+            StringAssert.Contains("\"skills\": \"./.aibridge/skills/\"", claudePluginJson);
+            StringAssert.Contains("\"skills\": \"./.aibridge/skills/\"", codexPluginJson);
+            StringAssert.Contains("\"skills\": \"./.aibridge/skills/\"", cursorPluginJson);
+            StringAssert.Contains("\"displayName\": \"AIBridge Skills\"", cursorPluginJson);
+            StringAssert.Contains("\"interface\"", codexPluginJson);
         }
 
         [Test]

@@ -130,6 +130,7 @@ namespace AIBridge.Editor
         public const int CurrentDataVersion = 19;
         public const string DefaultEditorLanguage = "English";
         public const string LegacySharedSkillRootDirectory = ".skills";
+        public const string CanonicalSharedSkillRootDirectory = ".aibridge/skills";
         public const string DefaultSkillRootDirectory = "";
         public const int DefaultGifFrameCount = 50;
         public const int DefaultGifFps = 20;
@@ -274,6 +275,17 @@ namespace AIBridge.Editor
 
                 skillRootDirectory = IsValidSkillRootDirectory(normalized) ? normalized : DefaultSkillRootDirectory;
             }
+        }
+
+        /// <summary>
+        /// 项目内唯一 Skill 实体根：自定义目录优先，否则使用 canonical `.aibridge/skills`。
+        /// </summary>
+        public static string ResolveSharedSkillRootDirectory()
+        {
+            var customSkillRootDirectory = Instance.SkillRootDirectory;
+            return string.IsNullOrEmpty(customSkillRootDirectory)
+                ? CanonicalSharedSkillRootDirectory
+                : customSkillRootDirectory;
         }
 
         public GifRecorderSettingsData GifRecorder

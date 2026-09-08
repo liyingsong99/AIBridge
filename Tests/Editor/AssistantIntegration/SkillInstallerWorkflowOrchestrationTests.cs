@@ -14,7 +14,7 @@ namespace AIBridge.Editor.Tests
 
             var results = SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
 
-            var skillDirectory = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-workflow-orchestration");
+            var skillDirectory = Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge-workflow-orchestration");
             Assert.IsTrue(File.Exists(Path.Combine(skillDirectory, "SKILL.md")));
             Assert.IsTrue(File.Exists(Path.Combine(skillDirectory, "references", "orchestration-patterns.md")));
             Assert.IsTrue(File.Exists(Path.Combine(skillDirectory, "references", "recipe-schema.md")));
@@ -31,17 +31,17 @@ namespace AIBridge.Editor.Tests
 
             SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
 
-            var workflowSkillPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "SKILL.md");
+            var workflowSkillPath = Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge-development-workflow", "SKILL.md");
             var workflowSkill = File.ReadAllText(workflowSkillPath);
             StringAssert.Contains("workflow recipe", workflowSkill);
             StringAssert.Contains("references/branch-selection.md", workflowSkill);
 
-            var orchestrationBranchPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "branches", "orchestration.md");
+            var orchestrationBranchPath = Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge-development-workflow", "references", "branches", "orchestration.md");
             var orchestrationBranch = File.ReadAllText(orchestrationBranchPath);
             StringAssert.Contains("加载 `aibridge-workflow-orchestration`", orchestrationBranch);
             StringAssert.Contains("多 Agent", orchestrationBranch);
 
-            var orchestrationSkillPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-workflow-orchestration", "SKILL.md");
+            var orchestrationSkillPath = Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge-workflow-orchestration", "SKILL.md");
             Assert.IsTrue(File.Exists(orchestrationSkillPath));
             StringAssert.Contains("workflow-cli-reference.md", File.ReadAllText(orchestrationSkillPath));
         }
@@ -53,8 +53,8 @@ namespace AIBridge.Editor.Tests
 
             SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
 
-            var readinessPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "harness-readiness.md");
-            var detailPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "harness-readiness-detail.md");
+            var readinessPath = Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge-development-workflow", "references", "harness-readiness.md");
+            var detailPath = Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge-development-workflow", "references", "harness-readiness-detail.md");
             Assert.IsTrue(File.Exists(readinessPath));
             Assert.IsTrue(File.Exists(detailPath));
 
@@ -92,12 +92,12 @@ namespace AIBridge.Editor.Tests
 
             SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
 
-            var aibridgeSkillPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge", "SKILL.md");
-            var workflowSkillPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "SKILL.md");
-            var preferencesPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "project-workflow-preferences.md");
-            var branchSelectionPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "branch-selection.md");
-            var readinessDetailPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "harness-readiness-detail.md");
-            var branchManifestPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "implementation-branch.manifest.json");
+            var aibridgeSkillPath = Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge", "SKILL.md");
+            var workflowSkillPath = Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge-development-workflow", "SKILL.md");
+            var preferencesPath = Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge-development-workflow", "references", "project-workflow-preferences.md");
+            var branchSelectionPath = Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge-development-workflow", "references", "branch-selection.md");
+            var readinessDetailPath = Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge-development-workflow", "references", "harness-readiness-detail.md");
+            var branchManifestPath = Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge-development-workflow", "references", "implementation-branch.manifest.json");
 
             AssertNoUtf8Bom(aibridgeSkillPath);
             AssertNoUtf8Bom(workflowSkillPath);
@@ -116,7 +116,7 @@ namespace AIBridge.Editor.Tests
 
             SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
 
-            var manifestPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "implementation-branch.manifest.json");
+            var manifestPath = Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge-development-workflow", "references", "implementation-branch.manifest.json");
             Assert.IsTrue(File.Exists(manifestPath));
 
             var manifest = File.ReadAllText(manifestPath);
@@ -124,6 +124,69 @@ namespace AIBridge.Editor.Tests
             StringAssert.Contains("\"id\": \"implementation-locate\"", manifest);
             StringAssert.Contains("\"id\": \"implementation-verify\"", manifest);
             StringAssert.Contains("\"kind\": \"OptionalFlow\"", manifest);
+        }
+
+        [Test]
+        public void SharedSkillRootIsInstalledOnceAndClineGetsNativeCopy()
+        {
+            var codex = AssistantIntegrationRegistry.GetTargets().First(item => item.Id == "codex");
+            var cline = AssistantIntegrationRegistry.GetTargets().First(item => item.Id == "cline");
+
+            SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { codex, cline });
+
+            var sharedSkill = Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge-development-workflow", "SKILL.md");
+            var clineSkill = Path.Combine(ProjectRoot, ".clinerules", "skills", "aibridge-development-workflow", "SKILL.md");
+            var preferences = File.ReadAllText(Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge-development-workflow", "references", "project-workflow-preferences.md"));
+            Assert.IsTrue(File.Exists(sharedSkill));
+            Assert.IsTrue(File.Exists(clineSkill));
+            Assert.IsFalse(Directory.Exists(Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow")));
+            StringAssert.Contains("Assistants:", preferences);
+            StringAssert.Contains("Codex (`codex`)", preferences);
+            StringAssert.Contains("Cline (`cline`)", preferences);
+            StringAssert.DoesNotContain("- Assistant: Codex (`codex`)", preferences);
+        }
+
+        [Test]
+        public void InstallRemovesLegacyNativeAiBridgeSkills()
+        {
+            var target = AssistantIntegrationRegistry.GetTargets().First(item => item.Id == "codex");
+            var legacyDirectory = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge");
+            var userSkillDirectory = Path.Combine(ProjectRoot, ".codex", "skills", "user-skill");
+            Directory.CreateDirectory(legacyDirectory);
+            Directory.CreateDirectory(userSkillDirectory);
+            File.WriteAllText(Path.Combine(legacyDirectory, "SKILL.md"), "# leftover");
+            File.WriteAllText(Path.Combine(userSkillDirectory, "SKILL.md"), "# keep");
+
+            SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
+
+            Assert.IsFalse(Directory.Exists(legacyDirectory));
+            Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".codex", "skills", "user-skill", "SKILL.md")));
+            Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge", "SKILL.md")));
+        }
+
+        [Test]
+        public void InstallMigratesUniqueRecommendedSkillFromNativeRoot()
+        {
+            var target = AssistantIntegrationRegistry.GetTargets().First(item => item.Id == "codex");
+            var nativeDirectory = Path.Combine(ProjectRoot, ".codex", "skills", "tdd");
+            Directory.CreateDirectory(nativeDirectory);
+            File.WriteAllText(Path.Combine(nativeDirectory, "SKILL.md"), "---\nname: tdd\n---\n# TDD");
+            RecommendedSkillInstallRegistry.Upsert(ProjectRoot, new InstalledSkillRecord
+            {
+                Name = "tdd",
+                RepositoryId = "test",
+                RepositoryUrl = "https://example.com/repo.git",
+                SourceRelativePath = "skills/tdd",
+                BranchOrTag = "main",
+                Commit = "abc123",
+                InstallRootDirectory = ".codex/skills",
+                InstalledAtUtcTicks = 1
+            });
+
+            SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
+
+            Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".aibridge", "skills", "tdd", "SKILL.md")));
+            Assert.IsFalse(Directory.Exists(nativeDirectory));
         }
 
         private static void AssertNoUtf8Bom(string path)

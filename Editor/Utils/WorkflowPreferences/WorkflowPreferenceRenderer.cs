@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using UnityEngine;
@@ -30,14 +32,20 @@ namespace AIBridge.Editor
 
         public static string RenderPreferences(string projectRoot, AssistantIntegrationTarget target)
         {
+            return RenderPreferences(projectRoot, target == null ? null : new[] { target });
+        }
+
+        public static string RenderPreferences(string projectRoot, IEnumerable<AssistantIntegrationTarget> targets)
+        {
             var settings = AIBridgeProjectSettings.Instance;
             var workflowUi = settings.WorkflowUi;
+            var selectedTargets = NormalizeTargets(targets);
             var builder = new StringBuilder();
             builder.AppendLine("# 项目 Workflow 偏好");
             builder.AppendLine();
             builder.AppendLine("> 本文件由 AIBridge/Workflows 根据项目设置生成。不要手动编辑；修改请回到 Unity 的 `AIBridge/Workflows > Workflow Options`。");
             builder.AppendLine();
-            builder.AppendLine("- Assistant: " + target.DisplayName + " (`" + target.Id + "`)");
+            builder.AppendLine("- Assistants: " + FormatAssistantList(selectedTargets));
             builder.AppendLine();
 
             builder.AppendLine("## 启用分支");
@@ -70,8 +78,12 @@ namespace AIBridge.Editor
             builder.AppendLine("## 附加提示词");
             builder.AppendLine();
             AppendPrompt(builder, "通用提示词前缀", workflowUi.SharedPromptPrefix);
-            settings.TryGetWorkflowAssistantPromptPrefix(target.Id, out var assistantPromptPrefix);
-            AppendPrompt(builder, target.DisplayName + " 专属提示词前缀", assistantPromptPrefix);
+            foreach (var target in selectedTargets)
+            {
+                settings.TryGetWorkflowAssistantPromptPrefix(target.Id, out var assistantPromptPrefix);
+                AppendPrompt(builder, target.DisplayName + " 专属提示词前缀", assistantPromptPrefix);
+            }
+
             builder.AppendLine();
 
             builder.AppendLine("## 执行规则");
@@ -84,7 +96,7 @@ namespace AIBridge.Editor
             builder.AppendLine();
             builder.AppendLine("## 元数据");
             builder.AppendLine();
-            builder.AppendLine("- Settings Hash: `" + ComputeSettingsHash(projectRoot, target) + "`");
+            builder.AppendLine("- Settings Hash: `" + ComputeSettingsHash(projectRoot, selectedTargets) + "`");
             return AiRuleMarkdownNormalizer.TrimLineEndPunctuation(builder.ToString());
         }
 
@@ -183,15 +195,21 @@ namespace AIBridge.Editor
 
         public static string RenderGraphManifest(string projectRoot, AssistantIntegrationTarget target)
         {
+            return RenderGraphManifest(projectRoot, target == null ? null : new[] { target });
+        }
+
+        public static string RenderGraphManifest(string projectRoot, IEnumerable<AssistantIntegrationTarget> targets)
+        {
             var workflowUi = AIBridgeProjectSettings.Instance.WorkflowUi;
+            var selectedTargets = NormalizeTargets(targets);
             var manifest = new WorkflowGraphManifestData
             {
                 schemaVersion = 1,
                 kind = "aibridge-workflow-routing-graph",
                 generatedFrom = new WorkflowGraphManifestGeneratedFromData
                 {
-                    assistant = target == null ? string.Empty : target.Id,
-                    settingsHash = ComputeSettingsHash(projectRoot, target)
+                    assistant = "project",
+                    settingsHash = ComputeSettingsHash(projectRoot, selectedTargets)
                 },
                 nodes = new[]
                 {
@@ -268,10 +286,16 @@ namespace AIBridge.Editor
 
         public static string ComputeSettingsHash(string projectRoot, AssistantIntegrationTarget target)
         {
+            return ComputeSettingsHash(projectRoot, target == null ? null : new[] { target });
+        }
+
+        public static string ComputeSettingsHash(string projectRoot, IEnumerable<AssistantIntegrationTarget> targets)
+        {
             var settings = AIBridgeProjectSettings.Instance;
             var workflowUi = settings.WorkflowUi;
+            var selectedTargets = NormalizeTargets(targets);
             var builder = new StringBuilder();
-            builder.AppendLine(target == null ? string.Empty : target.Id);
+            builder.AppendLine(string.Join(",", selectedTargets.Select(item => item.Id).ToArray()));
             builder.AppendLine(settings.CodeIndex.EnableCodeIndex.ToString());
             builder.AppendLine(workflowUi.EnableImplementationBranch.ToString());
             builder.AppendLine(workflowUi.EnableDebugBranch.ToString());
@@ -282,10 +306,15 @@ namespace AIBridge.Editor
             builder.AppendLine(workflowUi.PreferRuntimeEvidence.ToString());
             builder.AppendLine(workflowUi.PreferCodeIndexGuidance.ToString());
             builder.AppendLine(workflowUi.SharedPromptPrefix ?? string.Empty);
-            if (target != null)
+            foreach (var target in AssistantIntegrationRegistry.GetTargets())
             {
-                AIBridgeProjectSettings.Instance.TryGetWorkflowAssistantPromptPrefix(target.Id, out var assistantPromptPrefix);
-                builder.AppendLine(assistantPromptPrefix ?? string.Empty);
+                if (target == null)
+                {
+                    continue;
+                }
+
+                settings.TryGetWorkflowAssistantPromptPrefix(target.Id, out var assistantPromptPrefix);
+                builder.AppendLine(target.Id + "=" + (assistantPromptPrefix ?? string.Empty));
             }
 
             using (var sha = SHA256.Create())
@@ -492,6 +521,30 @@ namespace AIBridge.Editor
             return AIBridgeProjectSettings.Instance.CodeIndex.EnableCodeIndex
                 ? branch.CommonSkillsWithCodeIndex
                 : branch.CommonSkillsWithoutCodeIndex;
+        }
+
+        private static List<AssistantIntegrationTarget> NormalizeTargets(IEnumerable<AssistantIntegrationTarget> targets)
+        {
+            if (targets == null)
+            {
+                return new List<AssistantIntegrationTarget>();
+            }
+
+            return targets
+                .Where(item => item != null)
+                .GroupBy(item => item.Id, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .ToList();
+        }
+
+        private static string FormatAssistantList(IList<AssistantIntegrationTarget> targets)
+        {
+            if (targets == null || targets.Count == 0)
+            {
+                return "project";
+            }
+
+            return string.Join(", ", targets.Select(item => item.DisplayName + " (`" + item.Id + "`)").ToArray());
         }
 
         private sealed class BranchInfo

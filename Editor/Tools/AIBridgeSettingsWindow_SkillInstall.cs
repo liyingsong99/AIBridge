@@ -16,8 +16,8 @@ namespace AIBridge.Editor
             EditorGUILayout.LabelField(AIBridgeEditorText.T("Skill Installation", "Skills 安装"), EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 AIBridgeEditorText.T(
-                    "Select which supported AI tool should receive the AIBridge integration. By default, Skills are installed into each tool's native skills directory.",
-                    "选择要安装 AIBridge 适配层的 AI 工具。默认会将 Skill 安装到各工具自己的原生 skills 目录。"),
+                    "Select which supported AI tool should receive the AIBridge integration. Skills are installed once to .aibridge/skills. Claude, Cursor, and Codex discover them through a project-root plugin.json; Cline also receives a native copy.",
+                    "选择要安装 AIBridge 适配层的 AI 工具。Skill 默认只安装一份到 .aibridge/skills。Claude、Cursor、Codex 通过项目根 plugin.json 发现；Cline 会再同步一份到原生目录。"),
                 MessageType.Info);
 
             // 自动安装开关
@@ -139,9 +139,9 @@ namespace AIBridge.Editor
             EditorGUILayout.LabelField(AIBridgeEditorText.T("Custom Skills Directory", "自定义 Skills 目录"), EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 AIBridgeEditorText.T(
-                    "Leave this empty to install Skills into each selected tool's default directory, such as .codex/skills. Custom directories may not be discovered automatically by the AI tool.",
-                    "留空时会安装到各已选工具的默认目录，例如 .codex/skills。自定义目录可能无法被 AI 工具自动发现。"),
-                MessageType.Warning);
+                    "Leave this empty to keep the shared Skill root at .aibridge/skills. Claude, Cursor, and Codex discover it through plugin.json. A custom directory still uses the same plugin index.",
+                    "留空时 Skill 实体保持在 .aibridge/skills。Claude、Cursor、Codex 通过 plugin.json 发现；自定义目录仍走同一套 plugin 索引。"),
+                MessageType.Info);
 
             EditorGUILayout.BeginHorizontal();
             EditorGUI.BeginChangeCheck();
@@ -211,7 +211,7 @@ namespace AIBridge.Editor
             var currentRoot = AIBridgeProjectSettings.Instance.SkillRootDirectory;
             if (string.IsNullOrEmpty(currentRoot))
             {
-                currentRoot = AIBridgeProjectSettings.LegacySharedSkillRootDirectory;
+                currentRoot = AIBridgeProjectSettings.CanonicalSharedSkillRootDirectory;
             }
 
             var currentDirectory = Path.Combine(projectRoot, currentRoot.Replace('/', Path.DirectorySeparatorChar));
@@ -276,7 +276,20 @@ namespace AIBridge.Editor
             }
 
             // 面板选择的是 Skills 根目录，实际安装时每个 Skill 会落到根目录下的独立子目录。
-            return selection.SkillRootDirectory.TrimEnd('/', '\\') + "/" + skillDirectoryName;
+            var sharedPath = selection.SkillRootDirectory.TrimEnd('/', '\\') + "/" + skillDirectoryName;
+            if (selection.Target.SupportsPluginManifest)
+            {
+                return sharedPath;
+            }
+
+            var nativeRoot = selection.Target.GetDefaultSkillRootDirectoryRelativePath();
+            if (string.IsNullOrEmpty(nativeRoot)
+                || string.Equals(nativeRoot, selection.SkillRootDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                return sharedPath;
+            }
+
+            return sharedPath + " + " + nativeRoot.TrimEnd('/', '\\') + "/" + skillDirectoryName;
         }
 
         private string GetSkillRootModeText()
@@ -287,7 +300,9 @@ namespace AIBridge.Editor
                 return AIBridgeEditorText.T("Custom: ", "自定义：") + customRoot;
             }
 
-            return AIBridgeEditorText.T("Automatic per tool default directories", "自动使用各工具默认目录");
+            return AIBridgeEditorText.T(
+                "Shared plugin directory: " + AIBridgeProjectSettings.CanonicalSharedSkillRootDirectory,
+                "共享 plugin 目录：" + AIBridgeProjectSettings.CanonicalSharedSkillRootDirectory);
         }
 
         private static string GetProjectRoot()

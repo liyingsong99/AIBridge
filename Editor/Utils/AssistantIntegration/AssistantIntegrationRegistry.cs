@@ -4,9 +4,11 @@ namespace AIBridge.Editor
 {
     /// <summary>
     /// AI 助手集成目标注册表
-    /// 
+    ///
     /// Skills 目录支持说明：
-    /// - AIBridge 默认安装到各工具自己的 skills 根目录，自定义目录仅作为高级覆盖项。
+    /// - 默认只安装一份到 `.aibridge/skills`；Claude/Cursor/Codex 用项目根 plugin.json 发现。
+    /// - Cline 没有等价 plugin 清单，勾选时再同步一份到原生 `.clinerules/skills`。
+    /// - 自定义 Skill 根目录仍可覆盖共享实体路径。
     /// </summary>
     internal static class AssistantIntegrationRegistry
     {
@@ -21,6 +23,8 @@ namespace AIBridge.Editor
                     Id = "claude",
                     DisplayName = "Claude",
                     SupportsSkillDirectory = true,
+                    SupportsPluginManifest = true,
+                    PluginManifestDirectoryName = ".claude-plugin",
                     RootRuleFileName = "CLAUDE.md",
                     SkillDirectoryRelativePath = ".claude/skills/aibridge",
                     SkillFileName = "SKILL.md",
@@ -33,6 +37,8 @@ namespace AIBridge.Editor
                     Id = "codex",
                     DisplayName = "Codex",
                     SupportsSkillDirectory = true,
+                    SupportsPluginManifest = true,
+                    PluginManifestDirectoryName = ".codex-plugin",
                     RootRuleFileName = "AGENTS.md",
                     SkillDirectoryRelativePath = ".codex/skills/aibridge",
                     SkillFileName = "SKILL.md",
@@ -45,6 +51,9 @@ namespace AIBridge.Editor
                     Id = "cursor",
                     DisplayName = "Cursor",
                     SupportsSkillDirectory = true,
+                    SupportsPluginManifest = true,
+                    PluginManifestDirectoryName = ".cursor-plugin",
+                    UsesCursorPluginPayload = true,
                     RootRuleFileName = ".cursor/rules/aibridge.mdc",
                     SkillDirectoryRelativePath = ".cursor/skills/aibridge",
                     SkillFileName = "SKILL.md",

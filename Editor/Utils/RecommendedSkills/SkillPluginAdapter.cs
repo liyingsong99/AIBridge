@@ -10,38 +10,30 @@ namespace AIBridge.Editor
         private const string AIBridgePluginName = "aibridge-skills";
         private const string PluginJsonFileName = "plugin.json";
         private const string SkillsFieldName = "skills";
-        private const string ClaudePluginDirectoryName = ".claude-plugin";
-        private const string CodexPluginDirectoryName = ".codex-plugin";
-        private const string CursorPluginDirectoryName = ".cursor-plugin";
         private const string LegacyCodexPluginContainerDirectoryName = "plugins";
 
         public static void GenerateAll(string projectRoot)
         {
-            GenerateClaudePlugin(projectRoot);
-            GenerateCodexPlugin(projectRoot);
-            GenerateCursorPlugin(projectRoot);
+            GenerateForTargets(projectRoot, AssistantIntegrationRegistry.GetTargets());
         }
 
         public static void GenerateForTargets(string projectRoot, IEnumerable<AssistantIntegrationTarget> targets)
         {
             foreach (var target in targets)
             {
-                if (target == null)
+                if (target == null || !target.SupportsPluginManifest || string.IsNullOrEmpty(target.PluginManifestDirectoryName))
                 {
                     continue;
                 }
 
-                if (string.Equals(target.Id, "claude", StringComparison.OrdinalIgnoreCase))
+                GeneratePluginManifest(
+                    projectRoot,
+                    target.PluginManifestDirectoryName,
+                    "Expose project-root skills for " + target.DisplayName + " plugin discovery.",
+                    target.UsesCursorPluginPayload);
+                if (string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase))
                 {
-                    GenerateClaudePlugin(projectRoot);
-                }
-                else if (string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase))
-                {
-                    GenerateCodexPlugin(projectRoot);
-                }
-                else if (string.Equals(target.Id, "cursor", StringComparison.OrdinalIgnoreCase))
-                {
-                    GenerateCursorPlugin(projectRoot);
+                    CleanupLegacyCodexPlugin(projectRoot);
                 }
             }
         }
@@ -60,18 +52,15 @@ namespace AIBridge.Editor
                     continue;
                 }
 
-                if (string.Equals(target.Id, "claude", StringComparison.OrdinalIgnoreCase))
+                if (!target.SupportsPluginManifest || string.IsNullOrEmpty(target.PluginManifestDirectoryName))
                 {
-                    CleanupPluginManifest(projectRoot, ClaudePluginDirectoryName);
+                    continue;
                 }
-                else if (string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase))
+
+                CleanupPluginManifest(projectRoot, target.PluginManifestDirectoryName);
+                if (string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase))
                 {
-                    CleanupPluginManifest(projectRoot, CodexPluginDirectoryName);
                     CleanupLegacyCodexPlugin(projectRoot);
-                }
-                else if (string.Equals(target.Id, "cursor", StringComparison.OrdinalIgnoreCase))
-                {
-                    CleanupPluginManifest(projectRoot, CursorPluginDirectoryName);
                 }
             }
         }
@@ -91,58 +80,21 @@ namespace AIBridge.Editor
                     continue;
                 }
 
-                if (string.Equals(target.Id, "claude", StringComparison.OrdinalIgnoreCase))
+                if (!target.SupportsPluginManifest || string.IsNullOrEmpty(target.PluginManifestDirectoryName))
                 {
-                    CleanupPluginManifest(projectRoot, ClaudePluginDirectoryName, skillPluginPath);
+                    continue;
                 }
-                else if (string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase))
+
+                CleanupPluginManifest(projectRoot, target.PluginManifestDirectoryName, skillPluginPath);
+                if (string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase))
                 {
-                    CleanupPluginManifest(projectRoot, CodexPluginDirectoryName, skillPluginPath);
                     CleanupLegacyCodexPlugin(projectRoot);
                 }
-                else if (string.Equals(target.Id, "cursor", StringComparison.OrdinalIgnoreCase))
-                {
-                    CleanupPluginManifest(projectRoot, CursorPluginDirectoryName, skillPluginPath);
-                }
             }
-        }
-
-        private static void GenerateClaudePlugin(string projectRoot)
-        {
-            GeneratePluginManifest(
-                projectRoot,
-                ClaudePluginDirectoryName,
-                "Expose project-root skills for Claude-compatible plugin discovery.",
-                false);
-        }
-
-        private static void GenerateCodexPlugin(string projectRoot)
-        {
-            GeneratePluginManifest(
-                projectRoot,
-                CodexPluginDirectoryName,
-                "Expose project-root skills for Codex plugin discovery.",
-                false);
-            CleanupLegacyCodexPlugin(projectRoot);
-        }
-
-        private static void GenerateCursorPlugin(string projectRoot)
-        {
-            GeneratePluginManifest(
-                projectRoot,
-                CursorPluginDirectoryName,
-                "Expose project-root skills for Cursor plugin discovery.",
-                true);
         }
 
         private static void GeneratePluginManifest(string projectRoot, string pluginDirectoryName, string description, bool cursorManifest)
         {
-            if (!UsesCustomSkillRoot())
-            {
-                CleanupPluginManifest(projectRoot, pluginDirectoryName);
-                return;
-            }
-
             var pluginRoot = Path.Combine(projectRoot, pluginDirectoryName);
             Directory.CreateDirectory(pluginRoot);
             var pluginJsonPath = Path.Combine(pluginRoot, PluginJsonFileName);
@@ -450,28 +402,23 @@ namespace AIBridge.Editor
 
         private static string GetCustomSkillPluginPath()
         {
-            return GetSkillPluginPath(AIBridgeProjectSettings.Instance.SkillRootDirectory);
+            return GetSkillPluginPath(AIBridgeProjectSettings.ResolveSharedSkillRootDirectory());
         }
 
         private static string GetSkillPluginPath(string skillRootDirectory)
         {
             if (string.IsNullOrEmpty(skillRootDirectory))
             {
-                skillRootDirectory = AIBridgeProjectSettings.LegacySharedSkillRootDirectory;
+                skillRootDirectory = AIBridgeProjectSettings.CanonicalSharedSkillRootDirectory;
             }
 
             skillRootDirectory = skillRootDirectory.Replace('\\', '/').Trim('/');
             if (string.IsNullOrEmpty(skillRootDirectory))
             {
-                skillRootDirectory = AIBridgeProjectSettings.LegacySharedSkillRootDirectory.Trim('/');
+                skillRootDirectory = AIBridgeProjectSettings.CanonicalSharedSkillRootDirectory.Trim('/');
             }
 
             return "./" + skillRootDirectory + "/";
-        }
-
-        private static bool UsesCustomSkillRoot()
-        {
-            return !string.IsNullOrEmpty(AIBridgeProjectSettings.Instance.SkillRootDirectory);
         }
 
         private static string GetString(Dictionary<string, object> payload, string key, string defaultValue)

@@ -3,7 +3,7 @@
 ## 状态
 
 - 状态：当前索引
-- 更新时间：2026-08-03
+- 更新时间：2026-09-08
 - 对象 ID 展示：CLI help / Skill 按 Unity 版本只暴露主键参数名（6000.4+ 为 `entityId`，更旧为 `instanceId`）；兼容策略只在 RootRule 写一行，不在每个 Skill reference / CLI action help 重复；线协议仍双接受
 - 维护范围：`Packages/cn.lys.aibridge`（知识库维护规则仅写在包内 `AGENTS.md` / 本文，不得写入 RootRule 或用户项目 `AGENTS` 模板）
 
@@ -32,10 +32,10 @@
 | CLI | `focus`、`dialog`、`asset`、`batch`、`code`、`code_index`、`compile`、`editor`、`gameobject`、`gameview`、`get_logs`、`harness`、`input`、`inspector`、`menu_item`、`multi`、`prefab`、`profiler`、`runtime`、`scene`、`screenshot`、`selection`、`test`、`transform`、`workflow`、`compile dotnet` | 当前 AIBridge CLI 的真实命令面 |
 | Runtime Bridge | `Runtime/AIBridgeRuntime.cs`、`Runtime/Transports/*`、`runtime status/logs/screenshot/perf/handlers/call` | 连接已编译 Player 或 Play Mode 目标，HTTP 为默认控制面，File transport 为 HTTP 未运行时的兼容回退，采集证据和调用白名单 handler |
 | Workflow | `Tools~/AIBridgeCLI/Workflow/*`、`Templates~/Workflows/*.aibridge-workflow.json`、`workflow list/validate/plan/init/begin/status/report/finish/import/export/clean` | 负责 recipes、run manifest、artifact、gate、report 和外部结果导入 |
-| Skills | `Skill~/aibridge-development-workflow`、`Skill~/aibridge-workflow-orchestration`、`Skill~/aibridge-code-index`、`Skill~/aibridge-prefab-patch`、`Skill~/aibridge-batch-script`、`Skill~/unity-yaml-editing` | 分别覆盖 workflow 短入口/分支路由、编排、轻量声明名检索、Prefab patch、批处理和 YAML 兜底 |
+| Skills | `Skill~/` 权威源；项目安装到 `.aibridge/skills/`；`.claude-plugin` / `.cursor-plugin` / `.codex-plugin` 发现；Cline 额外 `.clinerules/skills/` | 包内一份手写 Skill；项目内一份实体；plugin 工具薄清单发现，Cline 原生目录兜底 |
 | 文档 | `Doc~/README.md`、`Doc~/EditorWindowScreenshot.md`、`Doc~/WorkflowsPanel.md`、`Doc~/WorkflowGraphPanel.md`、`Doc~/workflow-guide/README.md`、`Doc~/workflow-guide/ContextCompression.md`、`Doc~/workflow-guide/AIBridgeLoopsAnalysis.md` | 功能目录、Editor 窗口截图、面板定位、workflow 说明、上下文压缩策略和 FSM 分析 |
 | 模板 | `Templates~/Rules/AIBridge.RootRule.md`、`Templates~/ProjectRules/AGENTS*.md`、`Templates~/Workflows/*.json` | RootRule、项目规则模板和内置 workflow recipes |
-| 生成与缓存 | `.aibridge/harness/capabilities.json`、`.aibridge/test-runs/`、`.aibridge/workflows/active-run.json`、`.aibridge/workflows/runs/`、`.aibridge/code-index/snapshot/`、`.aibridge/code/`、`.aibridge/tmp/`、`.aibridge/plan/` | 当前项目的能力快照、测试队列状态、运行产物、代码索引、临时代码、Agent/脚本短生命周期输出和方案底稿 |
+| 生成与缓存 | `.aibridge/skills/`、`.aibridge/harness/capabilities.json`、`.aibridge/test-runs/`、`.aibridge/workflows/active-run.json`、`.aibridge/workflows/runs/`、`.aibridge/code-index/snapshot/`、`.aibridge/code/`、`.aibridge/tmp/`、`.aibridge/plan/` | 当前项目的共享 Skill 实体、能力快照、测试队列状态、运行产物、代码索引、临时代码、Agent/脚本短生命周期输出和方案底稿 |
 | Editor 实例状态 | `%LOCALAPPDATA%/AIBridge/instances/<projectKey>/editor-instance.json`（可用 `AIBRIDGE_STATE_DIR` 覆盖根目录） | Editor 心跳与 `focus` 多实例解析；高频状态写在项目外，避免触发 Git 工作区监听；CLI 仍兼容读取遗留 `.aibridge/editor-instance.json` |
 
 ## CLI 功能目录
@@ -156,6 +156,8 @@
 - Runtime UI snapshot/find 默认不做逐按钮 raycast；需要遮挡诊断时显式传入 `includeRaycastDetails=true`。
 - HTTP Runtime quick health probe 使用 500ms 基础超时和有限退避重试；本地端口扫描与缓存目标探测保持单次短时预算；自动发现遵循 `runtime-config.json` 的 `discovery.udpPort`；CLI 与 Editor Players 面板共用 discovery cache，均通过跨进程锁串行更新、合并仍新鲜的历史目标并原子发布，因此并发 CLI/`AIBridge/Players` 发现不会互相覆盖远程或手机 Player；自动发现失败时回退已有新鲜缓存，保证 `--target latest` 稳定；HTTP 命令队列上限为 128，重复活动/近期 id 返回 409、队列满返回 429，health/status 暴露当前队列深度。
 - Agent 和脚本的短生命周期输出统一写入 `.aibridge/tmp/`，由 Cache 清理按保留期清理；兼容清理仅处理过期的顶层 `tmp_*` / `tmp-*` 文件，不会扫描或删除其他顶层产物。
+- Unity 项目 Skill 默认只安装一份到 `.aibridge/skills/`；Claude/Cursor/Codex 通过项目根 `.claude-plugin` / `.cursor-plugin` / `.codex-plugin` 的 `plugin.json` 发现该目录；Cline 勾选后再同步一份到 `.clinerules/skills/`。自定义 Skill 根目录仍可覆盖共享实体路径。包内手写源仍是 `Skill~/`。
+- `project-workflow-preferences.md` 按项目生成一次，列出全部已选工具及其专属提示词前缀，不再按单个 assistant 各写一份。
 
 ## Code Index 收口
 

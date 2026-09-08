@@ -420,9 +420,9 @@ namespace AIBridge.Editor
             EditorGUILayout.LabelField(AIBridgeEditorText.T("Custom Skills Directory", "自定义 Skills 目录"), EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 AIBridgeEditorText.T(
-                    "Leave this empty to install Skills into each selected tool's default directory, such as .codex/skills. Custom directories may not be discovered automatically by the AI tool.",
-                    "留空时会安装到各已选工具的默认目录，例如 .codex/skills。自定义目录可能无法被 AI 工具自动发现。"),
-                MessageType.Warning);
+                    "Leave this empty to keep the shared Skill root at .aibridge/skills. Claude, Cursor, and Codex discover it through plugin.json. A custom directory still uses the same plugin index.",
+                    "留空时 Skill 实体保持在 .aibridge/skills。Claude、Cursor、Codex 通过 plugin.json 发现；自定义目录仍走同一套 plugin 索引。"),
+                MessageType.Info);
 
             EditorGUILayout.BeginHorizontal();
             EditorGUI.BeginChangeCheck();
@@ -626,7 +626,7 @@ namespace AIBridge.Editor
             var currentRoot = AIBridgeProjectSettings.Instance.SkillRootDirectory;
             if (string.IsNullOrEmpty(currentRoot))
             {
-                currentRoot = AIBridgeProjectSettings.LegacySharedSkillRootDirectory;
+                currentRoot = AIBridgeProjectSettings.CanonicalSharedSkillRootDirectory;
             }
 
             var currentDirectory = Path.Combine(projectRoot, currentRoot.Replace('/', Path.DirectorySeparatorChar));
@@ -692,7 +692,20 @@ namespace AIBridge.Editor
                 return selection.SkillRootDirectory;
             }
 
-            return selection.SkillRootDirectory.TrimEnd('/', '\\') + "/" + skillDirectoryName;
+            var sharedPath = selection.SkillRootDirectory.TrimEnd('/', '\\') + "/" + skillDirectoryName;
+            if (selection.Target.SupportsPluginManifest)
+            {
+                return sharedPath;
+            }
+
+            var nativeRoot = selection.Target.GetDefaultSkillRootDirectoryRelativePath();
+            if (string.IsNullOrEmpty(nativeRoot)
+                || string.Equals(nativeRoot, selection.SkillRootDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                return sharedPath;
+            }
+
+            return sharedPath + " + " + nativeRoot.TrimEnd('/', '\\') + "/" + skillDirectoryName;
         }
 
         private string GetSkillRootModeText()
@@ -703,7 +716,9 @@ namespace AIBridge.Editor
                 return AIBridgeEditorText.T("Custom: ", "自定义：") + customRoot;
             }
 
-            return AIBridgeEditorText.T("Automatic per tool default directories", "自动使用各工具默认目录");
+            return AIBridgeEditorText.T(
+                "Shared plugin directory: " + AIBridgeProjectSettings.CanonicalSharedSkillRootDirectory,
+                "共享 plugin 目录：" + AIBridgeProjectSettings.CanonicalSharedSkillRootDirectory);
         }
 
         private static string GetProjectRoot()

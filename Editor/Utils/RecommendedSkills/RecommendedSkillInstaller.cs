@@ -28,6 +28,10 @@ namespace AIBridge.Editor
 
                 var root = target.GetResolvedSkillRootDirectoryRelativePath(projectRoot);
                 AddUniqueRoot(result, root);
+                if (!target.SupportsPluginManifest)
+                {
+                    AddUniqueRoot(result, target.GetDefaultSkillRootDirectoryRelativePath());
+                }
             }
 
             if (result.Count == 0)
@@ -220,31 +224,7 @@ namespace AIBridge.Editor
 
         private static string GetFallbackInstallRootDirectory(string projectRoot)
         {
-            var customSkillRootDirectory = AIBridgeProjectSettings.Instance.SkillRootDirectory;
-            if (!string.IsNullOrEmpty(customSkillRootDirectory))
-            {
-                return customSkillRootDirectory;
-            }
-
-            foreach (var target in AssistantIntegrationRegistry.GetTargets())
-            {
-                if (target != null
-                    && string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase)
-                    && target.SupportsSkillDirectory)
-                {
-                    return target.GetResolvedSkillRootDirectoryRelativePath(projectRoot);
-                }
-            }
-
-            foreach (var target in AssistantIntegrationRegistry.GetTargets())
-            {
-                if (target != null && target.SupportsSkillDirectory)
-                {
-                    return target.GetResolvedSkillRootDirectoryRelativePath(projectRoot);
-                }
-            }
-
-            return AIBridgeProjectSettings.LegacySharedSkillRootDirectory;
+            return AIBridgeProjectSettings.ResolveSharedSkillRootDirectory();
         }
 
         private static void AddUniqueRoot(List<string> roots, string root)

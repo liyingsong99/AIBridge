@@ -6,36 +6,37 @@ namespace AIBridge.Editor.Tests
     public class AssistantIntegrationTargetTests : AssistantIntegrationTestFixture
     {
         [Test]
-        public void CodexSkillRootUsesToolDefaultWhenAgentsDirectoryExists()
+        public void DefaultSkillRootUsesSharedPluginDirectory()
         {
             Directory.CreateDirectory(Path.Combine(ProjectRoot, ".agents"));
             var target = CreateTarget("codex", ".codex/skills/aibridge");
 
-            Assert.AreEqual(".codex/skills", target.GetResolvedSkillRootDirectoryRelativePath(ProjectRoot));
-            Assert.AreEqual(".codex/skills/aibridge", target.GetResolvedSkillDirectoryRelativePath(ProjectRoot));
-            Assert.AreEqual(".codex/skills/aibridge/SKILL.md", target.GetResolvedSkillFileRelativePath(ProjectRoot));
-            Assert.AreEqual(".codex/skills/aibridge-prefab-patch/SKILL.md", target.GetResolvedSiblingSkillFileRelativePath(ProjectRoot, "aibridge-prefab-patch"));
+            Assert.AreEqual(".aibridge/skills", target.GetResolvedSkillRootDirectoryRelativePath(ProjectRoot));
+            Assert.AreEqual(".aibridge/skills/aibridge", target.GetResolvedSkillDirectoryRelativePath(ProjectRoot));
+            Assert.AreEqual(".aibridge/skills/aibridge/SKILL.md", target.GetResolvedSkillFileRelativePath(ProjectRoot));
+            Assert.AreEqual(".aibridge/skills/aibridge-prefab-patch/SKILL.md", target.GetResolvedSiblingSkillFileRelativePath(ProjectRoot, "aibridge-prefab-patch"));
+            Assert.AreEqual(".codex/skills", target.GetDefaultSkillRootDirectoryRelativePath());
         }
 
         [Test]
-        public void CodexSkillRootUsesToolDefaultWhenAgentsDirectoryIsMissing()
+        public void SharedSkillRootDoesNotDependOnDetectedToolDirectories()
         {
             var target = CreateTarget("codex", ".codex/skills/aibridge");
 
-            Assert.AreEqual(".codex/skills", target.GetResolvedSkillRootDirectoryRelativePath(ProjectRoot));
-            Assert.AreEqual(".codex/skills/aibridge", target.GetResolvedSkillDirectoryRelativePath(ProjectRoot));
+            Assert.AreEqual(".aibridge/skills", target.GetResolvedSkillRootDirectoryRelativePath(ProjectRoot));
+            Assert.AreEqual(".aibridge/skills/aibridge", target.GetResolvedSkillDirectoryRelativePath(ProjectRoot));
         }
 
         [Test]
-        public void LegacyPerAssistantSkillRootDoesNotOverrideToolDefaultDirectory()
+        public void LegacyPerAssistantSkillRootDoesNotOverrideSharedDirectory()
         {
             Directory.CreateDirectory(Path.Combine(ProjectRoot, ".agents"));
             AIBridgeProjectSettings.Instance.SetAssistantSkillRootDirectory("codex", ".legacy-skills");
             var target = CreateTarget("codex", ".codex/skills/aibridge");
 
-            Assert.AreEqual(".codex/skills", target.GetResolvedSkillRootDirectoryRelativePath(ProjectRoot));
-            Assert.AreEqual(".codex/skills/aibridge", target.GetResolvedSkillDirectoryRelativePath(ProjectRoot));
-            Assert.AreEqual(".codex/skills/aibridge-prefab-patch/SKILL.md", target.GetResolvedSiblingSkillFileRelativePath(ProjectRoot, "aibridge-prefab-patch"));
+            Assert.AreEqual(".aibridge/skills", target.GetResolvedSkillRootDirectoryRelativePath(ProjectRoot));
+            Assert.AreEqual(".aibridge/skills/aibridge", target.GetResolvedSkillDirectoryRelativePath(ProjectRoot));
+            Assert.AreEqual(".aibridge/skills/aibridge-prefab-patch/SKILL.md", target.GetResolvedSiblingSkillFileRelativePath(ProjectRoot, "aibridge-prefab-patch"));
         }
 
         [Test]
@@ -50,13 +51,14 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void NonCodexSkillRootUsesToolDefaultDirectory()
+        public void PluginAndNativeTargetsShareTheSameResolvedRoot()
         {
-            Directory.CreateDirectory(Path.Combine(ProjectRoot, ".agents"));
-            var target = CreateTarget("claude", ".claude/skills/aibridge");
+            var claude = CreateTarget("claude", ".claude/skills/aibridge");
+            var cline = CreateTarget("cline", ".clinerules/skills/aibridge");
 
-            Assert.AreEqual(".claude/skills", target.GetResolvedSkillRootDirectoryRelativePath(ProjectRoot));
-            Assert.AreEqual(".claude/skills/aibridge", target.GetResolvedSkillDirectoryRelativePath(ProjectRoot));
+            Assert.AreEqual(".aibridge/skills", claude.GetResolvedSkillRootDirectoryRelativePath(ProjectRoot));
+            Assert.AreEqual(".aibridge/skills", cline.GetResolvedSkillRootDirectoryRelativePath(ProjectRoot));
+            Assert.AreEqual(".clinerules/skills", cline.GetDefaultSkillRootDirectoryRelativePath());
         }
 
         private static AssistantIntegrationTarget CreateTarget(string id, string skillDirectoryRelativePath)

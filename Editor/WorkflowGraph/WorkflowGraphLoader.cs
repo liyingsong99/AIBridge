@@ -144,6 +144,13 @@ namespace AIBridge.Editor
                         BranchDetailManifestRelativePath.Replace('/', Path.DirectorySeparatorChar)));
             }
 
+            AddCandidatePath(
+                candidatePaths,
+                Path.Combine(
+                    _projectRoot,
+                    AIBridgeProjectSettings.CanonicalSharedSkillRootDirectory.Replace('/', Path.DirectorySeparatorChar),
+                    WorkflowSkillName,
+                    BranchDetailManifestRelativePath.Replace('/', Path.DirectorySeparatorChar)));
             if (!string.IsNullOrEmpty(AIBridgeProjectSettings.LegacySharedSkillRootDirectory))
             {
                 AddCandidatePath(
@@ -199,6 +206,13 @@ namespace AIBridge.Editor
                         WorkflowPreferenceRenderer.GraphManifestRelativePath.Replace('/', Path.DirectorySeparatorChar)));
             }
 
+            AddCandidatePath(
+                candidatePaths,
+                Path.Combine(
+                    _projectRoot,
+                    AIBridgeProjectSettings.CanonicalSharedSkillRootDirectory.Replace('/', Path.DirectorySeparatorChar),
+                    WorkflowSkillName,
+                    WorkflowPreferenceRenderer.GraphManifestRelativePath.Replace('/', Path.DirectorySeparatorChar)));
             if (!string.IsNullOrEmpty(AIBridgeProjectSettings.LegacySharedSkillRootDirectory))
             {
                 AddCandidatePath(
