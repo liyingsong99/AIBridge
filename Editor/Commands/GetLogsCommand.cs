@@ -123,12 +123,24 @@ $CLI get_logs [--count 100] [--logType Error|Warning] [--regex ""pattern""]
                     return logs;
                 }
 
+                if (maxCount <= 0)
+                {
+                    return logs;
+                }
+
+                // 是否存在实际过滤条件：无过滤时沿用“只扫描最后 maxCount 条”的快路径；
+                // 有过滤时若仍先截断再过滤，会只返回窗口内命中的条目而非 maxCount 条命中项，
+                // 因此改为从最新一条往回扫描。
+                var hasFilter = regexFilter != null ||
+                                (!string.IsNullOrEmpty(logTypeFilter) &&
+                                 !string.Equals(logTypeFilter, "all", StringComparison.OrdinalIgnoreCase));
+                var startIndex = hasFilter ? 0 : Math.Max(0, totalCount - maxCount);
+
                 consoleReflection.StartGettingEntriesMethod.Invoke(null, null);
 
                 try
                 {
-                    var startIndex = Math.Max(0, totalCount - maxCount);
-                    for (var i = startIndex; i < totalCount; i++)
+                    for (var i = totalCount - 1; i >= startIndex; i--)
                     {
                         var entry = Activator.CreateInstance(consoleReflection.LogEntryType);
                         var success = (bool)consoleReflection.GetEntryInternalMethod.Invoke(null, new object[] { i, entry });
@@ -156,12 +168,21 @@ $CLI get_logs [--count 100] [--logType Error|Warning] [--regex ""pattern""]
                             message = message,
                             type = normalizedType
                         });
+
+                        // 由新到旧收集，凑够 maxCount 条即可停止，避免无谓的全量遍历
+                        if (logs.Count >= maxCount)
+                        {
+                            break;
+                        }
                     }
                 }
                 finally
                 {
                     consoleReflection.EndGettingEntriesMethod.Invoke(null, null);
                 }
+
+                // 扫描顺序是由新到旧，翻转回时间顺序，与原有返回顺序保持一致
+                logs.Reverse();
             }
             catch (Exception ex)
             {

@@ -1335,9 +1335,40 @@ namespace AIBridge.Runtime
                 return null;
             }
 
+#if UNITY_2020_1_OR_NEWER
             return Resources.InstanceIDToObject(instanceId) as GameObject;
+#else
+            // UnityEngine.Resources.InstanceIDToObject only exists from Unity 2020.1 onwards.
+            // Resolve through EditorUtility by reflection so this Runtime assembly keeps
+            // compiling on Unity 2019.x without referencing UnityEditor.
+            return ResolveLegacyInstanceIdToObject(instanceId) as GameObject;
+#endif
 #endif
         }
+
+#if !UNITY_6000_4_OR_NEWER && !UNITY_2020_1_OR_NEWER
+        private static readonly System.Reflection.MethodInfo EditorUtilityInstanceIdToObjectMethod =
+            System.Type.GetType("UnityEditor.EditorUtility, UnityEditor") == null
+                ? null
+                : System.Type.GetType("UnityEditor.EditorUtility, UnityEditor").GetMethod(
+                    "InstanceIDToObject",
+                    System.Reflection.BindingFlags.Static |
+                    System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.NonPublic,
+                    null,
+                    new[] { typeof(int) },
+                    null);
+
+        private static UnityEngine.Object ResolveLegacyInstanceIdToObject(int instanceId)
+        {
+            if (EditorUtilityInstanceIdToObjectMethod == null)
+            {
+                return null;
+            }
+
+            return EditorUtilityInstanceIdToObjectMethod.Invoke(null, new object[] { instanceId }) as UnityEngine.Object;
+        }
+#endif
 
         private sealed class UiButtonSnapshotCollection
         {
