@@ -5,11 +5,11 @@ namespace AIBridge.Editor
     /// <summary>
     /// AI 助手集成目标注册表
     ///
-        /// Skills 目录支持说明：
-        /// - 默认只生成一份到 `.aibridge/skills`。
-        /// - 已选工具再镜像到原生目录：`.claude/skills`、`.cursor/skills`、`.codex/skills`、`.clinerules/skills`。
-        /// - 项目根 plugin.json 仅为可选辅助，不是自动发现路径。
-        /// - 自定义 Skill 根目录仍可覆盖共享实体路径。
+    /// Skills 目录支持说明：
+    /// - 默认只安装一份到 `.aibridge/skills`。
+    /// - plugin.json 实测不可靠，Claude/Cursor/Codex 不能稳定识别项目根 plugin 清单。
+    /// - 只有不支持 plugin 的工具（Cline）才镜像到原生 `.clinerules/skills`。
+    /// - 自定义 Skill 根目录仍可覆盖共享实体路径。
     /// </summary>
     internal static class AssistantIntegrationRegistry
     {

@@ -6,7 +6,7 @@ using AIBridge.Internal.Json;
 namespace AIBridge.Editor
 {
     /// <summary>
-    /// 为已选 plugin 工具写项目根 plugin.json。这是可选辅助发现路径，自动加载仍以原生 skills 目录为准。
+    /// 为已选 plugin 工具写项目根 plugin.json。实测不可靠，工具无法稳定识别，保留仅作备用。
     /// </summary>
     internal static class SkillPluginAdapter
     {

@@ -12,7 +12,7 @@ namespace AIBridge.Editor
 {
     /// <summary>
     /// 将 AIBridge Skill 安装到项目共享根（默认 `.aibridge/skills`），
-    /// 再镜像到已选工具的原生 skills 目录；项目根 plugin.json 仅为可选辅助。
+    /// 再为不支持 plugin.json 的工具（Cline）镜像到原生目录；plugin.json 实测不可靠。
     /// </summary>
     [InitializeOnLoad]
     public static class SkillInstaller
@@ -1041,8 +1041,8 @@ namespace AIBridge.Editor
                 additionalSkillPaths.AddRange(InstallAdditionalSkillDirectoriesForTarget(projectRoot, skillHost));
                 GenerateWorkflowPreferenceFilesForSharedRoot(projectRoot, skillHost, targetsList);
                 GenerateSkillReferenceFilesForTarget(projectRoot, skillHost);
-                // 先把各原生目录里仅存的推荐 Skill 迁到共享根，再镜像到已选工具，并清理未选工具的副本。
-                MigrateUniqueNativeSkillsToShared(projectRoot);
+                // 先把旧原生目录里仅存的推荐 Skill 迁到共享根，再同步不支持 plugin 的工具，并清理重复副本。
+                MigrateUniqueNativeSkillsToShared(projectRoot, targetsList);
                 SyncNativeSkillCopies(projectRoot, targetsList);
                 CleanupLegacyNativeAiBridgeSkills(projectRoot, targetsList);
             }
@@ -1870,7 +1870,7 @@ namespace AIBridge.Editor
                         CleanupSkillDirectoriesForTarget(projectRoot, target);
                     }
 
-                    if (target.SupportsSkillDirectory)
+                    if (target.SupportsSkillDirectory && !target.SupportsPluginManifest)
                     {
                         CleanupNativeSkillMirror(projectRoot, target);
                     }
@@ -1981,12 +1981,12 @@ namespace AIBridge.Editor
 
             foreach (var target in selectedTargets)
             {
-                if (target == null || !target.SupportsSkillDirectory)
+                if (target == null || !target.SupportsSkillDirectory || target.SupportsPluginManifest)
                 {
                     continue;
                 }
 
-                // Claude/Cursor/Codex/Cline 都靠原生 skills 目录自动发现，不能只给 NativeOnly 工具做镜像。
+                // plugin.json 实测不可靠，只给不支持 plugin 的工具（如 Cline）做原生镜像。
                 SyncSkillsToNativeDirectory(projectRoot, target);
             }
         }
@@ -2024,12 +2024,12 @@ namespace AIBridge.Editor
             }
         }
 
-        private static void MigrateUniqueNativeSkillsToShared(string projectRoot)
+        private static void MigrateUniqueNativeSkillsToShared(string projectRoot, IEnumerable<AssistantIntegrationTarget> selectedTargets)
         {
             var sharedRootRelative = AIBridgeProjectSettings.ResolveSharedSkillRootDirectory();
             var sharedRoot = Path.Combine(projectRoot, sharedRootRelative.Replace('/', Path.DirectorySeparatorChar));
             var managedNames = GetManagedSkillDirectoryNames(projectRoot);
-            foreach (var nativeRootRelative in GetAllNativeSkillRoots(sharedRootRelative))
+            foreach (var nativeRootRelative in GetLegacyNativeCleanupRoots(selectedTargets, sharedRootRelative))
             {
                 var nativeRoot = Path.Combine(projectRoot, nativeRootRelative.Replace('/', Path.DirectorySeparatorChar));
                 if (!Directory.Exists(nativeRoot) || IsUnsafeSkillInstallTarget(GetSourceSkillRootPath(), nativeRoot))
@@ -2081,24 +2081,7 @@ namespace AIBridge.Editor
             }
         }
 
-        private static List<string> GetAllNativeSkillRoots(string sharedRootRelative)
-        {
-            var nativeRoots = new List<string>();
-            foreach (var target in AssistantIntegrationRegistry.GetTargets())
-            {
-                if (target == null || !target.SupportsSkillDirectory)
-                {
-                    continue;
-                }
-
-                AddUniqueRelativeRoot(nativeRoots, target.GetDefaultSkillRootDirectoryRelativePath());
-            }
-
-            AddUniqueRelativeRoot(nativeRoots, AIBridgeProjectSettings.LegacySharedSkillRootDirectory);
-            return ExcludeSharedSkillRoot(nativeRoots, sharedRootRelative);
-        }
-
-        private static List<string> GetUnselectedNativeCleanupRoots(IEnumerable<AssistantIntegrationTarget> selectedTargets, string sharedRootRelative)
+        private static List<string> GetLegacyNativeCleanupRoots(IEnumerable<AssistantIntegrationTarget> selectedTargets, string sharedRootRelative)
         {
             var selectedIds = new HashSet<string>(
                 (selectedTargets ?? Enumerable.Empty<AssistantIntegrationTarget>())
@@ -2114,8 +2097,8 @@ namespace AIBridge.Editor
                     continue;
                 }
 
-                // 已选工具的原生目录是自动发现副本，不能当遗留目录清理。
-                if (selectedIds.Contains(target.Id))
+                // 支持 plugin 的已选工具不需要原生镜像，其原生目录可作为遗留清理目标。
+                if (!target.SupportsPluginManifest && selectedIds.Contains(target.Id))
                 {
                     continue;
                 }

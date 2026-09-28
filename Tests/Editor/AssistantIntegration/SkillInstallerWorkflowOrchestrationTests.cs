@@ -127,7 +127,7 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void SharedSkillRootIsMirroredToSelectedNativeDirectories()
+        public void SharedSkillRootIsOnlyMirroredToNonPluginTools()
         {
             var codex = AssistantIntegrationRegistry.GetTargets().First(item => item.Id == "codex");
             var cline = AssistantIntegrationRegistry.GetTargets().First(item => item.Id == "cline");
@@ -135,12 +135,11 @@ namespace AIBridge.Editor.Tests
             SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { codex, cline });
 
             var sharedSkill = Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge-development-workflow", "SKILL.md");
-            var codexSkill = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "SKILL.md");
             var clineSkill = Path.Combine(ProjectRoot, ".clinerules", "skills", "aibridge-development-workflow", "SKILL.md");
             var preferences = File.ReadAllText(Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge-development-workflow", "references", "project-workflow-preferences.md"));
             Assert.IsTrue(File.Exists(sharedSkill));
-            Assert.IsTrue(File.Exists(codexSkill));
             Assert.IsTrue(File.Exists(clineSkill));
+            Assert.IsFalse(Directory.Exists(Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow")));
             Assert.IsFalse(Directory.Exists(Path.Combine(ProjectRoot, ".claude", "skills", "aibridge-development-workflow")));
             Assert.IsFalse(Directory.Exists(Path.Combine(ProjectRoot, ".cursor", "skills", "aibridge-development-workflow")));
             StringAssert.Contains("Assistants:", preferences);
@@ -150,41 +149,21 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void InstallMirrorsSharedSkillsToSelectedNativeDirectory()
+        public void InstallRemovesLegacyNativeAiBridgeSkills()
         {
             var target = AssistantIntegrationRegistry.GetTargets().First(item => item.Id == "codex");
-            var leftoverDirectory = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge");
+            var legacyDirectory = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge");
             var userSkillDirectory = Path.Combine(ProjectRoot, ".codex", "skills", "user-skill");
-            Directory.CreateDirectory(leftoverDirectory);
+            Directory.CreateDirectory(legacyDirectory);
             Directory.CreateDirectory(userSkillDirectory);
-            File.WriteAllText(Path.Combine(leftoverDirectory, "SKILL.md"), "# leftover");
+            File.WriteAllText(Path.Combine(legacyDirectory, "SKILL.md"), "# leftover");
             File.WriteAllText(Path.Combine(userSkillDirectory, "SKILL.md"), "# keep");
 
             SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
 
-            var mirroredSkill = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge", "SKILL.md");
-            Assert.IsTrue(File.Exists(mirroredSkill));
-            StringAssert.StartsWith("---", File.ReadAllText(mirroredSkill).TrimStart());
+            Assert.IsFalse(Directory.Exists(legacyDirectory));
             Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".codex", "skills", "user-skill", "SKILL.md")));
             Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".aibridge", "skills", "aibridge", "SKILL.md")));
-        }
-
-        [Test]
-        public void InstallRemovesUnselectedNativeAiBridgeSkills()
-        {
-            var target = AssistantIntegrationRegistry.GetTargets().First(item => item.Id == "codex");
-            var unselectedDirectory = Path.Combine(ProjectRoot, ".claude", "skills", "aibridge");
-            var unselectedUserSkill = Path.Combine(ProjectRoot, ".claude", "skills", "user-skill");
-            Directory.CreateDirectory(unselectedDirectory);
-            Directory.CreateDirectory(unselectedUserSkill);
-            File.WriteAllText(Path.Combine(unselectedDirectory, "SKILL.md"), "# leftover");
-            File.WriteAllText(Path.Combine(unselectedUserSkill, "SKILL.md"), "# keep");
-
-            SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
-
-            Assert.IsFalse(Directory.Exists(unselectedDirectory));
-            Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".claude", "skills", "user-skill", "SKILL.md")));
-            Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".codex", "skills", "aibridge", "SKILL.md")));
         }
 
         [Test]
@@ -209,7 +188,7 @@ namespace AIBridge.Editor.Tests
             SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
 
             Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".aibridge", "skills", "tdd", "SKILL.md")));
-            Assert.IsTrue(File.Exists(Path.Combine(nativeDirectory, "SKILL.md")));
+            Assert.IsFalse(Directory.Exists(nativeDirectory));
         }
 
         private static void AssertNoUtf8Bom(string path)
