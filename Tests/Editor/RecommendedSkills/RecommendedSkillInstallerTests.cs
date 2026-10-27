@@ -62,7 +62,7 @@ namespace AIBridge.Editor.Tests
             var result = RecommendedSkillInstaller.Install(ProjectRoot, repository, skill, true);
 
             Assert.IsTrue(result.Success);
-            Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".codex", "skills", "tdd", "SKILL.md")));
+            Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".agents", "skills", "tdd", "SKILL.md")));
             Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".cursor", "skills", "tdd", "SKILL.md")));
             Assert.IsFalse(Directory.Exists(Path.Combine(ProjectRoot, ".skills", "tdd")));
         }
@@ -77,7 +77,7 @@ namespace AIBridge.Editor.Tests
 
             var roots = RecommendedSkillInstaller.GetSelectedInstallRootDirectories(ProjectRoot);
 
-            CollectionAssert.AreEqual(new[] { ".codex/skills" }, roots);
+            CollectionAssert.AreEqual(new[] { ".agents/skills" }, roots);
         }
 
         [Test]

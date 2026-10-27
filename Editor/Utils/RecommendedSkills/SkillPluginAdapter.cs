@@ -13,6 +13,7 @@ namespace AIBridge.Editor
         private const string ClaudePluginDirectoryName = ".claude-plugin";
         private const string CodexPluginDirectoryName = ".codex-plugin";
         private const string CursorPluginDirectoryName = ".cursor-plugin";
+        private const string ZCodePluginDirectoryName = ".zcode-plugin";
         private const string LegacyCodexPluginContainerDirectoryName = "plugins";
 
         public static void GenerateAll(string projectRoot)
@@ -20,6 +21,7 @@ namespace AIBridge.Editor
             GenerateClaudePlugin(projectRoot);
             GenerateCodexPlugin(projectRoot);
             GenerateCursorPlugin(projectRoot);
+            GenerateZCodePlugin(projectRoot);
         }
 
         public static void GenerateForTargets(string projectRoot, IEnumerable<AssistantIntegrationTarget> targets)
@@ -42,6 +44,10 @@ namespace AIBridge.Editor
                 else if (string.Equals(target.Id, "cursor", StringComparison.OrdinalIgnoreCase))
                 {
                     GenerateCursorPlugin(projectRoot);
+                }
+                else if (string.Equals(target.Id, "zcode", StringComparison.OrdinalIgnoreCase))
+                {
+                    GenerateZCodePlugin(projectRoot);
                 }
             }
         }
@@ -72,6 +78,10 @@ namespace AIBridge.Editor
                 else if (string.Equals(target.Id, "cursor", StringComparison.OrdinalIgnoreCase))
                 {
                     CleanupPluginManifest(projectRoot, CursorPluginDirectoryName);
+                }
+                else if (string.Equals(target.Id, "zcode", StringComparison.OrdinalIgnoreCase))
+                {
+                    CleanupPluginManifest(projectRoot, ZCodePluginDirectoryName);
                 }
             }
         }
@@ -104,6 +114,10 @@ namespace AIBridge.Editor
                 {
                     CleanupPluginManifest(projectRoot, CursorPluginDirectoryName, skillPluginPath);
                 }
+                else if (string.Equals(target.Id, "zcode", StringComparison.OrdinalIgnoreCase))
+                {
+                    CleanupPluginManifest(projectRoot, ZCodePluginDirectoryName, skillPluginPath);
+                }
             }
         }
 
@@ -133,6 +147,15 @@ namespace AIBridge.Editor
                 CursorPluginDirectoryName,
                 "Expose project-root skills for Cursor plugin discovery.",
                 true);
+        }
+
+        private static void GenerateZCodePlugin(string projectRoot)
+        {
+            GeneratePluginManifest(
+                projectRoot,
+                ZCodePluginDirectoryName,
+                "Expose project-root skills for ZCode plugin discovery.",
+                false);
         }
 
         private static void GeneratePluginManifest(string projectRoot, string pluginDirectoryName, string description, bool cursorManifest)

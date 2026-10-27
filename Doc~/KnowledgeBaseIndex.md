@@ -1,9 +1,9 @@
-﻿# AIBridge 知识库文档索引
+# AIBridge 知识库文档索引
 
 ## 状态
 
 - 状态：当前索引
-- 更新时间：2026-08-03
+- 更新时间：2026-10-27
 - 对象 ID 展示：CLI help / Skill 按 Unity 版本只暴露主键参数名（6000.4+ 为 `entityId`，更旧为 `instanceId`）；兼容策略只在 RootRule 写一行，不在每个 Skill reference / CLI action help 重复；线协议仍双接受
 - 维护范围：`Packages/cn.lys.aibridge`（知识库维护规则仅写在包内 `AGENTS.md` / 本文，不得写入 RootRule 或用户项目 `AGENTS` 模板）
 
@@ -28,12 +28,12 @@
 
 | 层级 | 已确认入口 | 说明 |
 |---|---|---|
-| Unity Editor | `AIBridge/Settings`、`AIBridge/Workflows`、`AIBridge/Players`、`AIBridge/Workflow Graph`、`AIBridge/Screenshot Game View _F12`、`AIBridge/Record GIF _F11` | 覆盖基础设置、工作流配置、Runtime 目标查看、工作流图和截图快捷入口 |
+| Unity Editor | `AIBridge/Setup`、`AIBridge/Settings`、`AIBridge/Workflows`、`AIBridge/Players`、`AIBridge/Screenshot Game View _F12`、`AIBridge/Record GIF _F11` | 首次设置向导、基础设置、工作流配置、Runtime 目标查看和截图快捷入口 |
 | CLI | `focus`、`dialog`、`asset`、`batch`、`code`、`code_index`、`compile`、`editor`、`gameobject`、`gameview`、`get_logs`、`harness`、`input`、`inspector`、`menu_item`、`multi`、`prefab`、`profiler`、`runtime`、`scene`、`screenshot`、`selection`、`test`、`transform`、`workflow`、`compile dotnet` | 当前 AIBridge CLI 的真实命令面 |
 | Runtime Bridge | `Runtime/AIBridgeRuntime.cs`、`Runtime/Transports/*`、`runtime status/logs/screenshot/perf/handlers/call` | 连接已编译 Player 或 Play Mode 目标，HTTP 为默认控制面，File transport 为 HTTP 未运行时的兼容回退，采集证据和调用白名单 handler |
 | Workflow | `Tools~/AIBridgeCLI/Workflow/*`、`Templates~/Workflows/*.aibridge-workflow.json`、`workflow list/validate/plan/init/begin/status/report/finish/import/export/clean` | 负责 recipes、run manifest、artifact、gate、report 和外部结果导入 |
 | Skills | `Skill~/aibridge-development-workflow`、`Skill~/aibridge-workflow-orchestration`、`Skill~/aibridge-code-index`、`Skill~/aibridge-prefab-patch`、`Skill~/aibridge-batch-script`、`Skill~/unity-yaml-editing` | 分别覆盖 workflow 短入口/分支路由、编排、轻量声明名检索、Prefab patch、批处理和 YAML 兜底 |
-| 文档 | `Doc~/README.md`、`Doc~/EditorWindowScreenshot.md`、`Doc~/WorkflowsPanel.md`、`Doc~/WorkflowGraphPanel.md`、`Doc~/workflow-guide/README.md`、`Doc~/workflow-guide/ContextCompression.md`、`Doc~/workflow-guide/AIBridgeLoopsAnalysis.md` | 功能目录、Editor 窗口截图、面板定位、workflow 说明、上下文压缩策略和 FSM 分析 |
+| 文档 | `Doc~/README.md`、`Doc~/SetupWizard.md`、`Doc~/EditorWindowScreenshot.md`、`Doc~/WorkflowsPanel.md`、`Doc~/workflow-guide/README.md`、`Doc~/workflow-guide/ContextCompression.md`、`Doc~/workflow-guide/AIBridgeLoopsAnalysis.md` | 功能目录、首次设置向导、Editor 窗口截图、面板定位、workflow 说明、上下文压缩策略和 FSM 分析 |
 | 模板 | `Templates~/Rules/AIBridge.RootRule.md`、`Templates~/ProjectRules/AGENTS*.md`、`Templates~/Workflows/*.json` | RootRule、项目规则模板和内置 workflow recipes |
 | 生成与缓存 | `.aibridge/harness/capabilities.json`、`.aibridge/test-runs/`、`.aibridge/workflows/active-run.json`、`.aibridge/workflows/runs/`、`.aibridge/code-index/snapshot/`、`.aibridge/code/`、`.aibridge/tmp/`、`.aibridge/plan/` | 当前项目的能力快照、测试队列状态、运行产物、代码索引、临时代码、Agent/脚本短生命周期输出和方案底稿 |
 | Editor 实例状态 | `%LOCALAPPDATA%/AIBridge/instances/<projectKey>/editor-instance.json`（可用 `AIBRIDGE_STATE_DIR` 覆盖根目录） | Editor 心跳与 `focus` 多实例解析；高频状态写在项目外，避免触发 Git 工作区监听；CLI 仍兼容读取遗留 `.aibridge/editor-instance.json` |
@@ -77,6 +77,15 @@
 
 ## Editor 菜单
 
+### `AIBridge/Setup`
+
+首次使用设置向导（`AIBridgeSetupWindow`）：
+
+- 语言选择
+- AI 工具多选（Codex、Claude Code、Cursor、DeepSeek Harness、ZCode、WorkBuddy；更多：Cline）
+- 写入预览、安装选项与结果回显
+- 关闭 / “稍后配置”等价于完成引导并执行一次默认安装
+
 ### `AIBridge/Settings`
 
 当前页签：
@@ -97,12 +106,10 @@
 
 - Skills
 - Recommended Library
-- Workflow Options
 
 ### 其他入口
 
 - `AIBridge/Players`
-- `AIBridge/Workflow Graph`
 - `AIBridge/Screenshot Game View _F12`
 - `AIBridge/Record GIF _F11`
 
@@ -136,7 +143,7 @@
 
 - `README.md` 和 `README_CN.md` 已明确标注 Unity 2019.4+ ~ 6000.x 兼容范围，避免用户误读为不支持 Unity 6000.x。
 - `AIBridge/Workflows` 仍然是用户配置面板，不是 recipe/run/debug 控制台。
-- `AIBridge/Workflow Graph` 是独立高级入口，不应并回默认面板。
+- `Doc~/WorkflowsPanel.md` 只定义默认 `Workflows` 面板的产品边界。
 - `compile dotnet` 只是额外检查，不是 Unity 编译替代品。
 - `test run` 必须在 Editor 处于 Edit Mode 时启动；若当前处于 Play Mode，会直接失败并明确提示先退出 Play Mode。
 - `test run` 在并发请求下会持久化队列到 `.aibridge/test-runs/state.json`；已确认的 run 若后续变成 `unknown`，CLI 会快速失败并提示状态丢失，而不是一直等完整 timeout。

@@ -1,4 +1,4 @@
-﻿<p align="center">
+<p align="center">
   <img src="./Images/aibridge-banner.png" alt="AIBridge banner" width="100%">
 </p>
 
@@ -7,7 +7,7 @@
 [English](./README.md) | 中文
 
 ![Unity 2019.4+ ~ 6000.x](https://img.shields.io/badge/Unity-2019.4%2B%20~%206000.x-black?style=flat-square&logo=unity)
-![Package 1.5.15](https://img.shields.io/badge/Package-1.5.15-5b6cff?style=flat-square)
+![Package 1.6.0](https://img.shields.io/badge/Package-1.6.0-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
@@ -119,26 +119,36 @@ https://gitee.com/lijoujou99_admin/AIBridge.git
 
 ## 配置 AI 工作流
 
-1. 在 Unity Editor 中打开 `AIBridge/Workflows`。
-2. 进入 `Skills` 页签。
-3. 勾选正在使用的 AI 工具。
-4. 点击 `Install Selected Integrations`。
-5. 可选：点击 `Install Unity Project AGENTS.md Template`，在项目根目录创建 `AGENTS.md`。
+1. 首次打开 Unity 并使用 AIBridge 时，会自动打开 `AIBridge/Setup` 设置向导；选择界面语言和正在使用的 AI 工具，点击“完成并安装”。
+2. 之后需要修改工具选择时，可重新打开 `AIBridge/Setup`，或进入 `AIBridge/Workflows > Skills` 调整。
+3. 可选的 Unity 项目 AGENTS.md 模板可在向导中安装（仅选中 AGENTS.md 系工具时显示），也可在 `Workflows > Skills` 中安装。
 
-安装后的 AIBridge Skills 会写入各已选工具自己的默认 skills 目录，例如 Codex 使用 `.codex/skills/`。也可以在 `Workflows > Skills` 页签设置自定义目录，但自定义目录可能无法被 AI 工具自动发现。不同 AI 工具会收到各自的最小 RootRule；只有自定义目录需要时才写入插件适配层并引用该 Skill 根目录。RootRule 包含固定的项目根目录相对 CLI 路径、明确的 `$CLI` 绑定、常用命令、Skill 根目录和 `aibridge-development-workflow` 入口。多分支路由、针对性检查清单、高级 workflow 编排规则和命令说明都放在已安装 workflow Skill 及其 `references/` 目录中。
+| 工具 | 项目规则文件 | Skills 目录 |
+|---|---|---|
+| Codex | `AGENTS.md` | `.agents/skills` |
+| DeepSeek Harness | `AGENTS.md` | `.agents/skills` |
+| ZCode | `AGENTS.md` | `.agents/skills` |
+| Claude Code | `CLAUDE.md` | `.claude/skills` |
+| Cursor | `.cursor/rules/aibridge.mdc` | `.cursor/skills` |
+| WorkBuddy | `CODEBUDDY.md` | `.codebuddy/skills` |
+| Cline | `.clinerules/aibridge.md` | `.clinerules/skills` |
+
+Codex、DeepSeek Harness、ZCode 共用 `AGENTS.md` 与官方项目级 `.agents/skills` 目录，同时选中时只会写入一次。AIBridge 不再写入项目级 `.codex/skills`（它对应的是用户级 `~/.codex/skills`）；旧目录不会自动删除。
+
+安装后的 AIBridge Skills 会写入各工具自己的原生 skills 目录。也可以在 `Workflows > Skills` 或向导的“高级”中设置自定义目录，但自定义目录可能无法被 AI 工具自动发现。不同 AI 工具会收到各自的最小 RootRule；只有自定义目录需要时才写入插件适配层并引用该 Skill 根目录。RootRule 包含固定的项目根目录相对 CLI 路径、明确的 `$CLI` 绑定、常用命令、Skill 根目录和 `aibridge-development-workflow` 入口。多分支路由、针对性检查清单、高级 workflow 编排规则和命令说明都放在已安装 workflow Skill 及其 `references/` 目录中。
 
 如果项目有需要，也可以在 `Workflows > 推荐库` 页签刷新默认的 `obra/superpowers` 推荐仓库，并将其中的第三方 Skill 安装到已选工具的 skills 目录。
 
-`Workflows > Workflow 选项` 会保存项目级工作流偏好。应用这些选项时，会刷新已安装的 `aibridge-development-workflow` Skill 下的生成文件，包括 `references/project-workflow-preferences.md` 和根据分支开关生成的分支选择规则。
+Workflow 分支与验证偏好会按项目默认值生成到已安装的 `aibridge-development-workflow` Skill（`references/project-workflow-preferences.md` 与生成的分支选择规则）。
 
 ## Editor 菜单入口
 
 AIBridge 会安装这些面向用户的 Unity 菜单入口：
 
+- `AIBridge/Setup`：首次启动的语言与 AI 工具设置向导。
 - `AIBridge/Settings`：Basic、GIF、Logs、Directories、Scripts、Runtime、Code Index、Cache、Actions。
 - `AIBridge/Workflows`：安装集成、选择 AI 工具和配置 workflow 选项。
 - `AIBridge/Players`：查看 Runtime target、发现缓存、状态和缓存清理入口。
-- `AIBridge/Workflow Graph`：面向 routing、recipe、run、gate 和 handoff 的高级 workflow 图视图。
 - `AIBridge/Screenshot Game View _F12` 和 `AIBridge/Record GIF _F11`：快速采集视觉证据的快捷入口。
 
 ## CLI 与命令参考

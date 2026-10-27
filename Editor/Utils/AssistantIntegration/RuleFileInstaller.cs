@@ -166,6 +166,13 @@ namespace AIBridge.Editor
             // 清理多余的空行（最多保留两个连续换行）
             updated = Regex.Replace(updated, @"\n{3,}", "\n\n");
 
+            if (string.IsNullOrWhiteSpace(updated))
+            {
+                // 文件里只有 AIBridge 注入块时删除空文件，避免留下空的 AGENTS.md / CLAUDE.md。
+                File.Delete(ruleFilePath);
+                return true;
+            }
+
             File.WriteAllText(ruleFilePath, NormalizeTrailingWhitespace(updated), Encoding.UTF8);
             return true;
         }

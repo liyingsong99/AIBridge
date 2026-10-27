@@ -41,7 +41,7 @@ namespace AIBridge.Editor.Tests
             AIBridgeProjectSettings.Instance.CodeIndex.EnableCodeIndex = true;
             SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
 
-            Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-code-index", "SKILL.md")));
+            Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".agents", "skills", "aibridge-code-index", "SKILL.md")));
         }
 
         [Test]
@@ -81,7 +81,7 @@ namespace AIBridge.Editor.Tests
         public void DisabledCodeIndexRemovesStaleSkillAndRendersCapabilityRule()
         {
             var target = AssistantIntegrationRegistry.GetTargets().First(item => item.Id == "codex");
-            var staleSkillDirectory = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-code-index");
+            var staleSkillDirectory = Path.Combine(ProjectRoot, ".agents", "skills", "aibridge-code-index");
             Directory.CreateDirectory(staleSkillDirectory);
             File.WriteAllText(Path.Combine(staleSkillDirectory, "SKILL.md"), "# stale");
 
@@ -129,7 +129,7 @@ namespace AIBridge.Editor.Tests
 
             Assert.IsTrue(SkillInstaller.IsUnsafeSkillInstallTarget(sourceSkillRoot, sourceSkillRoot));
             Assert.IsTrue(SkillInstaller.IsUnsafeSkillInstallTarget(sourceSkillRoot, Path.Combine(sourceSkillRoot, "aibridge")));
-            Assert.IsFalse(SkillInstaller.IsUnsafeSkillInstallTarget(sourceSkillRoot, Path.Combine(ProjectRoot, ".codex", "skills", "aibridge")));
+            Assert.IsFalse(SkillInstaller.IsUnsafeSkillInstallTarget(sourceSkillRoot, Path.Combine(ProjectRoot, ".agents", "skills", "aibridge")));
         }
 
         [Test]
@@ -140,7 +140,7 @@ namespace AIBridge.Editor.Tests
             AIBridgeProjectSettings.Instance.CodeIndex.EnableCodeIndex = true;
             SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
 
-            var workflowSkillPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "SKILL.md");
+            var workflowSkillPath = Path.Combine(ProjectRoot, ".agents", "skills", "aibridge-development-workflow", "SKILL.md");
             var workflowSkill = File.ReadAllText(workflowSkillPath);
             StringAssert.Contains("如误入本 Skill", workflowSkill);
             StringAssert.Contains("references/project-workflow-preferences.md", workflowSkill);
@@ -158,7 +158,7 @@ namespace AIBridge.Editor.Tests
             StringAssert.DoesNotContain("【模式：调试诊断分支】", workflowSkill);
             Assert.Less(workflowSkill.Length, 4000, "workflow skill should stay compact");
 
-            var preferencesPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "project-workflow-preferences.md");
+            var preferencesPath = Path.Combine(ProjectRoot, ".agents", "skills", "aibridge-development-workflow", "references", "project-workflow-preferences.md");
             var preferences = File.ReadAllText(preferencesPath);
             StringAssert.Contains("Code Index：", preferences);
             StringAssert.Contains("已启用", preferences);
@@ -167,7 +167,7 @@ namespace AIBridge.Editor.Tests
                 preferences.IndexOf("## 启用分支", StringComparison.Ordinal),
                 preferences.IndexOf("- Settings Hash:", StringComparison.Ordinal));
 
-            var branchSelectionPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "branch-selection.md");
+            var branchSelectionPath = Path.Combine(ProjectRoot, ".agents", "skills", "aibridge-development-workflow", "references", "branch-selection.md");
             var branchSelection = File.ReadAllText(branchSelectionPath);
             StringAssert.Contains("【模式：<启用分支之一>】", branchSelection);
             StringAssert.Contains("aibridge-code-index、按需 aibridge-workflow-orchestration", branchSelection);
@@ -186,7 +186,7 @@ namespace AIBridge.Editor.Tests
             Assert.IsFalse(branchSelection.Contains("说明：<当前步骤正在收集或产出的内容>"));
             Assert.IsFalse(branchSelection.Contains("使用 Skills："));
 
-            var reviewBranchPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "branches", "review.md");
+            var reviewBranchPath = Path.Combine(ProjectRoot, ".agents", "skills", "aibridge-development-workflow", "references", "branches", "review.md");
             var reviewBranch = File.ReadAllText(reviewBranchPath);
             StringAssert.Contains("C# 声明定位", reviewBranch);
             StringAssert.DoesNotContain("宿主自带的文本搜索与文件读取工具", reviewBranch);
@@ -211,13 +211,13 @@ namespace AIBridge.Editor.Tests
             AIBridgeProjectSettings.Instance.CodeIndex.EnableCodeIndex = false;
             SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
 
-            var preferencesPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "project-workflow-preferences.md");
+            var preferencesPath = Path.Combine(ProjectRoot, ".agents", "skills", "aibridge-development-workflow", "references", "project-workflow-preferences.md");
             var preferences = File.ReadAllText(preferencesPath);
             StringAssert.Contains("Code Index：已关闭", preferences);
             StringAssert.Contains("禁止加载 `aibridge-code-index`", preferences);
             StringAssert.DoesNotContain("优先用于快速 C# 声明文件定位", preferences);
 
-            var branchSelectionPath = Path.Combine(ProjectRoot, ".codex", "skills", "aibridge-development-workflow", "references", "branch-selection.md");
+            var branchSelectionPath = Path.Combine(ProjectRoot, ".agents", "skills", "aibridge-development-workflow", "references", "branch-selection.md");
             var branchSelection = File.ReadAllText(branchSelectionPath);
             StringAssert.DoesNotContain("aibridge-code-index", branchSelection);
             StringAssert.Contains("按需 aibridge-workflow-orchestration", branchSelection);

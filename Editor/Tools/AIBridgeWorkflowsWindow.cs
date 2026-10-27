@@ -14,8 +14,7 @@ namespace AIBridge.Editor
         private enum TabType
         {
             Skills,
-            RecommendedLibrary,
-            WorkflowOptions
+            RecommendedLibrary
         }
 
         private sealed class AssistantIntegrationSelectionState
@@ -33,7 +32,6 @@ namespace AIBridge.Editor
         private List<RecommendedSkillInfo> _recommendedSkills;
         private int _selectedRecommendedRepositoryIndex;
         private string _loadedRecommendedRepositoryId;
-        private string _workflowOptionsApplyMessage;
 
         [MenuItem("Tools/AIBridge/Workflows")]
         public static void OpenWindow()
@@ -74,9 +72,6 @@ namespace AIBridge.Editor
                 case TabType.RecommendedLibrary:
                     DrawRecommendedLibraryTab();
                     break;
-                case TabType.WorkflowOptions:
-                    DrawWorkflowOptionsTab();
-                    break;
             }
 
             EditorGUILayout.EndScrollView();
@@ -87,8 +82,8 @@ namespace AIBridge.Editor
             EditorGUILayout.LabelField(AIBridgeEditorText.T("AIBridge Workflows", "AIBridge Workflows"), EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 AIBridgeEditorText.T(
-                    "Use this panel to install workflow Skills, manage the recommended Skill library, and configure project-level workflow preferences for Codex, Claude, Cursor, and similar tools.",
-                    "这个面板用于安装工作流 Skills、管理推荐 Skill 库，并配置面向 Codex、Claude、Cursor 等工具的项目级工作流偏好。"),
+                    "Use this panel to install AIBridge Skills and manage the recommended Skill library for Codex, Claude Code, Cursor, and similar tools.",
+                    "这个面板用于安装 AIBridge Skills，并管理面向 Codex、Claude Code、Cursor 等工具的推荐 Skill 库。"),
                 MessageType.Info);
         }
 
@@ -115,8 +110,7 @@ namespace AIBridge.Editor
             var tabNames = new[]
             {
                 AIBridgeEditorText.T("Skills", "Skills"),
-                AIBridgeEditorText.T("Recommended Library", "推荐库"),
-                AIBridgeEditorText.T("Workflow Options", "Workflow 选项")
+                AIBridgeEditorText.T("Recommended Library", "推荐库")
             };
             _currentTab = (TabType)GUILayout.Toolbar((int)_currentTab, tabNames);
         }
@@ -129,6 +123,11 @@ namespace AIBridge.Editor
                     "Select the AI tools you use, install the AIBridge workflow integration, and keep project root rules aligned with the current Unity project.",
                     "选择正在使用的 AI 工具，安装 AIBridge 工作流集成，并让项目根规则与当前 Unity 项目保持一致。"),
                 MessageType.None);
+
+            if (GUILayout.Button(AIBridgeEditorText.T("Run Setup Wizard", "运行设置向导"), GUILayout.Height(26f)))
+            {
+                AIBridgeSetupWindow.OpenWindow();
+            }
 
             EditorGUI.BeginChangeCheck();
             var autoInstall = EditorGUILayout.Toggle(
@@ -272,122 +271,6 @@ namespace AIBridge.Editor
             }
         }
 
-        private void DrawWorkflowOptionsTab()
-        {
-            var workflowUi = AIBridgeProjectSettings.Instance.WorkflowUi;
-
-            EditorGUILayout.LabelField(AIBridgeEditorText.T("Workflow Options", "Workflow 选项"), EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox(
-                AIBridgeEditorText.T(
-                    "These options store project-level workflow preferences. They are meant for user-facing workflow setup, not low-level recipe or run debugging.",
-                    "这些选项保存项目级工作流偏好。它们面向用户配置，而不是面向底层 recipe 或 run 调试。"),
-                MessageType.None);
-            DrawWorkflowOptionsApplyMessage();
-
-            EditorGUILayout.LabelField(AIBridgeEditorText.T("Enabled Branches", "启用分支"), EditorStyles.boldLabel);
-            DrawWorkflowBranchToggle(
-                AIBridgeEditorText.T("Implementation", "实施"),
-                AIBridgeEditorText.T("Allow change-oriented workflow guidance.", "允许以修改实现为主的工作流引导。"),
-                workflowUi.EnableImplementationBranch,
-                value => workflowUi.EnableImplementationBranch = value);
-            DrawWorkflowBranchToggle(
-                AIBridgeEditorText.T("Debug", "调试"),
-                AIBridgeEditorText.T("Allow diagnosis-oriented workflow guidance.", "允许以问题诊断为主的工作流引导。"),
-                workflowUi.EnableDebugBranch,
-                value => workflowUi.EnableDebugBranch = value);
-            DrawWorkflowBranchToggle(
-                AIBridgeEditorText.T("Review", "审查"),
-                AIBridgeEditorText.T("Allow review-only workflow guidance.", "允许以只读审查为主的工作流引导。"),
-                workflowUi.EnableReviewBranch,
-                value => workflowUi.EnableReviewBranch = value);
-            DrawWorkflowBranchToggle(
-                AIBridgeEditorText.T("Validation", "验证"),
-                AIBridgeEditorText.T("Allow compile, log, and runtime validation workflow guidance.", "允许编译、日志和运行时验证类工作流引导。"),
-                workflowUi.EnableValidationBranch,
-                value => workflowUi.EnableValidationBranch = value);
-            DrawWorkflowBranchToggle(
-                AIBridgeEditorText.T("Orchestration", "编排"),
-                AIBridgeEditorText.T("Allow multi-agent or multi-step orchestration workflow guidance.", "允许多代理或多步骤编排类工作流引导。"),
-                workflowUi.EnableOrchestrationBranch,
-                value => workflowUi.EnableOrchestrationBranch = value);
-
-            EditorGUILayout.Space(8f);
-            EditorGUILayout.LabelField(AIBridgeEditorText.T("Defaults", "默认行为"), EditorStyles.boldLabel);
-            DrawWorkflowValidationLevelField(workflowUi);
-
-            EditorGUI.BeginChangeCheck();
-            var preferRuntimeEvidence = EditorGUILayout.Toggle(
-                AIBridgeEditorText.T("Prefer Runtime Evidence", "优先收集 Runtime 证据"),
-                workflowUi.PreferRuntimeEvidence);
-            if (EditorGUI.EndChangeCheck())
-            {
-                workflowUi.PreferRuntimeEvidence = preferRuntimeEvidence;
-                SaveAndApplyWorkflowOptions();
-            }
-
-            EditorGUI.BeginChangeCheck();
-            var preferCodeIndexGuidance = EditorGUILayout.Toggle(
-                AIBridgeEditorText.T("Prefer Code Index Guidance", "优先使用 Code Index 指引"),
-                workflowUi.PreferCodeIndexGuidance);
-            if (EditorGUI.EndChangeCheck())
-            {
-                workflowUi.PreferCodeIndexGuidance = preferCodeIndexGuidance;
-                SaveAndApplyWorkflowOptions();
-            }
-
-            EditorGUILayout.Space(8f);
-            EditorGUILayout.LabelField(AIBridgeEditorText.T("Prompt Prefixes", "提示词前缀"), EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox(
-                AIBridgeEditorText.T(
-                    "Use short prompt prefixes to bias workflow behavior for a specific assistant. Leave them empty when you want the default routing only.",
-                    "使用简短的提示词前缀为特定 assistant 增加工作流偏好；如果只想使用默认路由，可以留空。"),
-                MessageType.Info);
-
-            EditorGUI.BeginChangeCheck();
-            var sharedPromptPrefix = EditorGUILayout.DelayedTextField(
-                AIBridgeEditorText.T("Shared Prefix", "通用前缀"),
-                workflowUi.SharedPromptPrefix ?? string.Empty);
-            if (EditorGUI.EndChangeCheck())
-            {
-                workflowUi.SharedPromptPrefix = sharedPromptPrefix ?? string.Empty;
-                SaveAndApplyWorkflowOptions();
-            }
-
-            foreach (var target in AssistantIntegrationRegistry.GetTargets())
-            {
-                AIBridgeProjectSettings.Instance.TryGetWorkflowAssistantPromptPrefix(target.Id, out var promptPrefix);
-                EditorGUI.BeginChangeCheck();
-                var updatedPrefix = EditorGUILayout.DelayedTextField(
-                    target.DisplayName,
-                    promptPrefix ?? string.Empty);
-                if (EditorGUI.EndChangeCheck())
-                {
-                    AIBridgeProjectSettings.Instance.SetWorkflowAssistantPromptPrefix(target.Id, updatedPrefix);
-                    SaveAndApplyWorkflowOptions();
-                }
-            }
-
-            EditorGUILayout.Space(10f);
-            if (GUILayout.Button(AIBridgeEditorText.T("Apply Workflow Options", "应用 Workflow 选项"), GUILayout.Height(28f)))
-            {
-                SaveAndApplyWorkflowOptions();
-            }
-
-            if (GUILayout.Button(AIBridgeEditorText.T("Reset Workflow Options", "重置 Workflow 选项"), GUILayout.Height(28f)))
-            {
-                if (EditorUtility.DisplayDialog(
-                    AIBridgeEditorText.T("Reset Workflow Options", "重置 Workflow 选项"),
-                    AIBridgeEditorText.T(
-                        "Reset workflow options to the package defaults for this project?",
-                        "是否将当前项目的 Workflow 选项重置为包默认值？"),
-                    AIBridgeEditorText.T("Reset", "重置"),
-                    AIBridgeEditorText.T("Cancel", "取消")))
-                {
-                    ResetWorkflowOptions();
-                }
-            }
-        }
-
         private void DrawAssistantIntegrationCard(AssistantIntegrationSelectionState selection)
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
@@ -411,6 +294,14 @@ namespace AIBridge.Editor
                     EditorStyles.miniLabel);
             }
 
+            if (AssistantIntegrationGroupBuilder.IsRootRuleShared(selection.Target.RootRuleFileName))
+            {
+                EditorGUILayout.LabelField(
+                    AIBridgeEditorText.T("Shared with: ", "共用工具：")
+                    + AssistantIntegrationGroupBuilder.GetSharedRootRuleOwners(selection.Target.RootRuleFileName),
+                    EditorStyles.wordWrappedMiniLabel);
+            }
+
             EditorGUILayout.EndVertical();
         }
 
@@ -420,8 +311,8 @@ namespace AIBridge.Editor
             EditorGUILayout.LabelField(AIBridgeEditorText.T("Custom Skills Directory", "自定义 Skills 目录"), EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
                 AIBridgeEditorText.T(
-                    "Leave this empty to install Skills into each selected tool's default directory, such as .codex/skills. Custom directories may not be discovered automatically by the AI tool.",
-                    "留空时会安装到各已选工具的默认目录，例如 .codex/skills。自定义目录可能无法被 AI 工具自动发现。"),
+                    "Leave this empty to install Skills into each selected tool's default directory, such as .agents/skills. Custom directories may not be discovered automatically by the AI tool.",
+                    "留空时会安装到各已选工具的默认目录，例如 .agents/skills。自定义目录可能无法被 AI 工具自动发现。"),
                 MessageType.Warning);
 
             EditorGUILayout.BeginHorizontal();
@@ -488,72 +379,6 @@ namespace AIBridge.Editor
             }
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.EndVertical();
-        }
-
-        private void DrawWorkflowBranchToggle(string label, string description, bool value, Action<bool> onChanged)
-        {
-            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUI.BeginChangeCheck();
-            var updatedValue = EditorGUILayout.ToggleLeft(label, value);
-            if (EditorGUI.EndChangeCheck())
-            {
-                if (value && !updatedValue && WorkflowPreferenceRenderer.CountEnabledBranches(AIBridgeProjectSettings.Instance.WorkflowUi) <= 1)
-                {
-                    EditorUtility.DisplayDialog(
-                        AIBridgeEditorText.T("Workflow Branch Required", "需要至少一个 Workflow 分支"),
-                        AIBridgeEditorText.T(
-                            "At least one workflow branch must remain enabled.",
-                            "至少需要保留一个启用的 Workflow 分支。"),
-                        AIBridgeEditorText.T("OK", "确定"));
-                    EditorGUILayout.EndVertical();
-                    return;
-                }
-
-                onChanged(updatedValue);
-                SaveAndApplyWorkflowOptions();
-            }
-
-            EditorGUILayout.LabelField(description, EditorStyles.wordWrappedMiniLabel);
-            EditorGUILayout.EndVertical();
-        }
-
-        private void DrawWorkflowValidationLevelField(AIBridgeProjectSettings.WorkflowUiSettingsData workflowUi)
-        {
-            var validationLevels = AIBridgeProjectSettings.SupportedWorkflowValidationLevels;
-            var labels = new[]
-            {
-                AIBridgeEditorText.T("Compile + Logs", "编译 + 日志"),
-                AIBridgeEditorText.T("Compile Only", "仅编译"),
-                AIBridgeEditorText.T("Compile + Logs + Runtime", "编译 + 日志 + Runtime")
-            };
-
-            var currentValue = AIBridgeProjectSettings.NormalizeWorkflowValidationLevel(workflowUi.DefaultValidationLevel);
-            var currentIndex = Array.IndexOf(validationLevels, currentValue);
-            if (currentIndex < 0)
-            {
-                currentIndex = 0;
-            }
-
-            EditorGUI.BeginChangeCheck();
-            var selectedIndex = EditorGUILayout.Popup(
-                AIBridgeEditorText.T("Default Validation Level", "默认验证级别"),
-                currentIndex,
-                labels);
-            if (EditorGUI.EndChangeCheck())
-            {
-                workflowUi.DefaultValidationLevel = validationLevels[Mathf.Clamp(selectedIndex, 0, validationLevels.Length - 1)];
-                SaveAndApplyWorkflowOptions();
-            }
-        }
-
-        private void DrawWorkflowOptionsApplyMessage()
-        {
-            if (string.IsNullOrEmpty(_workflowOptionsApplyMessage))
-            {
-                return;
-            }
-
-            EditorGUILayout.HelpBox(_workflowOptionsApplyMessage, MessageType.Info);
         }
 
         private void RefreshWindowState()
@@ -974,36 +799,9 @@ namespace AIBridge.Editor
             }
         }
 
-        private void ResetWorkflowOptions()
-        {
-            var workflowUi = AIBridgeProjectSettings.Instance.WorkflowUi;
-            workflowUi.EnableImplementationBranch = AIBridgeProjectSettings.DefaultWorkflowImplementationBranchEnabled;
-            workflowUi.EnableDebugBranch = AIBridgeProjectSettings.DefaultWorkflowDebugBranchEnabled;
-            workflowUi.EnableReviewBranch = AIBridgeProjectSettings.DefaultWorkflowReviewBranchEnabled;
-            workflowUi.EnableValidationBranch = AIBridgeProjectSettings.DefaultWorkflowValidationBranchEnabled;
-            workflowUi.EnableOrchestrationBranch = AIBridgeProjectSettings.DefaultWorkflowOrchestrationBranchEnabled;
-            workflowUi.DefaultValidationLevel = AIBridgeProjectSettings.DefaultWorkflowValidationLevel;
-            workflowUi.PreferRuntimeEvidence = AIBridgeProjectSettings.DefaultWorkflowPreferRuntimeEvidence;
-            workflowUi.PreferCodeIndexGuidance = AIBridgeProjectSettings.DefaultWorkflowPreferCodeIndexGuidance;
-            workflowUi.SharedPromptPrefix = AIBridgeProjectSettings.DefaultWorkflowSharedPromptPrefix;
-            workflowUi.AssistantPromptPrefixes.Clear();
-            SaveAndApplyWorkflowOptions();
-            Repaint();
-        }
-
         private static void SaveProjectSettings()
         {
             AIBridgeProjectSettings.Instance.SaveSettings();
-        }
-
-        private void SaveAndApplyWorkflowOptions()
-        {
-            AIBridgeProjectSettings.Instance.SaveSettings();
-            SkillInstaller.SyncProjectCapabilityRules(GetProjectRoot());
-            _workflowOptionsApplyMessage = AIBridgeEditorText.T(
-                "Workflow options saved. Root Rule and installed workflow capability rules were synced.",
-                "Workflow 选项已保存，并已同步 Root Rule 与已安装 workflow 能力规则。");
-            Repaint();
         }
     }
 }

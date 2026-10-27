@@ -127,7 +127,7 @@ namespace AIBridge.Editor
             public int RetentionDays = DefaultCacheCleanupRetentionDays;
         }
 
-        public const int CurrentDataVersion = 19;
+        public const int CurrentDataVersion = 20;
         public const string DefaultEditorLanguage = "English";
         public const string LegacySharedSkillRootDirectory = ".skills";
         public const string DefaultSkillRootDirectory = "";
@@ -186,6 +186,8 @@ namespace AIBridge.Editor
         [SerializeField] private bool debugLogging;
         [SerializeField] private string editorLanguage = DefaultEditorLanguage;
         [SerializeField] private bool editorLanguageInitialized;
+        [SerializeField] private bool onboardingCompleted;
+        [SerializeField] private int onboardingVersion;
         [SerializeField] private string skillRootDirectory = DefaultSkillRootDirectory;
         [SerializeField] private string scriptDirectory = DefaultScriptDirectory;
         [SerializeField] private GifRecorderSettingsData gifRecorder = new GifRecorderSettingsData();
@@ -243,6 +245,18 @@ namespace AIBridge.Editor
         {
             get { return editorLanguageInitialized; }
             set { editorLanguageInitialized = value; }
+        }
+
+        public bool OnboardingCompleted
+        {
+            get { return onboardingCompleted; }
+            set { onboardingCompleted = value; }
+        }
+
+        public int OnboardingVersion
+        {
+            get { return onboardingVersion; }
+            set { onboardingVersion = value; }
         }
 
         public string ScriptDirectory
@@ -748,64 +762,6 @@ namespace AIBridge.Editor
             return false;
         }
 
-        public bool SetWorkflowAssistantPromptPrefix(string targetId, string promptPrefix)
-        {
-            if (string.IsNullOrEmpty(targetId))
-            {
-                return false;
-            }
-
-            var normalized = promptPrefix ?? string.Empty;
-            if (string.IsNullOrEmpty(normalized))
-            {
-                return ClearWorkflowAssistantPromptPrefix(targetId);
-            }
-
-            var entries = WorkflowUi.AssistantPromptPrefixes;
-            for (var i = 0; i < entries.Count; i++)
-            {
-                var entry = entries[i];
-                if (entry != null && entry.TargetId == targetId)
-                {
-                    if ((entry.PromptPrefix ?? string.Empty) == normalized)
-                    {
-                        return false;
-                    }
-
-                    entry.PromptPrefix = normalized;
-                    return true;
-                }
-            }
-
-            entries.Add(new AssistantWorkflowPromptEntry
-            {
-                TargetId = targetId,
-                PromptPrefix = normalized
-            });
-            return true;
-        }
-
-        public bool ClearWorkflowAssistantPromptPrefix(string targetId)
-        {
-            if (string.IsNullOrEmpty(targetId))
-            {
-                return false;
-            }
-
-            var entries = WorkflowUi.AssistantPromptPrefixes;
-            for (var i = entries.Count - 1; i >= 0; i--)
-            {
-                var entry = entries[i];
-                if (entry != null && entry.TargetId == targetId)
-                {
-                    entries.RemoveAt(i);
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
         private static string NormalizeSkillRootDirectory(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -976,6 +932,12 @@ namespace AIBridge.Editor
             {
                 cacheCleanup.EnableAutoCleanup = DefaultCacheCleanupEnabled;
                 cacheCleanup.RetentionDays = DefaultCacheCleanupRetentionDays;
+            }
+
+            if (dataVersion < 20 && editorLanguageInitialized)
+            {
+                // 老工程已经完成过语言选择，升级后不再弹出首次设置向导，避免打扰。
+                onboardingCompleted = true;
             }
 
             workflowUi.DefaultValidationLevel = NormalizeWorkflowValidationLevel(workflowUi.DefaultValidationLevel);

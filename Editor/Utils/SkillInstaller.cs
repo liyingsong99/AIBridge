@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -134,12 +134,12 @@ namespace AIBridge.Editor
 
                 var projectRoot = GetProjectRoot();
 
-                CopyCliToCacheIfNeeded(projectRoot);
-
-                if (!EnsureEditorLanguageInitialized())
+                if (!EnsureOnboardingReady())
                 {
                     return;
                 }
+
+                CopyCliToCacheIfNeeded(projectRoot);
 
                 var targets = GetSelectedTargets(projectRoot);
 
@@ -236,15 +236,16 @@ namespace AIBridge.Editor
                     projectRoot = GetProjectRoot();
                 }
 
-                var targetsList = DeduplicateClaudeCodexTargets(GetSelectedTargets(projectRoot));
+                var targetsList = GetSelectedTargets(projectRoot);
                 if (targetsList.Count == 0)
                 {
                     HarnessCapabilitySnapshot.WriteNoThrow(projectRoot, targetsList);
                     return;
                 }
 
-                foreach (var target in targetsList)
+                foreach (var group in AssistantIntegrationGroupBuilder.Build(projectRoot, targetsList))
                 {
+                    var target = group.Representative;
                     try
                     {
                         var template = RuleTemplateLoader.Load(projectRoot, target.RootRuleTemplateRelativePath);
@@ -280,11 +281,21 @@ namespace AIBridge.Editor
             }
         }
 
-        private static bool EnsureEditorLanguageInitialized()
+        /// <summary>
+        /// 首次使用门控：未完成设置向导时不自动写任何集成文件，改为打开向导。
+        /// batch 模式保持无 UI 的旧行为；已有工程通过数据迁移直接视为已完成。
+        /// </summary>
+        private static bool EnsureOnboardingReady()
         {
             var settings = AIBridgeProjectSettings.Instance;
-            if (settings.EditorLanguageInitialized)
+            if (settings.OnboardingCompleted)
             {
+                if (!settings.EditorLanguageInitialized)
+                {
+                    settings.EditorLanguageInitialized = true;
+                    settings.SaveSettings();
+                }
+
                 return true;
             }
 
@@ -292,6 +303,8 @@ namespace AIBridge.Editor
             {
                 settings.EditorLanguage = AIBridgeEditorLanguage.English;
                 settings.EditorLanguageInitialized = true;
+                settings.OnboardingCompleted = true;
+                settings.OnboardingVersion = AIBridgeOnboardingState.CurrentVersion;
                 settings.SaveSettings();
                 return true;
             }
@@ -302,10 +315,8 @@ namespace AIBridge.Editor
                 return false;
             }
 
-            settings.EditorLanguage = ShowInitialLanguageDialog();
-            settings.EditorLanguageInitialized = true;
-            settings.SaveSettings();
-            return true;
+            AIBridgeSetupWindow.OpenForOnboarding();
+            return false;
         }
 
         private static bool IsAssetImportWorker()
@@ -324,17 +335,6 @@ namespace AIBridge.Editor
             return false;
         }
 
-        private static AIBridgeEditorLanguage ShowInitialLanguageDialog()
-        {
-            var result = EditorUtility.DisplayDialog(
-                "AIBridge Language / 语言",
-                "Choose the language for AIBridge editor UI and project AGENTS.md template.\n\n请选择 AIBridge 编辑器界面和项目 AGENTS.md 模板使用的语言。",
-                "English",
-                "简体中文");
-
-            return result ? AIBridgeEditorLanguage.English : AIBridgeEditorLanguage.SimplifiedChinese;
-        }
-        
         /// <summary>
         /// Copy CLI files to .aibridge/cli directory.
         /// This provides a fixed, stable path for AI assistants to use.
@@ -1031,44 +1031,71 @@ namespace AIBridge.Editor
         {
             var results = new List<AssistantIntegrationResult>();
             var sourceSkillPath = GetSourceSkillPath();
-            var targetsList = DeduplicateClaudeCodexTargets(targets.ToList(), projectRoot);
+            var targetsList = (targets ?? Enumerable.Empty<AssistantIntegrationTarget>())
+                .Where(target => target != null)
+                .ToList();
+            var resultsByTargetId = new Dictionary<string, AssistantIntegrationResult>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var target in targetsList)
             {
                 var result = new AssistantIntegrationResult
                 {
+                    TargetId = target.Id,
                     AssistantId = target.DisplayName,
                     RootRuleAction = IntegrationAction.None,
                     SkillFileAction = IntegrationAction.None
                 };
+                results.Add(result);
+                resultsByTargetId[target.Id] = result;
+            }
 
+            // 共用 RootRule 文件与 Skill 根的目标（Codex / DeepSeek Harness / ZCode）只安装一次，
+            // 避免后安装者覆盖前者的注入块，也避免重复复制同一份 Skill。
+            foreach (var group in AssistantIntegrationGroupBuilder.Build(projectRoot, targetsList))
+            {
+                var representative = group.Representative;
                 try
                 {
-                    if (target.SupportsSkillDirectory)
+                    string skillFilePath = null;
+                    var skillAction = IntegrationAction.None;
+                    var additionalSkillPaths = new List<string>();
+                    if (representative.SupportsSkillDirectory)
                     {
-                        string skillFilePath;
-                        result.SkillFileAction = InstallSkillFileForTarget(projectRoot, target, sourceSkillPath, out skillFilePath);
-                        result.SkillFilePath = skillFilePath;
-                        result.AdditionalSkillFilePaths.AddRange(InstallAdditionalSkillDirectoriesForTarget(projectRoot, target));
-                        GenerateWorkflowPreferenceFilesForTarget(projectRoot, target);
-                        GenerateSkillReferenceFilesForTarget(projectRoot, target);
+                        skillAction = InstallSkillFileForTarget(projectRoot, representative, sourceSkillPath, out skillFilePath);
+                        additionalSkillPaths.AddRange(InstallAdditionalSkillDirectoriesForTarget(projectRoot, representative));
+                        GenerateWorkflowPreferenceFilesForTarget(projectRoot, representative);
+                        GenerateSkillReferenceFilesForTarget(projectRoot, representative);
                     }
 
-                    var template = RuleTemplateLoader.Load(projectRoot, target.RootRuleTemplateRelativePath);
-                    var tokens = BuildTemplateTokens(projectRoot, target, targetsList);
+                    var template = RuleTemplateLoader.Load(projectRoot, representative.RootRuleTemplateRelativePath);
+                    var tokens = BuildTemplateTokens(projectRoot, representative, targetsList);
                     string rootRulePath;
-                    result.RootRuleAction = RuleFileInstaller.Install(projectRoot, target, template, tokens, out rootRulePath);
-                    result.RootRuleFilePath = rootRulePath;
-                    result.Message = BuildResultMessage(target, result);
+                    var rootRuleAction = RuleFileInstaller.Install(projectRoot, representative, template, tokens, out rootRulePath);
+
+                    foreach (var target in group.Targets)
+                    {
+                        var result = resultsByTargetId[target.Id];
+                        result.RootRuleAction = rootRuleAction;
+                        result.RootRuleFilePath = rootRulePath;
+                        result.SkillFileAction = skillAction;
+                        result.SkillFilePath = skillFilePath;
+                        result.AdditionalSkillFilePaths.Clear();
+                        result.AdditionalSkillFilePaths.AddRange(additionalSkillPaths);
+                        result.Message = BuildResultMessage(target, result);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    result.RootRuleAction = IntegrationAction.Failed;
-                    result.Message = ex.Message;
-                    AIBridgeLogger.LogWarning($"[SkillInstaller] Failed to install {target.DisplayName} integration: {ex.Message}");
-                }
+                    foreach (var target in group.Targets)
+                    {
+                        var result = resultsByTargetId[target.Id];
+                        result.RootRuleAction = IntegrationAction.Failed;
+                        result.SkillFileAction = IntegrationAction.Failed;
+                        result.Message = ex.Message;
+                    }
 
-                results.Add(result);
+                    AIBridgeLogger.LogWarning($"[SkillInstaller] Failed to install {representative.DisplayName} integration group: {ex.Message}");
+                }
             }
 
             HarnessCapabilitySnapshot.WriteNoThrow(projectRoot, targetsList);
@@ -1197,20 +1224,12 @@ namespace AIBridge.Editor
             SyncWorkflowBranchDocuments(sourceSkillRoot, workflowSkillDirectory);
             var preferencesPath = Path.Combine(workflowSkillDirectory, WorkflowPreferenceRenderer.PreferencesRelativePath.Replace('/', Path.DirectorySeparatorChar));
             var branchSelectionPath = Path.Combine(workflowSkillDirectory, WorkflowPreferenceRenderer.BranchSelectionRelativePath.Replace('/', Path.DirectorySeparatorChar));
-            var graphManifestPath = Path.Combine(workflowSkillDirectory, WorkflowPreferenceRenderer.GraphManifestRelativePath.Replace('/', Path.DirectorySeparatorChar));
-            var implementationBranchManifestPath = Path.Combine(workflowSkillDirectory, WorkflowPreferenceRenderer.ImplementationBranchManifestRelativePath.Replace('/', Path.DirectorySeparatorChar));
             EnsureParentDirectory(preferencesPath);
             EnsureParentDirectory(branchSelectionPath);
-            EnsureParentDirectory(graphManifestPath);
-            EnsureParentDirectory(implementationBranchManifestPath);
             WriteTextIfChanged(preferencesPath, WorkflowPreferenceRenderer.RenderPreferences(projectRoot, target), Utf8NoBom);
             WriteTextIfChanged(branchSelectionPath, WorkflowPreferenceRenderer.RenderBranchSelection(projectRoot, target), Utf8NoBom);
-            WriteTextIfChanged(graphManifestPath, WorkflowPreferenceRenderer.RenderGraphManifest(projectRoot, target), Utf8NoBom);
-            WriteTextIfChanged(implementationBranchManifestPath, WorkflowPreferenceRenderer.RenderImplementationBranchManifest(), Utf8NoBom);
             generatedFiles.Add(preferencesPath);
             generatedFiles.Add(branchSelectionPath);
-            generatedFiles.Add(graphManifestPath);
-            generatedFiles.Add(implementationBranchManifestPath);
             return generatedFiles;
         }
 
@@ -1317,9 +1336,7 @@ namespace AIBridge.Editor
             return new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 NormalizeRelativePath(WorkflowPreferenceRenderer.PreferencesRelativePath),
-                NormalizeRelativePath(WorkflowPreferenceRenderer.BranchSelectionRelativePath),
-                NormalizeRelativePath(WorkflowPreferenceRenderer.GraphManifestRelativePath),
-                NormalizeRelativePath(WorkflowPreferenceRenderer.ImplementationBranchManifestRelativePath)
+                NormalizeRelativePath(WorkflowPreferenceRenderer.BranchSelectionRelativePath)
             };
         }
 
@@ -1410,9 +1427,7 @@ namespace AIBridge.Editor
         {
             var fileName = Path.GetFileName(filePath);
             if (string.Equals(fileName, Path.GetFileName(WorkflowPreferenceRenderer.PreferencesRelativePath), StringComparison.OrdinalIgnoreCase)
-                || string.Equals(fileName, Path.GetFileName(WorkflowPreferenceRenderer.BranchSelectionRelativePath), StringComparison.OrdinalIgnoreCase)
-                || string.Equals(fileName, Path.GetFileName(WorkflowPreferenceRenderer.GraphManifestRelativePath), StringComparison.OrdinalIgnoreCase)
-                || string.Equals(fileName, Path.GetFileName(WorkflowPreferenceRenderer.ImplementationBranchManifestRelativePath), StringComparison.OrdinalIgnoreCase))
+                || string.Equals(fileName, Path.GetFileName(WorkflowPreferenceRenderer.BranchSelectionRelativePath), StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
@@ -1611,32 +1626,6 @@ namespace AIBridge.Editor
                 "Code Index：已关闭。不要加载 `aibridge-code-index`，也不要调用 `code_index`。");
         }
 
-        private static List<AssistantIntegrationTarget> DeduplicateClaudeCodexTargets(List<AssistantIntegrationTarget> targets, string projectRoot = null)
-        {
-            var targetsList = (targets ?? new List<AssistantIntegrationTarget>()).Where(item => item != null).ToList();
-            var hasClaudeTarget = targetsList.Any(t => t.Id == "claude");
-            var hasCodexTarget = targetsList.Any(t => t.Id == "codex");
-            if (!hasClaudeTarget || !hasCodexTarget)
-            {
-                return targetsList;
-            }
-
-            if (string.IsNullOrWhiteSpace(projectRoot))
-            {
-                projectRoot = GetProjectRoot();
-            }
-
-            var claudeMdPath = Path.Combine(projectRoot, "CLAUDE.md");
-            var agentsMdPath = Path.Combine(projectRoot, "AGENTS.md");
-            if (File.Exists(claudeMdPath) && File.Exists(agentsMdPath))
-            {
-                targetsList = targetsList.Where(t => t.Id != "claude").ToList();
-                AIBridgeLogger.LogInfo("[SkillInstaller] 检测到 CLAUDE.md 和 AGENTS.md 同时存在，优先使用 AGENTS.md");
-            }
-
-            return targetsList;
-        }
-
         private static bool ShouldInstallSkillDirectory(string sourceSkillDir)
         {
             string requiredFeature;
@@ -1824,10 +1813,16 @@ namespace AIBridge.Editor
         /// <summary>
         /// 清理未勾选目标的 AIBridge 注入内容
         /// </summary>
-        private static void CleanupUnselectedTargets(string projectRoot, List<AssistantIntegrationTarget> selectedTargets)
+        internal static void CleanupUnselectedTargets(string projectRoot, List<AssistantIntegrationTarget> selectedTargets)
         {
             var allTargets = AssistantIntegrationRegistry.GetTargets();
-            var selectedIds = new HashSet<string>(selectedTargets.Select(t => t.Id), StringComparer.OrdinalIgnoreCase);
+            var selectedTargetList = selectedTargets ?? new List<AssistantIntegrationTarget>();
+            var selectedIds = new HashSet<string>(selectedTargetList.Select(t => t.Id), StringComparer.OrdinalIgnoreCase);
+            var selectedRootRules = new HashSet<string>(
+                selectedTargetList
+                    .Select(t => AssistantIntegrationGroupBuilder.NormalizeRelativePath(t.RootRuleFileName))
+                    .Where(path => !string.IsNullOrEmpty(path)),
+                StringComparer.OrdinalIgnoreCase);
 
             foreach (var target in allTargets)
             {
@@ -1839,18 +1834,22 @@ namespace AIBridge.Editor
 
                 try
                 {
-                    // 清理 RootRule 文件中的注入块
-                    var template = RuleTemplateLoader.Load(projectRoot, target.RootRuleTemplateRelativePath);
-                    if (RuleFileInstaller.RemoveBlock(projectRoot, target, template))
+                    // 共用同一 RootRule 文件的目标仍被选中时，注入块必须保留，由安装阶段按新的工具组合重写。
+                    var rootRuleRelativePath = AssistantIntegrationGroupBuilder.NormalizeRelativePath(target.RootRuleFileName);
+                    if (!string.IsNullOrEmpty(rootRuleRelativePath) && !selectedRootRules.Contains(rootRuleRelativePath))
                     {
-                        var ruleFilePath = Path.Combine(projectRoot, target.RootRuleFileName);
-                        AIBridgeLogger.LogInfo($"[SkillInstaller] Removed AIBridge block from {target.DisplayName}: {ruleFilePath}");
+                        var template = RuleTemplateLoader.Load(projectRoot, target.RootRuleTemplateRelativePath);
+                        if (RuleFileInstaller.RemoveBlock(projectRoot, target, template))
+                        {
+                            var ruleFilePath = Path.Combine(projectRoot, target.RootRuleFileName);
+                            AIBridgeLogger.LogInfo($"[SkillInstaller] Removed AIBridge block from {target.DisplayName}: {ruleFilePath}");
+                        }
                     }
 
                     // 自定义 skills 根目录可能被多个工具复用，只有没有任何已选工具仍引用时才清理。
                     if (target.SupportsSkillDirectory
                         && !string.IsNullOrEmpty(target.SkillDirectoryRelativePath)
-                        && !IsSkillRootUsedByAnySelectedTarget(projectRoot, target, selectedTargets))
+                        && !IsSkillRootUsedByAnySelectedTarget(projectRoot, target, selectedTargetList))
                     {
                         CleanupSkillDirectoriesForTarget(projectRoot, target);
                     }
@@ -1941,6 +1940,69 @@ namespace AIBridge.Editor
         }
 
         /// <summary>
+        /// 无 UI 的安装入口，供设置向导和 Workflows 面板复用。
+        /// </summary>
+        internal static List<AssistantIntegrationResult> InstallTargets(string projectRoot, IEnumerable<string> targetIds, bool persistSelection)
+        {
+            var targets = GetTargetsByIds(targetIds);
+            if (targets.Count == 0)
+            {
+                return new List<AssistantIntegrationResult>();
+            }
+
+            if (persistSelection)
+            {
+                var selectedIds = new HashSet<string>(targets.Select(target => target.Id), StringComparer.OrdinalIgnoreCase);
+                foreach (var target in AssistantIntegrationRegistry.GetTargets())
+                {
+                    AssistantIntegrationSelectionSettings.SetSelected(target.Id, selectedIds.Contains(target.Id));
+                }
+            }
+
+            CleanupUnselectedTargets(projectRoot, targets);
+            CopyCliToCacheIfNeeded(projectRoot);
+            var results = InstallAssistantIntegrations(projectRoot, targets);
+            SkillPluginAdapter.GenerateForTargets(projectRoot, targets);
+            LogResults(results);
+            return results;
+        }
+
+        /// <summary>
+        /// 安装 Unity 项目 AGENTS.md 模板；目标文件已存在时保持原内容，由安装器追加 AIBridge 区块。
+        /// </summary>
+        internal static bool TryInstallProjectAgentsTemplate(string projectRoot, out string error)
+        {
+            error = null;
+            var targetPath = Path.Combine(projectRoot, "AGENTS.md");
+            if (File.Exists(targetPath))
+            {
+                return true;
+            }
+
+            var sourcePath = AIBridgeSettingsWindow.GetSourceAgentsPath();
+            if (string.IsNullOrEmpty(sourcePath))
+            {
+                error = AIBridgeEditorText.T(
+                    "Unity project AGENTS.md template was not found.",
+                    "未找到 Unity 项目 AGENTS.md 模板。");
+                return false;
+            }
+
+            try
+            {
+                var content = File.ReadAllText(sourcePath, Encoding.UTF8);
+                content = ApplyProjectTemplateTokens(content);
+                File.WriteAllText(targetPath, content, Encoding.UTF8);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Manually trigger skill installation.
         /// </summary>
         public static void ManualInstall()
@@ -1958,10 +2020,7 @@ namespace AIBridge.Editor
                     return;
                 }
 
-                CopyCliToCacheIfNeeded(projectRoot);
-                var results = InstallAssistantIntegrations(projectRoot, targets);
-                SkillPluginAdapter.GenerateForTargets(projectRoot, targets);
-                LogResults(results);
+                var results = InstallTargets(projectRoot, targets.Select(target => target.Id), false);
                 EditorUtility.DisplayDialog("AIBridge", BuildManualInstallSummary(results), AIBridgeEditorText.T("OK", "确定"));
             }
             catch (Exception ex)
@@ -1985,17 +2044,7 @@ namespace AIBridge.Editor
                     return;
                 }
 
-                var selectedIds = new HashSet<string>(targets.Select(target => target.Id), StringComparer.OrdinalIgnoreCase);
-                foreach (var target in AssistantIntegrationRegistry.GetTargets())
-                {
-                    AssistantIntegrationSelectionSettings.SetSelected(target.Id, selectedIds.Contains(target.Id));
-                }
-
-                CleanupUnselectedTargets(projectRoot, targets);
-                CopyCliToCacheIfNeeded(projectRoot);
-                var results = InstallAssistantIntegrations(projectRoot, targets);
-                SkillPluginAdapter.GenerateForTargets(projectRoot, targets);
-                LogResults(results);
+                var results = InstallTargets(projectRoot, targets.Select(target => target.Id), true);
                 EditorUtility.DisplayDialog("AIBridge", BuildManualInstallSummary(results), AIBridgeEditorText.T("OK", "确定"));
             }
             catch (Exception ex)

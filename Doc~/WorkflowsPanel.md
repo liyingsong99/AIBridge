@@ -53,7 +53,7 @@
 这个面板必须满足以下目标：
 
 1. 将工作流相关的用户功能从 `AIBridge/Settings` 中迁出，避免继续堆叠到设置面板。
-2. 为 Codex、Claude Code、Cursor 等 AI 工具提供统一、清晰的工作流配置入口。
+2. 为 Codex、Claude Code、Cursor、DeepSeek Harness、ZCode、WorkBuddy 等 AI 工具提供统一、清晰的工作流配置入口。
 3. 默认只暴露正常用户在日常使用中真正需要的工作流控制项。
 4. 让用户无需理解 recipe、run、artifact、gate、step 等底层概念，也能理解这个面板。
 5. 让 `AIBridge/Settings` 保持聚焦于引擎、runtime、code index 和系统级设置。
@@ -90,6 +90,9 @@
 
 - 安装选中的集成
 - 在必要时跳转相关设置
+- 通过“运行设置向导”重新打开 `AIBridge/Setup`，完成首次语言与工具选择
+
+首次安装由 `AIBridge/Setup` 设置向导负责；本页签负责后续管理，两处共享同一套目标注册表与安装器。
 
 #### 2. Recommended Library / 推荐 Skill 库
 
@@ -102,30 +105,6 @@
 - 打开安装目录
 - 刷新推荐库来源
 - 将推荐 Skill 安装到所选工具目标
-
-#### 3. Workflow Options
-
-用途：
-
-- 配置面向用户的工作流行为，而不是暴露底层 recipe 结构
-
-预期配置项类别：
-
-- 启用哪些 workflow 主分支
-- 默认验证级别
-- 在适用场景下是否优先收集 runtime 证据
-- 在可用时是否优先使用 code index 指引
-- 面向不同 assistant 的附加提示词或提示词前缀
-
-即使第一版只支持其中少数配置项，也应为这个页签预留明确定位。
-
-生效方式：
-
-- `Workflow Options` 的项目设置必须在安装或刷新 Skills 时生成到已安装的 assistant Skill 目录中。
-- 生成文件包括 `aibridge-development-workflow/references/project-workflow-preferences.md` 和根据分支开关生成的 `references/branch-selection.md`。
-- `aibridge-development-workflow` 入口必须先读取生成的项目偏好，再进行分支判定。
-- 进入某个分支后，只读取该分支对应的 `references/branches/<branch>.md`，避免默认加载所有分支文档。
-- 如果用户关闭某个分支，assistant 不能自动进入该分支；用户明确要求时，应先提示该分支已关闭并请求确认。
 
 ## 可选页签
 
@@ -216,8 +195,7 @@
 
 1. 持续保留工作流相关的用户配置在 `Workflows` 面板中
 2. 将维护型、调试型页签从默认用户面板移除或迁出
-3. 新增 `Workflow Options`，承接分支开关和提示词定制
-4. 如果确有用户价值，再增加聚焦 assistant 交接的窄入口
+3. 如果确有用户价值，再增加聚焦 assistant 交接的窄入口
 
 ## 与当前实现的对齐说明
 

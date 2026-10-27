@@ -25,21 +25,9 @@ namespace AIBridge.Editor
             Actions           // 操作
         }
 
-        private sealed class AssistantIntegrationSelectionState
-        {
-            public AssistantIntegrationTarget Target { get; set; }
-            public bool IsDetected { get; set; }
-            public string Detail { get; set; }
-            public bool IsSelected { get; set; }
-            public string SkillRootDirectory { get; set; }
-        }
-
         private Vector2 _scrollPosition;
         private bool _bridgeEnabled;
         private bool _debugLogging;
-        private List<AssistantIntegrationSelectionState> _assistantIntegrationSelections;
-        private List<RecommendedSkillInfo> _recommendedSkills;
-        private int _selectedRecommendedRepositoryIndex;
         private TabType _currentTab = TabType.BasicSettings; // 当前选中的页签
         private static EditorOption<string> _scriptDirectoryOption;
 
@@ -157,10 +145,18 @@ namespace AIBridge.Editor
                     "AI Bridge 用于在 AI 助手和 Unity Editor 之间建立通信。\nPlay 模式下可用 F12 截图，F11 录制 GIF。"),
                 MessageType.Info);
 
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button(AIBridgeEditorText.T("Open Setup Wizard", "打开设置向导"), GUILayout.Height(24)))
+            {
+                AIBridgeSetupWindow.OpenWindow();
+            }
+
             if (GUILayout.Button(AIBridgeEditorText.T("Open Workflows", "打开 Workflows"), GUILayout.Height(24)))
             {
                 AIBridgeWorkflowsWindow.OpenWindow();
             }
+
+            EditorGUILayout.EndHorizontal();
         }
 
         private void DrawBridgeSettings()

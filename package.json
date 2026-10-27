@@ -1,7 +1,7 @@
-﻿{
+{
   "name": "cn.lys.aibridge",
   "displayName": "AI Bridge",
-  "version": "1.5.15",
+  "version": "1.6.0",
   "unity": "2019.4",
   "description": "AI Unity development harness that integrates workflows, Skills, CLI/Runtime tools, and validation loops for AI coding assistants.",
   "author": {
@@ -15,7 +15,11 @@
   },
   "keywords": [
     "ai",
+    "codex",
     "claude",
+    "cursor",
+    "deepseek",
+    "zcode",
     "editor",
     "tools",
     "communication",

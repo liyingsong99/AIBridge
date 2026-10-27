@@ -12,6 +12,7 @@ namespace AIBridge.Editor
     {
         public string Id { get; set; }
         public string DisplayName { get; set; }
+        public string ShortDescription { get; set; }
         public bool SupportsSkillDirectory { get; set; }
         public string RootRuleFileName { get; set; }
         public string SkillDirectoryRelativePath { get; set; }
@@ -19,6 +20,26 @@ namespace AIBridge.Editor
         public string[] DetectionDirectoryRelativePaths { get; set; }
         public string RootRuleTemplateRelativePath { get; set; }
         public MissingRootRuleStrategy MissingRootRuleStrategy { get; set; }
+
+        /// <summary>
+        /// 旧版本安装目录。仅用于迁移提示与可选的旧版清理，不参与默认安装路径解析。
+        /// </summary>
+        public string[] LegacySkillRootDirectoryRelativePaths { get; set; }
+
+        /// <summary>
+        /// 官方文档地址。用于设置向导中的“文档”入口。
+        /// </summary>
+        public string DocsUrl { get; set; }
+
+        /// <summary>
+        /// 设置向导与 Workflows 面板的排序值，越小越靠前。
+        /// </summary>
+        public int SortOrder { get; set; }
+
+        /// <summary>
+        /// 是否列入设置向导的常用工具分组。
+        /// </summary>
+        public bool IsCommon { get; set; }
 
         public string GetSkillFileRelativePath()
         {

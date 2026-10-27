@@ -1,4 +1,4 @@
-﻿<p align="center">
+<p align="center">
   <img src="./Images/aibridge-banner.png" alt="AIBridge banner" width="100%">
 </p>
 
@@ -7,7 +7,7 @@
 English | [中文](./README_CN.md)
 
 ![Unity 2019.4+ ~ 6000.x](https://img.shields.io/badge/Unity-2019.4%2B%20~%206000.x-black?style=flat-square&logo=unity)
-![Package 1.5.15](https://img.shields.io/badge/Package-1.5.15-5b6cff?style=flat-square)
+![Package 1.6.0](https://img.shields.io/badge/Package-1.6.0-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 ![AI Unity Automation](https://img.shields.io/badge/Workflow-AI%20Unity%20Automation-14b8a6?style=flat-square)
 
@@ -119,26 +119,36 @@ You can also clone this repository into a Unity project's `Packages` folder.
 
 ## Configure AI Workflow
 
-1. Open `AIBridge/Workflows` in Unity Editor.
-2. Open the `Skills` tab.
-3. Select the AI tools you use.
-4. Click `Install Selected Integrations`.
-5. Optionally click `Install Unity Project AGENTS.md Template` to create a root `AGENTS.md`.
+1. On first use, AIBridge opens `AIBridge/Setup`. Choose the editor language and the AI tools you use, then click `Install Now`.
+2. To change the selection later, open `AIBridge/Setup` again or use `AIBridge/Workflows > Skills`.
+3. Optionally install the Unity project AGENTS.md template from the wizard (only shown when an AGENTS.md-based tool is selected) or from `Workflows > Skills`.
 
-Installed AIBridge Skills are written to each selected tool's default skills directory, such as `.codex/skills/` for Codex. You can set a custom directory in the `Workflows > Skills` tab, but custom directories may not be discovered automatically by the AI tool. Each AI tool receives a minimal RootRule and, when needed for a custom directory, a plugin adapter that references the Skill root. The RootRule includes the fixed project-root-relative CLI path, an explicit `$CLI` binding, common commands, Skill root, and `aibridge-development-workflow` entry point. Multi-branch routing, targeted checklists, advanced workflow orchestration guidance, and command references live in the installed workflow Skill and its `references/` directory.
+| Tool | Project rule file | Skills directory |
+|---|---|---|
+| Codex | `AGENTS.md` | `.agents/skills` |
+| DeepSeek Harness | `AGENTS.md` | `.agents/skills` |
+| ZCode | `AGENTS.md` | `.agents/skills` |
+| Claude Code | `CLAUDE.md` | `.claude/skills` |
+| Cursor | `.cursor/rules/aibridge.mdc` | `.cursor/skills` |
+| WorkBuddy | `CODEBUDDY.md` | `.codebuddy/skills` |
+| Cline | `.clinerules/aibridge.md` | `.clinerules/skills` |
+
+Codex, DeepSeek Harness, and ZCode share `AGENTS.md` and the official project-level `.agents/skills` directory, so AIBridge writes that integration once even when all three are selected. AIBridge no longer writes project-level `.codex/skills` (it corresponds to the user-level `~/.codex/skills` path); old directories are left untouched.
+
+AIBridge Skills are written to each selected tool's native skills directory. You can set a custom directory in `Workflows > Skills` or the wizard's Advanced section, but custom directories may not be discovered automatically by the AI tool. Each AI tool receives a minimal RootRule and, when needed for a custom directory, a plugin adapter that references the Skill root. The RootRule includes the fixed project-root-relative CLI path, an explicit `$CLI` binding, common commands, Skill root, and `aibridge-development-workflow` entry point. Multi-branch routing, targeted checklists, advanced workflow orchestration guidance, and command references live in the installed workflow Skill and its `references/` directory.
 
 You can also open the `Workflows > Recommended Library` tab, refresh the default `obra/superpowers` repository, and install third-party Skills into the selected tools' skills directories.
 
-`Workflows > Workflow Options` stores project-level workflow preferences. Applying these options refreshes generated files under the installed `aibridge-development-workflow` Skill, including `references/project-workflow-preferences.md` and the generated branch selection rules.
+Workflow branch and validation preferences are generated into the installed `aibridge-development-workflow` Skill (`references/project-workflow-preferences.md` and generated branch selection rules) from project defaults.
 
 ## Editor Entry Points
 
 AIBridge installs these user-facing Unity menu entries:
 
+- `AIBridge/Setup`: first-use language and AI tool selection wizard.
 - `AIBridge/Settings`: Basic, GIF, Logs, Directories, Scripts, Runtime, Code Index, Cache, and Actions.
 - `AIBridge/Workflows`: install integrations, choose AI tools, and configure workflow options.
 - `AIBridge/Players`: inspect Runtime targets, discovery cache, status, and cache cleanup.
-- `AIBridge/Workflow Graph`: advanced workflow graph view for routing, recipes, runs, gates, and handoff.
 - `AIBridge/Screenshot Game View _F12` and `AIBridge/Record GIF _F11`: quick visual evidence shortcuts.
 
 ## CLI And Command Reference

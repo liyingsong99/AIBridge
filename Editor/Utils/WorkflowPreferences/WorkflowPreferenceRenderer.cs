@@ -1,7 +1,6 @@
 using System;
 using System.Security.Cryptography;
 using System.Text;
-using UnityEngine;
 
 namespace AIBridge.Editor
 {
@@ -10,8 +9,6 @@ namespace AIBridge.Editor
         public const string DevelopmentWorkflowSkillName = "aibridge-development-workflow";
         public const string PreferencesRelativePath = "references/project-workflow-preferences.md";
         public const string BranchSelectionRelativePath = "references/branch-selection.md";
-        public const string GraphManifestRelativePath = "references/workflow-graph.manifest.json";
-        public const string ImplementationBranchManifestRelativePath = "references/implementation-branch.manifest.json";
 
         private const string ImplementationId = "implementation";
         private const string DebugId = "debug";
@@ -35,7 +32,7 @@ namespace AIBridge.Editor
             var builder = new StringBuilder();
             builder.AppendLine("# 项目 Workflow 偏好");
             builder.AppendLine();
-            builder.AppendLine("> 本文件由 AIBridge/Workflows 根据项目设置生成。不要手动编辑；修改请回到 Unity 的 `AIBridge/Workflows > Workflow Options`。");
+            builder.AppendLine("> 本文件由 AIBridge 根据项目默认设置生成。不要手动编辑。");
             builder.AppendLine();
             builder.AppendLine("- Assistant: " + target.DisplayName + " (`" + target.Id + "`)");
             builder.AppendLine();
@@ -78,7 +75,7 @@ namespace AIBridge.Editor
             builder.AppendLine();
             builder.AppendLine("1. Preflight / Skill 路由前必须先读取本文件。");
             builder.AppendLine("2. 只在启用分支中选择默认主分支；禁用分支不能自动进入。");
-            builder.AppendLine("3. 如果用户明确要求进入禁用分支，先说明该分支已关闭，并请求用户确认是否临时继续或回到 Workflows 面板启用。");
+            builder.AppendLine("3. 如果用户明确要求进入禁用分支，先说明该分支已关闭并请求确认；不要自动进入。");
             builder.AppendLine("4. 选择主分支后，只读取该分支对应的 `references/branches/<branch>.md`，不要预加载其它分支文档。");
             builder.AppendLine("5. 验证和证据收集默认遵守本文件中的验证策略。");
             builder.AppendLine();
@@ -94,7 +91,7 @@ namespace AIBridge.Editor
             var builder = new StringBuilder();
             builder.AppendLine("# 任务分流规则");
             builder.AppendLine();
-            builder.AppendLine("> 本文件由 AIBridge/Workflows 生成。进入分支判定前先读取 `project-workflow-preferences.md`。");
+            builder.AppendLine("> 本文件由 AIBridge 生成。进入分支判定前先读取 `project-workflow-preferences.md`。");
             builder.AppendLine();
             builder.AppendLine("## 工作流生命周期");
             builder.AppendLine();
@@ -181,91 +178,6 @@ namespace AIBridge.Editor
             return AiRuleMarkdownNormalizer.TrimLineEndPunctuation(builder.ToString());
         }
 
-        public static string RenderGraphManifest(string projectRoot, AssistantIntegrationTarget target)
-        {
-            var workflowUi = AIBridgeProjectSettings.Instance.WorkflowUi;
-            var manifest = new WorkflowGraphManifestData
-            {
-                schemaVersion = 1,
-                kind = "aibridge-workflow-routing-graph",
-                generatedFrom = new WorkflowGraphManifestGeneratedFromData
-                {
-                    assistant = target == null ? string.Empty : target.Id,
-                    settingsHash = ComputeSettingsHash(projectRoot, target)
-                },
-                nodes = new[]
-                {
-                    CreateGraphNode("root", "Root", "Root", "Task Entry", null, false, true),
-                    CreateGraphNode("preflight", "Preflight", "Preflight / Skill Routing", "Project preferences and Skill routing", null, false, true),
-                    CreateGraphNode("requirements", "Condition", "Requirements Discussion", "When scope or risk is unclear", "references/branches/requirements.md", false, true),
-                    CreateGraphNode("selector", "Selector", "Branch Selector", "Enabled workflow branches", null, false, true),
-                    CreateGraphNode("branch-implementation", "Action", "Implementation Branch", "Change-oriented", "references/branches/implementation.md", true, workflowUi.EnableImplementationBranch),
-                    CreateGraphNode("branch-debug", "Action", "Debug Branch", "Diagnosis-oriented", "references/branches/debug.md", true, workflowUi.EnableDebugBranch),
-                    CreateGraphNode("branch-review", "Action", "Review Branch", "Read-only review", "references/branches/review.md", true, workflowUi.EnableReviewBranch),
-                    CreateGraphNode("branch-validation", "Action", "Validation Branch", "Compile / logs / runtime", "references/branches/validation.md", true, workflowUi.EnableValidationBranch),
-                    CreateGraphNode("branch-orchestration", "Action", "Orchestration Branch", "Multi-step workflow", "references/branches/orchestration.md", true, workflowUi.EnableOrchestrationBranch),
-                    CreateGraphNode("handoff", "Handoff", "Mode Exit / SkillHandoff", "Artifact refs, gates, and open risks", null, false, true)
-                },
-                edges = new[]
-                {
-                    CreateGraphEdge("root", "preflight", null),
-                    CreateGraphEdge("preflight", "requirements", "on demand"),
-                    CreateGraphEdge("requirements", "selector", "confirmed"),
-                    CreateGraphEdge("preflight", "selector", "ready"),
-                    CreateGraphEdge("selector", "branch-implementation", "change"),
-                    CreateGraphEdge("selector", "branch-debug", "diagnose"),
-                    CreateGraphEdge("selector", "branch-review", "review"),
-                    CreateGraphEdge("selector", "branch-validation", "validate"),
-                    CreateGraphEdge("selector", "branch-orchestration", "recipe"),
-                    CreateGraphEdge("branch-implementation", "handoff", null),
-                    CreateGraphEdge("branch-debug", "handoff", null),
-                    CreateGraphEdge("branch-review", "handoff", null),
-                    CreateGraphEdge("branch-validation", "handoff", null),
-                    CreateGraphEdge("branch-orchestration", "handoff", null)
-                }
-            };
-
-            return JsonUtility.ToJson(manifest, true);
-        }
-
-        public static string RenderImplementationBranchManifest()
-        {
-            var manifest = new WorkflowBranchManifestData
-            {
-                schemaVersion = 1,
-                kind = "aibridge-workflow-branch-graph",
-                branchId = "implementation",
-                title = "Implementation Branch",
-                subtitle = "Branch Detail",
-                summary = "Editor-only branch detail graph for implementation tasks.",
-                nodes = new[]
-                {
-                    CreateBranchNode("implementation-root", "Root", "Implementation Branch", "Change Task Entry", "Ready", "Entry node for implementation tasks.", "references/branches/implementation.md", null, "branch-root", false, 0, 0, 0, CreateDetails(("Goal", "Change current worktree and verify"), ("Source", "implementation.md"))),
-                    CreateBranchNode("implementation-locate", "Action", "Locate Real Path", "Find actual code or asset entry", "Ready", "Locate the real implementation path before changing anything.", "references/branches/implementation.md", "implementation-root", "mandatory-step", false, 1, 0, 0, CreateDetails(("Rule", "Locate real code path before editing"), ("Why", "Avoid changing guessed or mirrored paths"))),
-                    CreateBranchNode("implementation-risk", "Condition", "Risk Gate", "Boundary / compatibility / acceptance", "Ready", "Confirm the change is still within the agreed scope.", "references/risk-gates.md", "implementation-root", "mandatory-gate", false, 2, 0, 0, CreateDetails(("Check", "scope / compatibility / acceptance"), ("Fallback", "Return to requirements or debug when preconditions are not met"))),
-                    CreateBranchNode("implementation-modify", "Action", "Modify Worktree", "Scoped implementation", "Ready", "Change only the real control point and keep the diff narrow.", "references/branches/implementation.md", "implementation-root", "mandatory-step", false, 3, 0, 0, CreateDetails(("Rule", "Keep diff narrow"), ("Tooling", "aibridge / code-index / prefab-patch / yaml-editing on demand"))),
-                    CreateBranchNode("implementation-verify", "Gate", "Verify Result", "Compile and required evidence", "Ready", "Run the default verification path for the project after the change.", "references/checklist.md", "implementation-root", "mandatory-gate", false, 4, 0, 0, CreateDetails(("Default", "compileAndLogs"), ("Command", "$CLI compile unity -> $CLI get_logs --logType Error"))),
-                    CreateBranchNode("implementation-handoff", "Handoff", "Handoff", "Result / risk / next step", "NotStarted", "Summarize what changed, what was verified, and what remains.", "references/checklist.md", "implementation-root", "handoff", false, 5, 0, 0, CreateDetails(("Output", "changed files / verification / residual risk"), ("Next", "validation branch when extra proof is needed"))),
-                    CreateBranchNode("implementation-editor", "Condition", "Editor Generation", "Only for complex one-off editor tasks", "NotStarted", "Optional branch for complex editor-side generation work.", "references/editor-generation.md", "implementation-root", "optional-branch", true, 3, 1, 1, CreateDetails(("Condition", "complex one-off editor C# task"), ("Optional", "yes"))),
-                    CreateBranchNode("implementation-runtime", "Condition", "Runtime Evidence", "Only when task explicitly needs runtime proof", "NotStarted", "Optional verification branch for runtime or UI evidence.", "references/branches/validation.md", "implementation-root", "optional-branch", true, 4, 1, 1, CreateDetails(("Condition", "runtime or UI evidence explicitly required"), ("Optional", "yes")))
-                },
-                edges = new[]
-                {
-                    CreateBranchEdge("implementation-root", "implementation-locate", null, "Flow"),
-                    CreateBranchEdge("implementation-locate", "implementation-risk", null, "Flow"),
-                    CreateBranchEdge("implementation-risk", "implementation-modify", null, "Flow"),
-                    CreateBranchEdge("implementation-modify", "implementation-verify", null, "Flow"),
-                    CreateBranchEdge("implementation-verify", "implementation-handoff", null, "Flow"),
-                    CreateBranchEdge("implementation-risk", "implementation-editor", "complex editor task", "OptionalFlow"),
-                    CreateBranchEdge("implementation-editor", "implementation-modify", "generated", "OptionalFlow"),
-                    CreateBranchEdge("implementation-verify", "implementation-runtime", "runtime needed", "OptionalFlow"),
-                    CreateBranchEdge("implementation-runtime", "implementation-handoff", "evidence ready", "OptionalFlow")
-                }
-            };
-
-            return JsonUtility.ToJson(manifest, true);
-        }
-
         public static string ComputeSettingsHash(string projectRoot, AssistantIntegrationTarget target)
         {
             var settings = AIBridgeProjectSettings.Instance;
@@ -293,117 +205,6 @@ namespace AIBridge.Editor
                 var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(builder.ToString()));
                 return BitConverter.ToString(bytes).Replace("-", string.Empty).ToLowerInvariant();
             }
-        }
-
-        public static int CountEnabledBranches(AIBridgeProjectSettings.WorkflowUiSettingsData workflowUi)
-        {
-            var count = 0;
-            for (var i = 0; i < Branches.Length; i++)
-            {
-                if (IsBranchEnabled(workflowUi, Branches[i].Id))
-                {
-                    count++;
-                }
-            }
-
-            return count;
-        }
-
-        private static WorkflowGraphManifestNodeData CreateGraphNode(
-            string id,
-            string graphKind,
-            string title,
-            string subtitle,
-            string source,
-            bool editable,
-            bool enabled)
-        {
-            return new WorkflowGraphManifestNodeData
-            {
-                id = id,
-                kind = graphKind,
-                title = title,
-                subtitle = subtitle,
-                source = source,
-                editable = editable ? "setting" : "false",
-                enabled = enabled
-            };
-        }
-
-        private static WorkflowGraphManifestEdgeData CreateGraphEdge(string from, string to, string condition)
-        {
-            return new WorkflowGraphManifestEdgeData
-            {
-                from = from,
-                to = to,
-                condition = condition
-            };
-        }
-
-        private static WorkflowBranchManifestNodeData CreateBranchNode(
-            string id,
-            string graphKind,
-            string title,
-            string subtitle,
-            string state,
-            string description,
-            string source,
-            string parent,
-            string semanticRole,
-            bool optional,
-            int column,
-            int order,
-            int row,
-            WorkflowBranchManifestDetailData[] details)
-        {
-            return new WorkflowBranchManifestNodeData
-            {
-                id = id,
-                kind = graphKind,
-                title = title,
-                subtitle = subtitle,
-                state = state,
-                description = description,
-                source = source,
-                parent = parent,
-                semanticRole = semanticRole,
-                optional = optional,
-                column = column,
-                order = order,
-                row = row,
-                details = details
-            };
-        }
-
-        private static WorkflowBranchManifestEdgeData CreateBranchEdge(string from, string to, string label, string kind)
-        {
-            return new WorkflowBranchManifestEdgeData
-            {
-                from = from,
-                to = to,
-                label = label,
-                kind = kind
-            };
-        }
-
-        private static WorkflowBranchManifestDetailData[] CreateDetails(params (string label, string value)[] values)
-        {
-            if (values == null || values.Length == 0)
-            {
-                return Array.Empty<WorkflowBranchManifestDetailData>();
-            }
-
-            var details = new WorkflowBranchManifestDetailData[values.Length];
-            for (var i = 0; i < values.Length; i++)
-            {
-                details[i] = new WorkflowBranchManifestDetailData
-                {
-                    label = values[i].label,
-                    value = values[i].value
-                };
-            }
-
-            return details;
         }
 
         private static bool IsBranchEnabled(AIBridgeProjectSettings.WorkflowUiSettingsData workflowUi, string branchId)
@@ -521,91 +322,6 @@ namespace AIBridge.Editor
             public string DocumentPath { get; private set; }
             public string CommonSkillsWithCodeIndex { get; private set; }
             public string CommonSkillsWithoutCodeIndex { get; private set; }
-        }
-
-        [Serializable]
-        private sealed class WorkflowGraphManifestData
-        {
-            public int schemaVersion;
-            public string kind;
-            public WorkflowGraphManifestGeneratedFromData generatedFrom;
-            public WorkflowGraphManifestNodeData[] nodes;
-            public WorkflowGraphManifestEdgeData[] edges;
-        }
-
-        [Serializable]
-        private sealed class WorkflowGraphManifestGeneratedFromData
-        {
-            public string assistant;
-            public string settingsHash;
-        }
-
-        [Serializable]
-        private sealed class WorkflowGraphManifestNodeData
-        {
-            public string id;
-            public string kind;
-            public string title;
-            public string subtitle;
-            public string source;
-            public string editable;
-            public bool enabled;
-        }
-
-        [Serializable]
-        private sealed class WorkflowGraphManifestEdgeData
-        {
-            public string from;
-            public string to;
-            public string condition;
-        }
-
-        [Serializable]
-        private sealed class WorkflowBranchManifestData
-        {
-            public int schemaVersion;
-            public string kind;
-            public string branchId;
-            public string title;
-            public string subtitle;
-            public string summary;
-            public WorkflowBranchManifestNodeData[] nodes;
-            public WorkflowBranchManifestEdgeData[] edges;
-        }
-
-        [Serializable]
-        private sealed class WorkflowBranchManifestNodeData
-        {
-            public string id;
-            public string kind;
-            public string title;
-            public string subtitle;
-            public string state;
-            public string description;
-            public string source;
-            public string parent;
-            public string semanticRole;
-            public bool optional;
-            public int column;
-            public int order;
-            public int row;
-            public WorkflowBranchManifestDetailData[] details;
-        }
-
-        [Serializable]
-        private sealed class WorkflowBranchManifestEdgeData
-        {
-            public string from;
-            public string to;
-            public string label;
-            public string kind;
-        }
-
-        [Serializable]
-        private sealed class WorkflowBranchManifestDetailData
-        {
-            public string label;
-            public string value;
         }
     }
 }
