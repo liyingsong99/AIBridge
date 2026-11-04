@@ -1124,6 +1124,13 @@ namespace AIBridge.Editor
             var existed = File.Exists(skillFilePath);
 
             var changed = GenerateAndWriteSkillFileIfChanged(sourceSkillPath, targetDir, skillFilePath);
+            var sourceReferences = Path.Combine(sourceSkillRoot, "references");
+            if (Directory.Exists(sourceReferences))
+            {
+                // 主 Skill 的按需参考也须安装；保留生成器文档和用户补充文件，避免同步时误删。
+                changed |= SyncDirectory(sourceReferences, Path.Combine(targetDir, "references"), false, null);
+            }
+
             if (!existed)
             {
                 return IntegrationAction.CreatedFile;
@@ -1340,12 +1347,12 @@ namespace AIBridge.Editor
             };
         }
 
-        private static void SyncDirectory(string sourceDir, string targetDir, bool removeExtraEntries, HashSet<string> skippedRelativePaths)
+        private static bool SyncDirectory(string sourceDir, string targetDir, bool removeExtraEntries, HashSet<string> skippedRelativePaths)
         {
-            SyncDirectory(sourceDir, targetDir, sourceDir, removeExtraEntries, skippedRelativePaths);
+            return SyncDirectory(sourceDir, targetDir, sourceDir, removeExtraEntries, skippedRelativePaths);
         }
 
-        private static void SyncDirectory(
+        private static bool SyncDirectory(
             string sourceRoot,
             string targetDir,
             string currentSourceDir,
@@ -1353,6 +1360,7 @@ namespace AIBridge.Editor
             HashSet<string> skippedRelativePaths)
         {
             Directory.CreateDirectory(targetDir);
+            var changed = false;
             var expectedEntries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var filePath in Directory.GetFiles(currentSourceDir))
@@ -1376,19 +1384,19 @@ namespace AIBridge.Editor
 
                 expectedEntries.Add(fileName);
                 var targetFile = Path.Combine(targetDir, fileName);
-                CopyFileIfChanged(filePath, targetFile);
+                changed |= CopyFileIfChanged(filePath, targetFile);
             }
 
             foreach (var childDir in Directory.GetDirectories(currentSourceDir))
             {
                 var dirName = Path.GetFileName(childDir);
                 expectedEntries.Add(dirName);
-                SyncDirectory(sourceRoot, Path.Combine(targetDir, dirName), childDir, removeExtraEntries, skippedRelativePaths);
+                changed |= SyncDirectory(sourceRoot, Path.Combine(targetDir, dirName), childDir, removeExtraEntries, skippedRelativePaths);
             }
 
             if (!removeExtraEntries)
             {
-                return;
+                return changed;
             }
 
             foreach (var targetEntry in Directory.GetFileSystemEntries(targetDir))
@@ -1396,8 +1404,11 @@ namespace AIBridge.Editor
                 if (!expectedEntries.Contains(Path.GetFileName(targetEntry)) && !ShouldKeepExtraSyncEntry(targetEntry))
                 {
                     DeleteFileSystemEntry(targetEntry);
+                    changed = true;
                 }
             }
+
+            return changed;
         }
 
         private static bool ShouldKeepExtraSyncEntry(string targetEntry)
@@ -1453,11 +1464,11 @@ namespace AIBridge.Editor
             return skippedRelativePaths.Contains(NormalizeRelativePath(GetRelativeFilePath(sourceRoot, filePath)));
         }
 
-        private static void CopyFileIfChanged(string sourceFile, string targetFile)
+        private static bool CopyFileIfChanged(string sourceFile, string targetFile)
         {
             if (!IsFileCopyNeeded(sourceFile, targetFile))
             {
-                return;
+                return false;
             }
 
             var targetDir = Path.GetDirectoryName(targetFile);
@@ -1467,6 +1478,7 @@ namespace AIBridge.Editor
             }
 
             File.Copy(sourceFile, targetFile, true);
+            return true;
         }
 
         internal static bool WriteTextIfChanged(string path, string content, Encoding encoding)

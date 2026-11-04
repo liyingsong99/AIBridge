@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using AIBridge.Runtime.Internal;
@@ -136,6 +136,13 @@ namespace AIBridgeCLI
             if (parsed.CommandType.Equals("harness", StringComparison.OrdinalIgnoreCase))
             {
                 return HarnessCommand.Execute(parsed.Action, parsed.Options, outputMode);
+            }
+
+            // 可选 Unity CLI 只读诊断单独执行，不改变现有命令的发送路径。
+            if (parsed.CommandType.Equals("unity_cli", StringComparison.OrdinalIgnoreCase)
+                || parsed.CommandType.Equals("pipeline", StringComparison.OrdinalIgnoreCase))
+            {
+                return UnityCliCommand.Execute(parsed.CommandType, parsed.Action, parsed.Options, outputMode);
             }
 
             // Handle compile dotnet command (CLI-only, no Unity communication needed)

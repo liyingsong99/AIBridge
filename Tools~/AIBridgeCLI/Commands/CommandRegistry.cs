@@ -43,6 +43,8 @@ namespace AIBridgeCLI.Commands
             Register(new CodeIndexCommandBuilder());
             Register(new WorkflowCommandBuilder());
             Register(new HarnessCommandBuilder());
+            Register(new UnityCliCommandBuilder());
+            Register(new PipelineCapabilityCommandBuilder());
             _initialized = true;
         }
 

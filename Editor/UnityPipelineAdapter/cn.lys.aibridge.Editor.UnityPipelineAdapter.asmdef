@@ -1,0 +1,26 @@
+{
+    "name": "cn.lys.aibridge.Editor.UnityPipelineAdapter",
+    "rootNamespace": "AIBridge.Editor.UnityPipelineAdapter",
+    "references": [
+        "cn.lys.aibridge.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "AIBRIDGE_HAS_UNITY_PIPELINE"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.pipeline",
+            "expression": "",
+            "define": "AIBRIDGE_HAS_UNITY_PIPELINE"
+        }
+    ],
+    "noEngineReferences": false
+}

@@ -3,7 +3,7 @@
 ## 状态
 
 - 状态：当前索引
-- 更新时间：2026-10-27
+- 更新时间：2026-11-04
 - 对象 ID 展示：CLI help / Skill 按 Unity 版本只暴露主键参数名（6000.4+ 为 `entityId`，更旧为 `instanceId`）；兼容策略只在 RootRule 写一行，不在每个 Skill reference / CLI action help 重复；线协议仍双接受
 - 维护范围：`Packages/cn.lys.aibridge`（知识库维护规则仅写在包内 `AGENTS.md` / 本文，不得写入 RootRule 或用户项目 `AGENTS` 模板）
 
@@ -66,6 +66,7 @@
 
 ### 工作流和基础设施
 
+- `unity_cli`（`version` / `capabilities` / `doctor`）与 `pipeline capabilities`，可选官方 CLI 只读诊断
 - `workflow`
 - `harness`
 - `runtime`
@@ -107,6 +108,12 @@
 - Skills
 - Recommended Library
 
+### `AIBridge/Install Unity CLI Dependencies`
+
+- 按当前 Editor 的 UPM 兼容版本安装可选 `com.unity.pipeline`，不安装独立 Unity CLI；要求 Unity 6.0 LTS+。
+- 已安装则保留；异步查询/安装、重复点击防护、域重载后核对实际版本；未知写结果不自动重放。
+- 详见双语 `UnityCliIntegration.md` / `UnityCliIntegration.en.md`。
+
 ### 其他入口
 
 - `AIBridge/Players`
@@ -139,9 +146,22 @@
 - `unity-change-implementation`：实施局部 Unity / AIBridge 改动并验证
 - `unity-sharded-review`：分片审查并做对抗验证
 
+## Unity CLI 可选增强
+
+- 用户文档：[简体中文](UnityCliIntegration.md) / [English](UnityCliIntegration.en.md)；测试设计：[UnityCliTesting.md](UnityCliTesting.md)
+- AI 按需参考：`Skill~/references/unity-cli-reference.md`，覆盖可选依赖、AIBridge 诊断、官方 Editor 连接检查、安装授权边界和结果安全规则；安装器会同步到已选助手的 Skill 根，跳过 `.meta` 并保留生成/用户文件；不扩充 RootRule 为官方命令全集
+- 配置：`.aibridge/unity-cli.json`（`backend=native|auto|unity-cli`、`executablePath`、`probeTimeoutMs`）；默认 `native`
+- 首轮公开入口：`unity_cli version`、`unity_cli capabilities`、`unity_cli doctor`、`pipeline capabilities`；只读调用官方版本与帮助，不提供任意命令转发；`unity_cli help` 为本地命令帮助
+- 根 `available` 表示本次请求能力已确认；`doctor/capabilities` 需 CLI 身份、版本与根帮助探测通过，`pipeline capabilities` 还需 Pipeline 帮助探测通过
+- `auto` 首轮只参与诊断与能力报告，既有 `compile unity`、`test run`、`code execute` 和 Runtime 命令保持原生路由
+- 缺少 CLI/Pipeline 不影响原生功能；显式官方请求报告能力缺失，已发送或结果未知的操作不得换后端重放
+- 可选 Pipeline 适配按包存在生成宏（versionDefines 空 expression）并做运行时检测；支持官方 `pipeline|pipe` 帮助别名，descriptor 读取 `evalToken`，不暴露凭据
+- 2026-11-04 已实装 CLI 1.0.0-beta.16 / Pipeline 0.10.0-exp.1，在 Unity 6000.0.51f1 验证当前工程服务 ready 与 CLI 能力；其他版本与业务委托仍需独立验证
+
 ## 当前对齐结论
 
-- `README.md` 和 `README_CN.md` 已明确标注 Unity 2019.4+ ~ 6000.x 兼容范围，避免用户误读为不支持 Unity 6000.x。
+- `README.md` / `README_CN.md` 面向用户，按能做什么、使用优势、快速开始、常用 API、实践示例、可选增强组织。首页不展开内部工作流程、Skills 路径表、适配层或验证版本记录；设置与实现细节通过专题文档访问，进阶示例见 `Doc~/CommandExamples.md` / `CommandExamples.en.md`。
+- README 明确 Unity CLI/Pipeline 非强制依赖：原生能力独立可用；安装后补充官方环境管理和实时 Editor 工具，当前 AIBridge 仅集成诊断与可选适配，业务命令不会自动转发。Unity 2019.4+ 基础兼容与 Pipeline 的 Unity 6.0 LTS+ 要求分别说明。
 - `AIBridge/Workflows` 仍然是用户配置面板，不是 recipe/run/debug 控制台。
 - `Doc~/WorkflowsPanel.md` 只定义默认 `Workflows` 面板的产品边界。
 - `compile dotnet` 只是额外检查，不是 Unity 编译替代品。

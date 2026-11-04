@@ -14,7 +14,7 @@
 
 - 功能规格说明
 - 面板或窗口的产品定义
-- 面向用户的工作流配置说明
+- 面向用户的工作流配置说明与使用教程（命令示例，不复制完整 CLI 参数参考）
 - 变更功能前应先阅读的稳定行为约束
 
 这里不应用于存放：
@@ -43,7 +43,10 @@
 
 ## 当前文档
 
+- [中文 README](../README_CN.md) / [English README](../README.md)：产品概览、快速开始、可选 Unity CLI 增强与常用操作
+- [命令示例与进阶用法](CommandExamples.md) / [English](CommandExamples.en.md)：从 README 迁出的完整操作示例；精确参数以 CLI help 和已安装 Skill references 为准
 - `KnowledgeBaseIndex.md`：AIBridge 功能总索引，汇总 CLI、Editor 菜单、Runtime、workflow、Skills、模板、生成产物和文档映射，作为后续迭代的统一校验入口
+- [Unity CLI 可选增强](UnityCliIntegration.md) / [English](UnityCliIntegration.en.md)：只读官方 CLI 诊断、配置、能力检测和回退边界；[测试覆盖](UnityCliTesting.md) 区分契约测试与真实 Editor 验证，包含 CLI beta.16 / Pipeline 0.10 在 Unity 6000.0.51f1 的安装实测
 - `SetupWizard.md`：`AIBridge/Setup` 首次设置向导的产品定义、首启行为、工具路径与跳过/重开规则
 - `EditorWindowScreenshot.md`：Edit Mode 下 Unity 主窗口、内置窗口和自定义 `EditorWindow` 的窗口级截图边界、参数与平台要求
 - `WorkflowsPanel.md`：`AIBridge/Workflows` 面板的产品定义文档
