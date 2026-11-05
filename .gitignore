@@ -49,3 +49,6 @@ Thumbs.db
 *.mdb.meta
 sysinfo.txt
 *.unitypackage
+
+# meow-memory 本地记忆库（工作区私有数据，禁止提交）
+.dsh-meow/
