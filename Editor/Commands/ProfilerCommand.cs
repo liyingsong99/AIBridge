@@ -57,13 +57,27 @@ $CLI profiler get_script_stats
 $CLI profiler save_data --path "".aibridge/profiler/latest.json""
 $CLI profiler load_data --path "".aibridge/profiler/latest.json""
 $CLI profiler stop
+$CLI profiler native_capabilities
+$CLI profiler save_profile --path "".aibridge/profiler/native/capture.data"" --confirm true
+$CLI profiler load_profile --path "".aibridge/profiler/native/capture.data"" --confirm true
 ```
+
+Native `.data` actions use exact Unity ProfilerDriver APIs; recording must already be stopped. Save never overwrites; load replaces shared history. No automatic recording, target switch or JSON fallback. Unknown native outcome retains the local gate until domain reload. Memory `.snap` uses the separate `memory` command.
 
 Unsupported or unstable Unity Profiler surfaces are reported in the `unsupported` array instead of being silently treated as available. Runtime Player performance evidence still uses `runtime perf`.";
 
         public CommandResult Execute(CommandRequest request)
         {
             var action = NormalizeAction(request.GetParam("action", "get_status"));
+            if ((action == "start" || action == "stop" || action == "clear_data")
+                && (ProfilerNativeGate.Busy || AIBridgeBuildTracker.Busy || (PipelineTestTracker.HasBusy || PipelineCompileTracker.HasBusy)))
+                return CommandResult.Failure(request.id, "Native capture, build or Pipeline test is active or unknown; resolve its original request first.");
+            if (action == "native_capabilities" || action == "save_profile" || action == "load_profile")
+            {
+                if (action != "native_capabilities" && (AIBridgeBuildTracker.Busy || CodeCommand.HasActiveCodeOperation || (PipelineTestTracker.HasBusy || PipelineCompileTracker.HasBusy)))
+                    return CommandResult.Failure(request.id, "An AIBridge build, code or Pipeline test is active or unknown; resolve its original request before native Profiler IO.");
+                return ProfilerNativeFiles.Execute(request, action);
+            }
             switch (action)
             {
                 case "start":

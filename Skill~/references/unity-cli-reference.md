@@ -7,7 +7,19 @@ Load for Unity CLI setup, diagnostics, or an explicit official-tool task; never 
 - `$CLI` is the bundled AIBridgeCLI, not official `unity` or Editor `Unity.exe`
 - Official Unity CLI / `com.unity.pipeline` are optional; native AIBridge remains usable without them
 - Standalone CLI environment management and Pipeline live Editor control are separate capabilities; Pipeline requires Unity 6.0 LTS+ and a compatible package
-- Current AIBridge integration is read-only CLI diagnostics plus an isolated Pipeline adapter; `compile unity`, `test run`, `code execute` and Runtime commands keep their native route
+- Native routes stay default. Explicit `code execute --backend pipeline` supports verified Pipeline 0.10.0-exp.1 eval: compile-only uses `--dry-run true`; real execution requires per-request `--dry-run false --confirm true`. `code run --file .aibridge/code/task.cs --entry Namespace.Type.Method --args '[...]'` uses fixed Pipeline ephemeral run, default compile-only; execution needs the same confirm flags. Hotpatch remains unsupported; compile/test use only the explicit bounded interfaces below
+- Code Pipeline checks project authorization and boolean per-request flags at both command/adapter entries; restricted source paths, audit and single-flight apply; `.csx` is read into code, internals/auto-import stay disabled
+- Result/status preserve nested values, explicit null and duration; output only passes through upstream (verified version returns null). Malformed/conflicting/duplicate-key/deep responses stay unknown; decoded keys and values are redacted
+- `code run`: direct `.cs` files only (512KiB), explicit static entry, strict JSON array args (32768 chars/depth16); no inline/csx/reparse paths/defines/references. Dry-run verifies compilation only, not entry/args. Source snapshot under `.aibridge/tmp/pipeline-run`; unknown retains source/lock in current process, reload loses lock; never treat this as a C# sandbox
+- Explicit `code run --job true --confirm true` detaches (including dry-run): upstream has no execution timeout; `timeout` bounds local waiting only. Defaults stay job=false; eval rejects job. After timeout use `code status --requestId`, bounded `code job_wait --requestId --timeout 5000`, or local `code job_list --limit 20`. `code job_cancel --requestId --confirm true` is cooperative remote cancellation for an active registered job; accepted/ended/sideEffectsUnknown are separate. `code cancel` only releases local waiting; no external jobId control, reload/session loss stays unknown, never replay.
+- Query `code status --requestId <id>` after timeout; cancel ends waiting only. Unknown/reload retains a local lock until explicit cancel, never replay or switch backend. Records: `.aibridge/code-operations/`, no source or token
+
+## Explicit compilation and tests
+
+- `compile status --backend pipeline`: uncorrelated global observation, unavailable counts/duration stay null. Add `--requestId <id>` to read only the local trigger journal.
+- `compile start --backend pipeline --confirm true --timeout 10000`: one trigger POST, focus=false. acknowledged/exit0 confirms only the response; compilationSuccess stays null and every acknowledgement keeps busy. Exact `compile release --backend pipeline --requestId <id> --confirm true` releases locally, never cancels or proves completion. Use native `compile unity` for validation.
+- `test list --backend pipeline`: EditMode catalogue, not executed count. `test run --backend pipeline --pipeline-filter <text> --filter-type testName --timeout 120000`: EditMode synchronous only; testName/assembly case-insensitive substring, category case-insensitive exact. No native filter mapping/async/remote cancel.
+- `test status --backend pipeline --requestId <id>` reads local journal; `test release --backend pipeline --requestId <id> --confirm true` only releases unknown locally. Only passed is success; no_tests/all skipped/inconclusive fail. timeout/reload/identity/IO uncertainty keeps unknown/busy, never replay. Both backends share native activity gates.
 
 ## AIBridge diagnostics
 

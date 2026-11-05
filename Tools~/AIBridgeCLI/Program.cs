@@ -47,6 +47,10 @@ namespace AIBridgeCLI
             {
                 timeout = EDITOR_WINDOW_CAPTURE_TIMEOUT;
             }
+            if (!parsed.Options.ContainsKey("timeout") && parsed.Options.TryGetValue("backend", out var timeoutBackend)
+                && timeoutBackend == "pipeline"
+                && (parsed.CommandType == "compile" || parsed.CommandType == "test"))
+                timeout = 12000; // 诊断预算10000ms另留传输回执余量。
             var noWait = parsed.GetBool("no-wait");
             var raw = parsed.GetBool("raw");
             var pretty = parsed.GetBool("pretty");
@@ -145,7 +149,20 @@ namespace AIBridgeCLI
                 return UnityCliCommand.Execute(parsed.CommandType, parsed.Action, parsed.Options, outputMode);
             }
 
-            // Handle compile dotnet command (CLI-only, no Unity communication needed)
+            // 显式可选后端不能落入 native 轮询器（它使用不同状态和计数协议）。
+            if ((parsed.CommandType.Equals("compile", StringComparison.OrdinalIgnoreCase) || parsed.CommandType.Equals("test", StringComparison.OrdinalIgnoreCase))
+                && parsed.Options.TryGetValue("backend", out var selectedBackend) && selectedBackend != "native")
+            {
+                var supportedAction = parsed.CommandType.Equals("compile", StringComparison.OrdinalIgnoreCase)
+                    ? parsed.Action == "status" || parsed.Action == "start" || parsed.Action == "release" : parsed.Action == "list" || parsed.Action == "run" || parsed.Action == "status" || parsed.Action == "release";
+                if (selectedBackend != "pipeline" || !supportedAction)
+                {
+                    OutputFormatter.PrintError("This Pipeline backend action is unsupported; no native fallback was submitted.");
+                    return 1;
+                }
+            }
+
+            // Handle compile dotnet command only after explicit backend validation.
             if (parsed.CommandType.Equals("compile", StringComparison.OrdinalIgnoreCase)
                 && parsed.Action?.Equals("dotnet", StringComparison.OrdinalIgnoreCase) == true)
             {
@@ -158,6 +175,23 @@ namespace AIBridgeCLI
             {
                 return HandleUnityCompile(parsed, outputMode);
             }
+
+            if (parsed.CommandType.Equals("compile", StringComparison.OrdinalIgnoreCase)
+                && parsed.Options.TryGetValue("backend", out var compileBackend) && compileBackend == "pipeline"
+                && (parsed.Action != "status" || parsed.Options.ContainsKey("requestId")))
+                return HandlePipelineCompile(parsed, outputMode);
+
+            // Build状态必须绕过主线程文件请求队列，构建阻塞Editor时仍可读取纯DTO。
+            if (parsed.CommandType.Equals("build", StringComparison.OrdinalIgnoreCase)
+                && (string.IsNullOrWhiteSpace(parsed.Action) || string.Equals(parsed.Action, "status", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(parsed.Action, "report", StringComparison.OrdinalIgnoreCase)))
+            {
+                return BuildStatusCommand.Execute(parsed.Action, parsed.Options, outputMode);
+            }
+
+            if (parsed.CommandType.Equals("test", StringComparison.OrdinalIgnoreCase)
+                && parsed.Options.TryGetValue("backend", out var testBackend) && testBackend == "pipeline"
+                && parsed.Action != "list") return HandlePipelineTest(parsed, outputMode);
 
             // Handle native Unity test commands
             if (parsed.CommandType.Equals("test", StringComparison.OrdinalIgnoreCase)

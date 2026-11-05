@@ -40,6 +40,8 @@ namespace AIBridgeCLI.Commands
             Register(new CodeCommandBuilder());
             Register(new RuntimeCommandBuilder());
             Register(new ProfilerCommandBuilder());
+            Register(new BuildCommandBuilder());
+            Register(new MemoryCommandBuilder());
             Register(new CodeIndexCommandBuilder());
             Register(new WorkflowCommandBuilder());
             Register(new HarnessCommandBuilder());

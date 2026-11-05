@@ -121,9 +121,10 @@ namespace AIBridgeCLI.Core
                 && string.Equals(request.type, "code", StringComparison.OrdinalIgnoreCase)
                 && request.@params != null
                 && request.@params.TryGetValue("action", out var actionValue)
-                && string.Equals(actionValue?.ToString(), "execute", StringComparison.OrdinalIgnoreCase))
+                && (string.Equals(actionValue?.ToString(), "execute", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(actionValue?.ToString(), "run", StringComparison.OrdinalIgnoreCase)))
             {
-                timeoutError += " The code may still be running in Unity; run `code status` to inspect it or `code cancel` to release AIBridge waiting state.";
+                timeoutError += $" The code may still be running in Unity; run `code status --requestId {request.id}` to inspect the original request or `code cancel --requestId {request.id}` to release AIBridge waiting state. Do not replay automatically.";
             }
 
             return new CommandResult

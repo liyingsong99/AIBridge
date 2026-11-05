@@ -15,6 +15,14 @@ namespace AIBridge.Internal.Json
             return value as Dictionary<string, object>;
         }
 
+        /// <summary>用于外部协议/持久状态的有界解析；拒绝歧义重复键，不改变既有宽松入口。</summary>
+        public static Dictionary<string, object> DeserializeObjectStrict(string json, int maxDepth = 64)
+        {
+            if (maxDepth < 1 || maxDepth > 256) throw new ArgumentOutOfRangeException(nameof(maxDepth));
+            if (string.IsNullOrEmpty(json)) return null;
+            return Parser.Parse(json, maxDepth, true) as Dictionary<string, object>;
+        }
+
         public static object Deserialize(string json)
         {
             if (string.IsNullOrEmpty(json))
@@ -23,6 +31,26 @@ namespace AIBridge.Internal.Json
             }
 
             return Parser.Parse(json);
+        }
+
+        // 仅协议结果树保留对象中的显式 null；普通 DTO 继续省略空字段，避免改变既有线协议。
+        private sealed class NullPreservingDictionary : Dictionary<string, object> { }
+
+        public static object PreserveObjectNulls(object value)
+        {
+            if (value is Dictionary<string, object> dictionary)
+            {
+                var preserved = new NullPreservingDictionary();
+                foreach (var item in dictionary) preserved.Add(item.Key, PreserveObjectNulls(item.Value));
+                return preserved;
+            }
+            if (value is IList list)
+            {
+                var preserved = new List<object>();
+                foreach (var item in list) preserved.Add(PreserveObjectNulls(item));
+                return preserved;
+            }
+            return value;
         }
 
         public static string Serialize(object value, bool pretty = false)
@@ -37,15 +65,20 @@ namespace AIBridge.Internal.Json
         {
             private readonly string _json;
             private int _index;
+            private int _depth;
+            private readonly int _maxDepth;
+            private readonly bool _rejectDuplicateKeys;
 
-            private Parser(string json)
+            private Parser(string json, int maxDepth, bool rejectDuplicateKeys)
             {
                 _json = json;
+                _maxDepth = maxDepth;
+                _rejectDuplicateKeys = rejectDuplicateKeys;
             }
 
-            public static object Parse(string json)
+            public static object Parse(string json, int maxDepth = int.MaxValue, bool rejectDuplicateKeys = false)
             {
-                var parser = new Parser(json);
+                var parser = new Parser(json, maxDepth, rejectDuplicateKeys);
                 var value = parser.ParseValue();
                 parser.SkipWhitespace();
                 if (!parser.IsAtEnd)
@@ -69,9 +102,13 @@ namespace AIBridge.Internal.Json
                 switch (_json[_index])
                 {
                     case '{':
-                        return ParseObject();
+                        if (++_depth > _maxDepth) throw new FormatException("JSON nesting limit exceeded.");
+                        try { return ParseObject(); }
+                        finally { _depth--; }
                     case '[':
-                        return ParseArray();
+                        if (++_depth > _maxDepth) throw new FormatException("JSON nesting limit exceeded.");
+                        try { return ParseArray(); }
+                        finally { _depth--; }
                     case '"':
                         return ParseString();
                     case 't':
@@ -105,6 +142,8 @@ namespace AIBridge.Internal.Json
                     var key = ParseString();
                     SkipWhitespace();
                     Consume(':');
+                    if (_rejectDuplicateKeys && result.ContainsKey(key))
+                        throw new FormatException("Duplicate JSON key.");
                     result[key] = ParseValue();
                     SkipWhitespace();
 
@@ -157,6 +196,7 @@ namespace AIBridge.Internal.Json
 
                     if (c != '\\')
                     {
+                        if (_rejectDuplicateKeys && c < 0x20) throw new FormatException("Unescaped JSON control character.");
                         builder.Append(c);
                         continue;
                     }
@@ -196,6 +236,10 @@ namespace AIBridge.Internal.Json
                 }
 
                 var hex = _json.Substring(_index, 4);
+                if (_rejectDuplicateKeys)
+                    foreach (var c in hex)
+                        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+                            throw new FormatException("Invalid JSON unicode escape.");
                 _index += 4;
                 return (char)ushort.Parse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
             }
@@ -232,18 +276,31 @@ namespace AIBridge.Internal.Json
                 }
 
                 var numberText = _json.Substring(start, _index - start);
+                var integerStart = numberText.StartsWith("-", StringComparison.Ordinal) ? 1 : 0;
+                if (_rejectDuplicateKeys && numberText.Length > integerStart + 1
+                    && numberText[integerStart] == '0' && char.IsDigit(numberText[integerStart + 1]))
+                    throw new FormatException("JSON leading zero is invalid.");
                 if (isFloat)
                 {
-                    return double.Parse(numberText, CultureInfo.InvariantCulture);
+                    if (_rejectDuplicateKeys && !double.TryParse(numberText, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+                        throw new FormatException("JSON number exceeds supported range.");
+                    var number = double.Parse(numberText, CultureInfo.InvariantCulture);
+                    if (_rejectDuplicateKeys && (double.IsNaN(number) || double.IsInfinity(number)))
+                        throw new FormatException("JSON number exceeds supported range.");
+                    return number;
                 }
 
+                if (_rejectDuplicateKeys && !long.TryParse(numberText, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+                    throw new FormatException("JSON integer exceeds supported range.");
                 return long.Parse(numberText, CultureInfo.InvariantCulture);
             }
 
             private void ConsumeDigits()
             {
                 var start = _index;
-                while (!IsAtEnd && char.IsDigit(_json[_index]))
+                while (!IsAtEnd && (_rejectDuplicateKeys
+                    ? _json[_index] >= '0' && _json[_index] <= '9'
+                    : char.IsDigit(_json[_index])))
                 {
                     _index++;
                 }
@@ -258,7 +315,7 @@ namespace AIBridge.Internal.Json
             {
                 for (var i = 0; i < literal.Length; i++)
                 {
-                    if (IsAtEnd || _json[_index + i] != literal[i])
+                    if (_index + i >= _json.Length || _json[_index + i] != literal[i])
                     {
                         throw new FormatException($"Expected '{literal}' in JSON.");
                     }
@@ -292,7 +349,9 @@ namespace AIBridge.Internal.Json
 
             private void SkipWhitespace()
             {
-                while (!IsAtEnd && char.IsWhiteSpace(_json[_index]))
+                while (!IsAtEnd && (_rejectDuplicateKeys
+                    ? _json[_index] == ' ' || _json[_index] == '\t' || _json[_index] == '\r' || _json[_index] == '\n'
+                    : char.IsWhiteSpace(_json[_index])))
                 {
                     _index++;
                 }
@@ -361,7 +420,7 @@ namespace AIBridge.Internal.Json
 
                 foreach (DictionaryEntry entry in dictionary)
                 {
-                    if (entry.Value == null)
+                    if (entry.Value == null && !(dictionary is NullPreservingDictionary))
                     {
                         continue;
                     }

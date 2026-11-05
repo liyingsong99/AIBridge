@@ -12,6 +12,7 @@ namespace AIBridge.Editor.UnityPipelineAdapter
         public string packageVersion;
         public bool editorSupported;
         public string descriptorPath;
+        public bool descriptorMatchesCurrentEditor;
         public bool serverReady;
         public string errorCode;
         public string message;

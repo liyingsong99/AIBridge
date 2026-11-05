@@ -1,7 +1,11 @@
 using System;
-using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Net;
+using System.Text;
+using System.Threading;
+using UnityEditor.PackageManager;
 using UnityEngine;
 
 namespace AIBridge.Editor.UnityPipelineAdapter
@@ -9,11 +13,22 @@ namespace AIBridge.Editor.UnityPipelineAdapter
     /// <summary>
     /// Unity Pipeline 的薄适配层。核心 AIBridge 不引用本程序集，未安装 Pipeline 时不会参与编译。
     /// </summary>
-    public static class UnityPipelineAdapter
+    public static partial class UnityPipelineAdapter
     {
         private const string PipelinePackageName = "com.unity.pipeline";
-        private const string PackageManifestFileName = "package.json";
         private const string PipelineDescriptorRelativePath = "Library/Pipeline/.unity-pipeline-port";
+        private const int PipelineStatusProbeTimeoutMs = 1500;
+        private const int PipelineStatusCacheMs = 3000;
+        private static readonly object ProbeLock = new object();
+        private static string s_ProbeKey;
+        private static int s_ProbeGeneration;
+        private static bool s_ProbeRunning;
+        private static bool s_ProbeCompleted;
+        private static bool s_ProbeReady;
+        private static string s_ProbeErrorCode;
+        private static string s_ProbeResponseBody;
+        private static bool s_ProbeResponseValidated;
+        private static DateTime s_ProbeCompletedUtc;
 
         public static bool IsCompiledIn
         {
@@ -81,6 +96,7 @@ namespace AIBridge.Editor.UnityPipelineAdapter
             {
                 compiled = IsCompiledIn,
                 editorSupported = IsEditorSupported(),
+                descriptorMatchesCurrentEditor = false,
                 serverReady = false,
                 errorCode = null,
                 message = null
@@ -96,16 +112,28 @@ namespace AIBridge.Editor.UnityPipelineAdapter
 
             status.packageVersion = package.Version;
             status.descriptorPath = GetPipelineDescriptorPath();
-            status.serverReady = TryReadPortDescriptor(status.descriptorPath);
+            var probeError = "pipelineDescriptorMismatch";
+            PipelineServerDescriptor descriptor;
+            status.descriptorMatchesCurrentEditor = TryReadPortDescriptor(status.descriptorPath, out descriptor);
+            status.serverReady = status.descriptorMatchesCurrentEditor && TryGetProbeResult(descriptor, out probeError);
+            if (!status.serverReady && string.IsNullOrEmpty(probeError))
+            {
+                probeError = "pipelineConnectivityNotTested";
+            }
             if (!status.editorSupported)
             {
                 status.errorCode = "editorVersionUnsupported";
                 status.message = "当前 Unity Editor 版本不满足适配层要求。";
             }
+            else if (!status.descriptorMatchesCurrentEditor)
+            {
+                status.errorCode = "pipelineDescriptorMismatch";
+                status.message = "已检测到 Unity Pipeline 包，但 descriptor 未匹配当前 Editor。";
+            }
             else if (!status.serverReady)
             {
-                status.errorCode = "pipelineServerNotDetected";
-                status.message = "已检测到 Unity Pipeline 包，但未检测到运行中的 Pipeline 服务。";
+                status.errorCode = probeError;
+                status.message = "Pipeline descriptor 与当前 Editor 匹配，但 bearer-auth HTTP 状态探测未确认服务就绪。";
             }
             else
             {
@@ -140,85 +168,15 @@ namespace AIBridge.Editor.UnityPipelineAdapter
 
         private static PipelinePackage FindPipelinePackage()
         {
-            var packageRoots = GetPackageRoots();
-            foreach (var packageRoot in packageRoots)
+            // 仅使用当前 UPM 注册的解析结果；PackageCache 中的残留目录不得授权协议请求。
+            var packages = PackageInfo.GetAllRegisteredPackages();
+            if (packages == null) return null;
+            foreach (var package in packages)
             {
-                var directPath = Path.Combine(packageRoot, PipelinePackageName);
-                var directManifest = Path.Combine(directPath, PackageManifestFileName);
-                if (File.Exists(directManifest))
-                {
-                    return new PipelinePackage(ReadPackageVersion(directManifest));
-                }
-
-                if (!Directory.Exists(packageRoot))
-                {
-                    continue;
-                }
-
-                string[] candidates;
-                try
-                {
-                    candidates = Directory.GetDirectories(packageRoot, PipelinePackageName + "@*");
-                }
-                catch
-                {
-                    continue;
-                }
-
-                foreach (var candidate in candidates)
-                {
-                    var manifestPath = Path.Combine(candidate, PackageManifestFileName);
-                    if (File.Exists(manifestPath))
-                    {
-                        return new PipelinePackage(ReadPackageVersion(manifestPath));
-                    }
-                }
+                if (package != null && string.Equals(package.name, PipelinePackageName, StringComparison.Ordinal))
+                    return new PipelinePackage(package.version, package.resolvedPath);
             }
-
             return null;
-        }
-
-        private static IEnumerable<string> GetPackageRoots()
-        {
-            var roots = new List<string>();
-            var projectRoot = Directory.GetParent(Application.dataPath);
-            if (projectRoot != null)
-            {
-                roots.Add(Path.Combine(projectRoot.FullName, "Packages"));
-                roots.Add(Path.Combine(projectRoot.FullName, "Library", "PackageCache"));
-            }
-
-            return roots;
-        }
-
-        private static string ReadPackageVersion(string manifestPath)
-        {
-            try
-            {
-                var json = File.ReadAllText(manifestPath);
-                var marker = "\"version\"";
-                var markerIndex = json.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-                if (markerIndex < 0)
-                {
-                    return "unknown";
-                }
-
-                var colonIndex = json.IndexOf(':', markerIndex + marker.Length);
-                if (colonIndex < 0)
-                {
-                    return "unknown";
-                }
-
-                var quoteStart = json.IndexOf('\"', colonIndex + 1);
-                var quoteEnd = json.IndexOf('\"', quoteStart + 1);
-                return quoteStart >= 0 && quoteEnd > quoteStart
-                    ? json.Substring(quoteStart + 1, quoteEnd - quoteStart - 1)
-                    : "unknown";
-            }
-            catch
-            {
-                return "unknown";
-            }
         }
 
         private static string GetPipelineDescriptorPath()
@@ -233,8 +191,9 @@ namespace AIBridge.Editor.UnityPipelineAdapter
             return Path.Combine(projectRoot.FullName, PipelineDescriptorRelativePath);
         }
 
-        private static bool TryReadPortDescriptor(string descriptorPath)
+        private static bool TryReadPortDescriptor(string descriptorPath, out PipelineServerDescriptor descriptor)
         {
+            descriptor = null;
             if (string.IsNullOrEmpty(descriptorPath))
             {
                 return false;
@@ -248,11 +207,162 @@ namespace AIBridge.Editor.UnityPipelineAdapter
                     return false;
                 }
 
-                // Pipeline 0.10 的凭据字段为 evalToken；不向调用方返回凭据或原始 descriptor。
-                // 此处只确认本地服务描述文件，实际连通性仍须通过官方 CLI 验证。
-                var descriptor = JsonUtility.FromJson<PipelineServerDescriptor>(json);
+                // 凭据只用于 loopback 状态探测，不向调用方返回或写入日志。
+                descriptor = JsonUtility.FromJson<PipelineServerDescriptor>(json);
+                var projectRoot = Directory.GetParent(Application.dataPath);
                 return descriptor != null && descriptor.port > 0 && descriptor.port <= 65535
+                    && descriptor.pid == Process.GetCurrentProcess().Id
+                    && projectRoot != null
+                    && IsSamePath(descriptor.projectPath, projectRoot.FullName)
+                    && string.Equals(descriptor.unityVersion, Application.unityVersion, StringComparison.Ordinal)
                     && !string.IsNullOrEmpty(descriptor.evalToken);
+            }
+            catch
+            {
+                descriptor = null;
+                return false;
+            }
+        }
+
+        private static string GetProbeKey(PipelineServerDescriptor descriptor)
+        {
+            // 仅内存比较，禁止输出；token 轮换或服务重启必须使旧就绪结果失效。
+            return descriptor.port.ToString(CultureInfo.InvariantCulture) + "|" + descriptor.pid + "|" + descriptor.projectPath
+                + "|" + descriptor.unityVersion + "|" + descriptor.startedAt + "|" + descriptor.evalToken;
+        }
+
+        private static bool TryGetProbeResult(PipelineServerDescriptor descriptor, out string errorCode)
+        {
+            errorCode = null;
+            var key = GetProbeKey(descriptor);
+            lock (ProbeLock)
+            {
+                if (!string.Equals(s_ProbeKey, key, StringComparison.Ordinal))
+                {
+                    s_ProbeKey = key;
+                    s_ProbeGeneration++;
+                    s_ProbeRunning = false;
+                    s_ProbeCompleted = false;
+                    s_ProbeReady = false;
+                    s_ProbeErrorCode = null;
+                    s_ProbeResponseBody = null;
+                    s_ProbeResponseValidated = false;
+                }
+
+                if (s_ProbeCompleted)
+                {
+                    if (!s_ProbeResponseValidated)
+                    {
+                        if (s_ProbeReady)
+                        {
+                            try
+                            {
+                                var response = JsonUtility.FromJson<PipelineStatusResponse>(s_ProbeResponseBody);
+                                s_ProbeReady = response != null
+                                    && string.Equals(response.status, "ready", StringComparison.OrdinalIgnoreCase);
+                                s_ProbeErrorCode = s_ProbeReady ? null : "pipelineStatusMismatch";
+                            }
+                            catch
+                            {
+                                s_ProbeReady = false;
+                                s_ProbeErrorCode = "pipelineStatusInvalid";
+                            }
+                        }
+
+                        s_ProbeResponseValidated = true;
+                    }
+
+                    if ((DateTime.UtcNow - s_ProbeCompletedUtc).TotalMilliseconds < PipelineStatusCacheMs)
+                    {
+                        errorCode = s_ProbeErrorCode;
+                        return s_ProbeReady;
+                    }
+
+                    s_ProbeCompleted = false;
+                }
+
+                if (!s_ProbeRunning)
+                {
+                    s_ProbeRunning = true;
+                    var generation = s_ProbeGeneration;
+                    ThreadPool.QueueUserWorkItem(_ => ProbePipelineStatus(descriptor, key, generation));
+                }
+
+                errorCode = "pipelineConnectivityProbePending";
+                return false;
+            }
+        }
+
+        private static void ProbePipelineStatus(PipelineServerDescriptor descriptor, string key, int generation)
+        {
+            var ready = false;
+            var errorCode = "pipelineConnectivityFailed";
+            string responseBody = null;
+            try
+            {
+                var endpoint = "http://127.0.0.1:" + descriptor.port.ToString(CultureInfo.InvariantCulture) + "/api/status";
+                var request = (HttpWebRequest)WebRequest.Create(endpoint);
+                request.Method = "GET";
+                request.Timeout = PipelineStatusProbeTimeoutMs;
+                request.ReadWriteTimeout = PipelineStatusProbeTimeoutMs;
+                request.Proxy = null;
+                request.AllowAutoRedirect = false;
+                request.Headers[HttpRequestHeader.Authorization] = "Bearer " + descriptor.evalToken;
+                using (var response = (HttpWebResponse)request.GetResponse())
+                using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
+                {
+                    responseBody = reader.ReadToEnd();
+                    ready = response.StatusCode == HttpStatusCode.OK;
+                    errorCode = ready ? null : "pipelineStatusMismatch";
+                }
+            }
+            catch (WebException exception)
+            {
+                var response = exception.Response as HttpWebResponse;
+                errorCode = response != null && response.StatusCode == HttpStatusCode.Unauthorized
+                    ? "pipelineAuthenticationFailed"
+                    : "pipelineConnectivityFailed";
+                if (response != null) response.Dispose();
+            }
+            catch
+            {
+                errorCode = "pipelineStatusInvalid";
+            }
+
+            PublishProbeResult(key, generation, ready, errorCode, responseBody);
+        }
+
+        private static void PublishProbeResult(string key, int generation, bool ready, string errorCode, string responseBody)
+        {
+            lock (ProbeLock)
+            {
+                if (s_ProbeGeneration == generation && string.Equals(s_ProbeKey, key, StringComparison.Ordinal))
+                {
+                    s_ProbeReady = ready;
+                    s_ProbeErrorCode = errorCode;
+                    s_ProbeResponseBody = responseBody;
+                    s_ProbeResponseValidated = false;
+                    s_ProbeCompletedUtc = DateTime.UtcNow;
+                    s_ProbeCompleted = true;
+                    s_ProbeRunning = false;
+                }
+            }
+        }
+
+        private static bool IsSamePath(string left, string right)
+        {
+            if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+            {
+                return false;
+            }
+
+            try
+            {
+                var comparison = Path.DirectorySeparatorChar == '\\'
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal;
+                return string.Equals(Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                    Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), comparison);
             }
             catch
             {
@@ -261,9 +371,19 @@ namespace AIBridge.Editor.UnityPipelineAdapter
         }
 
         [Serializable]
+        private sealed class PipelineStatusResponse
+        {
+            public string status;
+        }
+
+        [Serializable]
         private sealed class PipelineServerDescriptor
         {
+            public int pid;
             public int port;
+            public string projectPath;
+            public string unityVersion;
+            public string startedAt;
             public string evalToken;
         }
 
@@ -271,9 +391,12 @@ namespace AIBridge.Editor.UnityPipelineAdapter
         {
             public readonly string Version;
 
-            public PipelinePackage(string version)
+            public readonly string ResolvedPath;
+
+            public PipelinePackage(string version, string resolvedPath)
             {
                 Version = version;
+                ResolvedPath = resolvedPath;
             }
         }
     }

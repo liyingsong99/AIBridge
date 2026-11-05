@@ -1,0 +1,15 @@
+{
+    "name": "cn.lys.aibridge.Editor.Tests.Commands.Build",
+    "rootNamespace": "AIBridge.Editor.Tests",
+    "references": ["cn.lys.aibridge.Editor", "cn.lys.aibridge.Runtime"],
+    "includePlatforms": ["Editor"],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "optionalUnityReferences": ["TestAssemblies"],
+    "noEngineReferences": false
+}

@@ -152,11 +152,14 @@ Review previews before bulk edits. For interaction tests, describe the expected 
 - Standalone Unity CLI: install using the [official guide](https://docs.unity.com/en-us/unity-cli/use-unity-cli).
 - Pipeline project dependency: click **AIBridge > Install Unity CLI Dependencies** to install a compatible package for the current Editor; an existing version is preserved. This menu does not install the standalone CLI.
 
-AIBridge provides official CLI diagnostics; use official live commands through `unity command`. Available capabilities depend on versions and project state. See [Unity CLI setup and usage](./Doc~/UnityCliIntegration.en.md).
+AIBridge provides official CLI diagnostics and controlled `code execute --backend pipeline` / `code run --file --entry --args` on verified Pipeline versions. They default to compile-only; execution requires per-request `--dry-run false --confirm true`, and unknown outcomes must not be replayed. Explicit `code run --job true --confirm true` submits background jobs tracked by the original request; upstream execution has no timeout, and cancellation is cooperative rather than rollback. Use other official live commands through `unity command`. Available capabilities depend on versions and project state. See [Unity CLI setup and usage](./Doc~/UnityCliIntegration.en.md).
 
 <a id="documentation"></a>
 ## More Documentation
 
+- [Pipeline diagnostics and tests](./Doc~/PipelineDiagnostics.md): explicit compilation observation and trigger acknowledgement, EditMode listing and bounded synchronous runs with local request journals
+- [Native Player builds](./Doc~/NativeBuild.md): confirmed build runs, persisted reports and CLI status while the Editor is busy
+- [Native Profiler files and memory snapshots](./Doc~/NativeProfiling.md): confirmed `.data` save/load and local Editor `.snap` capture, with explicit timeout and recovery limits
 - [Command examples and advanced usage](./Doc~/CommandExamples.en.md)
 - [Setup guide](./Doc~/SetupWizard.md) and [AI-tool integration management](./Doc~/WorkflowsPanel.md)
 - [Editor window capture](./Doc~/EditorWindowScreenshot.md)

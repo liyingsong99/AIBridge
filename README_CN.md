@@ -152,11 +152,14 @@ $CLI = "./.aibridge/cli/AIBridgeCLI.exe"
 - 独立 Unity CLI：按[官方指南](https://docs.unity.com/en-us/unity-cli/use-unity-cli)安装。
 - 项目依赖 Pipeline：点击 **AIBridge > Install Unity CLI Dependencies**，安装当前 Editor 兼容的包，已有版本会保留。此菜单不安装独立 CLI。
 
-AIBridge 提供官方 CLI 诊断；官方实时命令通过 `unity command` 使用。安装后可用能力取决于版本和项目状态，详见 [Unity CLI 配置与使用](./Doc~/UnityCliIntegration.md)。
+AIBridge 提供官方 CLI 诊断，并在已核实的 Pipeline 版本上支持受控 `code execute --backend pipeline` 与 `code run --file --entry --args`：默认仅编译，实际执行需逐次 `--dry-run false --confirm true`，未知结果禁止重放。`code run --job true --confirm true` 可显式提交后台作业并按原请求查询；此模式执行无上游超时，取消是合作请求而非回滚。其它官方实时命令通过 `unity command` 使用。安装后可用能力取决于版本和项目状态，详见 [Unity CLI 配置与使用](./Doc~/UnityCliIntegration.md)。
 
 <a id="documentation"></a>
 ## 更多文档
 
+- [Pipeline 编译观察与受限测试](./Doc~/PipelineDiagnostics.md)：显式全局编译观察及触发应答、EditMode目录与单次同步测试、本地请求日志
+- [原生 Player 构建](./Doc~/NativeBuild.md)：显式确认、纯 DTO 报告及 Editor 忙碌时的 CLI 状态查询
+- [原生 Profiler 文件与内存快照](./Doc~/NativeProfiling.md)：显式确认保存/加载 `.data`、捕获本地 Editor `.snap`，以及超时与恢复边界
 - [命令示例与进阶用法](./Doc~/CommandExamples.md)
 - [设置向导](./Doc~/SetupWizard.md)与[AI 工具集成管理](./Doc~/WorkflowsPanel.md)
 - [Editor 窗口截图](./Doc~/EditorWindowScreenshot.md)

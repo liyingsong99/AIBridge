@@ -24,6 +24,10 @@ namespace AIBridge.Editor
 ```bash
 $CLI compile unity  # Default (requires Unity Editor)
 $CLI compile dotnet [--solution MyGame.sln]  # Optional validation
+$CLI compile status --backend pipeline --timeout 10000  # Read-only global diagnostics
+$CLI compile start --backend pipeline --confirm true --timeout 10000  # Trigger acknowledgement only
+$CLI compile status --backend pipeline --requestId <original-id>  # Local record
+$CLI compile release --backend pipeline --requestId <original-id> --confirm true  # Local gate only
 
 # Output: {""success"":true,""status"":""success"",""duration"":5.2,""errorCount"":0,""warningCount"":3,...}
 ```
@@ -66,7 +70,9 @@ $CLI compile dotnet [--solution MyGame.sln]  # Optional validation
 - `compile unity` does not fall back to `dotnet build`; Unity compile and solution build are intentionally separate validations
 - `--timeout` controls the full compile wait window, while `--transport-timeout` controls each CLI-Unity communication attempt
 - `compile dotnet` runs independently without Unity, auto-detects a single root-level `.sln` or `.slnx` when `--solution` is omitted, and has intelligent error filtering
-- Use `compile start` and `compile status` for low-level manual compilation control";
+- Use `compile start` and `compile status` for low-level manual compilation control
+- Pipeline `status` without requestId observes an uncorrelated global state; missing counts/duration stay null. With requestId it reads only the local trigger record.
+- Pipeline `start` requires literal confirm=true, fixes focus=false and sends one POST after durable intent. Exit 0/acknowledged only confirms a trigger response, never compilation success. All acknowledgements keep busy until exact local release; timeout/reload/IO uncertainty stays unknown and never replays. Release does not cancel compilation. Default native is unchanged; no fallback.";
         public bool RequiresRefresh => false;
 
         // Regex to parse MSBuild error format: path(line,column): error CS0001: message
@@ -76,7 +82,19 @@ $CLI compile dotnet [--solution MyGame.sln]  # Optional validation
 
         public CommandResult Execute(CommandRequest request)
         {
-            var action = request.GetParam("action", "start");
+            if (request == null || request.@params == null) return CommandResult.Failure(request == null ? null : request.id, "Compilation parameters are required.");
+            request.@params.TryGetValue("backend", out var rawBackend);
+            request.@params.TryGetValue("action", out var rawAction);
+            if ((request.HasParam("backend") && !(rawBackend is string)) || (request.HasParam("action") && !(rawAction is string)))
+                return CommandResult.Failure(request.id, "Compilation backend/action must be literal strings.");
+            var action = rawAction as string ?? "start";
+            var backend = rawBackend as string ?? "native";
+            if (backend == "pipeline")
+            {
+                if (action == "status" && !request.HasParam("requestId")) return PipelineDiagnosticsCommand.Execute(request, "compile_status");
+                return PipelineCompileTracker.Execute(request, action);
+            }
+            if (backend != "native") return CommandResult.Failure(request.id, "Unsupported compilation backend.");
 
             try
             {
@@ -103,6 +121,7 @@ $CLI compile dotnet [--solution MyGame.sln]  # Optional validation
         /// </summary>
         private CommandResult StartCompilation(CommandRequest request)
         {
+            if (PipelineTestTracker.HasBusy || PipelineCompileTracker.HasBusy) return CommandResult.Failure(request.id, "A Pipeline test or compile request is active or unknown; resolve its original request before compiling.");
             if (EditorApplication.isCompiling)
             {
                 return CommandResult.Success(request.id, new

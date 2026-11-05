@@ -43,10 +43,14 @@
 
 ## 当前文档
 
+- [Pipeline 编译观察与受限测试](PipelineDiagnostics.md)：显式后端、nullable计数、受限EditMode同步运行、原请求本地状态与unknown释放
+
 - [中文 README](../README_CN.md) / [English README](../README.md)：产品概览、快速开始、可选 Unity CLI 增强与常用操作
 - [命令示例与进阶用法](CommandExamples.md) / [English](CommandExamples.en.md)：从 README 迁出的完整操作示例；精确参数以 CLI help 和已安装 Skill references 为准
 - `KnowledgeBaseIndex.md`：AIBridge 功能总索引，汇总 CLI、Editor 菜单、Runtime、workflow、Skills、模板、生成产物和文档映射，作为后续迭代的统一校验入口
-- [Unity CLI 可选增强](UnityCliIntegration.md) / [English](UnityCliIntegration.en.md)：只读官方 CLI 诊断、配置、能力检测和回退边界；[测试覆盖](UnityCliTesting.md) 区分契约测试与真实 Editor 验证，包含 CLI beta.16 / Pipeline 0.10 在 Unity 6000.0.51f1 的安装实测
+- [原生 Player 构建](NativeBuild.md)：`build run/status/report/release`，确认/路径/纯 DTO、主线程阻塞期间 CLI 查询与 unknown 不重放；含本机真实失败报告及未验证范围
+- [原生 Profiler 文件与 Memory 快照](NativeProfiling.md)：新增 `profiler native_capabilities/save_profile/load_profile` 与 `memory capture_snapshot/snapshot_status/release_snapshot`；保留旧 JSON 命令，区分共享 history 替换、异步捕获、unknown/迟到回调、本地 release，以及 `load_snapshot` unsupported；真实文件验收仅覆盖 Unity 6000.0.51f1
+- [Unity CLI 可选增强](UnityCliIntegration.md) / [English](UnityCliIntegration.en.md)：只读官方 CLI 诊断、配置、能力检测，以及显式 Pipeline eval/run 的授权、源码快照、detached作业查询/合作取消和 unknown 不重放边界；[测试覆盖](UnityCliTesting.md) 区分契约测试与真实 Editor 验证，包含 CLI beta.16 / Pipeline 0.10 在 Unity 6000.0.51f1 的安装实测
 - `SetupWizard.md`：`AIBridge/Setup` 首次设置向导的产品定义、首启行为、工具路径与跳过/重开规则
 - `EditorWindowScreenshot.md`：Edit Mode 下 Unity 主窗口、内置窗口和自定义 `EditorWindow` 的窗口级截图边界、参数与平台要求
 - `WorkflowsPanel.md`：`AIBridge/Workflows` 面板的产品定义文档

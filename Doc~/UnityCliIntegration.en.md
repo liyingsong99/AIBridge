@@ -47,7 +47,58 @@ $CLI = "./.aibridge/cli/AIBridgeCLI.exe"
 
 `version` invokes official `unity --version`. `doctor` / `capabilities` perform read-only version, official help and Pipeline-help probes and return structured diagnostics. The root `available` is `true` only when the version output identifies Unity CLI and the requested capability probe succeeds. `pipeline capabilities` checks the availability of official `unity pipeline --help`; it does not prove Editor readiness or business-command schema compatibility. `unity_cli help` returns local AIBridge command help without starting the official process.
 
-This iteration does not forward arbitrary commands. `--unity-cli-path` / `--backend` override configuration; the environment equivalents are `AIBRIDGE_UNITY_CLI_PATH` / `AIBRIDGE_UNITY_CLI_BACKEND`. `--config` selects a configuration file. `--timeout` bounds each read-only probe in milliseconds (1–60000). Machine output defaults to JSON. Missing CLI returns `CLI_NOT_FOUND`; invalid configuration or unsupported options return `INVALID_CONFIGURATION`. Neither establishes an available enhancement.
+Arbitrary commands are not forwarded. `code execute` uses the native compiler by default. Explicit `code execute --backend pipeline` invokes verified Pipeline eval through existing Editor authorization, source validation, request auditing, single-flight and persisted operation state. Execution requires both `--dry-run false --confirm true`; without per-request confirmation it is rejected before submission. `.csx` is sent as inline source, and internals/auto-import stay disabled. Timeout/unknown outcomes must not be replayed or switched to another backend; cancel ends local waiting only. Restricted `code run` now invokes Pipeline `script run`; hotpatch and arbitrary Pipeline forwarding remain unavailable. Code's `backend=native|pipeline` is separate from the diagnostic commands' `backend=native|auto|unity-cli`. `--unity-cli-path` / `--backend` override configuration; the environment equivalents are `AIBRIDGE_UNITY_CLI_PATH` / `AIBRIDGE_UNITY_CLI_BACKEND`. `--config` selects a configuration file. `--timeout` bounds each read-only probe in milliseconds (1–60000). Machine output defaults to JSON. Missing CLI returns `CLI_NOT_FOUND`; invalid configuration or unsupported options return `INVALID_CONFIGURATION`. Neither establishes an available enhancement.
+
+## Controlled Pipeline eval
+
+```powershell
+& $CLI code execute --backend pipeline --dry-run true --file .aibridge/code/check.csx --timeout 15000
+& $CLI code execute --backend pipeline --dry-run false --confirm true --code 'throw new System.InvalidOperationException("controlled test")' --timeout 15000
+& $CLI code status --requestId <original-request-id>
+& $CLI code cancel --requestId <original-request-id>
+```
+
+Pipeline defaults to `dry-run=true`; native defaults to `dry-run=false`. Pipeline execution requires `--dry-run false --confirm true`. Both flags accept boolean values only. The command route and optional adapter entry both check project authorization and per-request confirmation.
+
+The runtime version gate uses only the UPM registered/loaded package `version` and `resolvedPath`; a stale directory in `Library/PackageCache` cannot authorize a request. Only the verified Pipeline `0.10.0-exp.1` protocol is supported. Missing packages, incompatible versions or a mismatched current Editor descriptor fail explicitly. AIBridge reads `.cs`/`.csx` files within its restricted code directory into an inline source snapshot, preserving usings, comments and original line positions. Pipeline uses Roslyn script semantics, which differ from the native method-body wrapper. Requests disable internals and auto-import; dry-run compiles only, while confirmed execution runs the inline eval. HTTP uses literal loopback and a fixed descriptor PID/project/version/start identity and token, with redirects and retries disabled.
+
+Results include `backend=pipeline`, `operationId/requestId`, source SHA-256, target identity, `status`, `httpStatus`, execution value/output and diagnostics. Upstream `id` becomes `code`; coordinates are converted to one-based values and missing positions remain unknown. Compile-only validation requires both success layers and this version's exact receipt. Execution success requires both success layers and complete result fields; recognized runtime/compile errors are terminal, while malformed, timeout or transport-unknown outcomes remain unknown. HTTP 200 alone is insufficient. Records live in `.aibridge/code-operations/`; disk reads preserve structured `resultValue`, arrays, explicit null object members and `executionTimeMs`. `output` only passes through the upstream field; the verified version returns null on success and does not promise Console/Debug log capture. Conflicting error codes/HTTP outcomes, invalid field types, duplicate keys or excessive JSON nesting remain unknown. Redaction covers decoded keys and values; key collisions reject the result. Records contain no separately captured source or tokens; source deliberately returned by user code remains user output.
+
+Timeout ends waiting only and retains single-flight. A late result is available through `code status --requestId` without overwriting an already returned timeout result. `code cancel` cancels waiting, does not confirm remote cancellation, and retains the lock until the Task ends. Transport uncertainty or reload/restart preserves `unknown` and a local lock; explicit `code cancel` releases that lock without proving that the remote operation stopped. Never replay the same request ID or switch backends automatically. State updates require atomic replacement and preserve previous records on failure. A missing `latest` index triggers validation of per-request journals and recovery of busy state; corrupt or contradictory state does not become idle.
+
+## Restricted Pipeline run
+
+```powershell
+& $CLI code run --file .aibridge/code/task.cs --entry Tools.Task.Run --args '[42,"label"]' --timeout 15000
+& $CLI code run --file .aibridge/code/task.cs --entry Tools.Task.Run --args '[42,"label"]' --dry-run false --confirm true --timeout 15000
+& $CLI code status --requestId <original-request-id>
+```
+
+Requires verified Pipeline `0.10.0-exp.1`, fixed `ephemeral` mode. Inline code, `.csx`, subdirectories, linked/reparse paths, automatic entry discovery, hotpatch, references/defines and arbitrary commands are rejected. Source must be a complete C# type file directly under `.aibridge/code`, up to 512 KiB, with no eval statement wrapper. Specify a static `Type.Method` / `Namespace.Type.Method` entry; fully qualified types without overloads are recommended. `args` is one JSON array, up to 32768 characters and depth 16 including its wrapper, preserving object null members. An array parameter needs a nested array. Entry resolution/coercion follows upstream semantics; direct ValueTask/Awaitable waiting is not promised.
+
+Default compile-only **checks compilation, not entry existence or argument compatibility**. Execution requires both project authorizations and `--dry-run false --confirm true`. Loaded assemblies cannot be individually unloaded. Run has its own strict parser: HTTP 200 with outer success can still contain an inner compilation, entry/argument or runtime failure. Internal `Timeout`, HTTP 504, unknown failures and conflicting fields remain unknown; never replay.
+
+Captured source is written once to `.aibridge/tmp/pipeline-run/<random-id>.cs` with original-path `#line` mapping. On Windows a read-sharing lock and content recheck protect it while Pipeline reads the internal snapshot rather than the mutable user file. Confirmed outcomes clean only that snapshot; unknown outcomes retain source and the current-process handle even after local cancel. Reload/process exit loses the file lock and does not establish remote termination or later immutability; retain unknown and investigate manually. This path gate is not a C# sandbox. Operation journals store origin, source/args SHA-256, entry, target and results, without a separate source or argument copy.
+
+## Explicit detached run jobs
+
+```powershell
+& $CLI code run --file .aibridge/code/task.cs --entry Tools.Task.Run --args '[42]' --dry-run false --job true --confirm true --timeout 5000
+& $CLI code status --requestId <original-request-id>
+& $CLI code job_list --limit 20
+& $CLI code job_wait --requestId <original-request-id> --timeout 10000
+& $CLI code job_cancel --requestId <original-request-id> --confirm true
+```
+
+`code run` defaults to `job=false`, preserving its execution timeout. Explicit `--job true` uses fixed detached submission: **upstream execution has no timeout**; `timeout` limits local waiting only (1000–60000 ms). Every detached submission, including compile-only, requires `--confirm true`; execution also requires `--dry-run false`. `code execute` rejects the job parameter.
+
+Intent is atomically journaled before submission; the returned `remoteJobId` is bound to the original request. Journals do not store source, raw arguments or tokens. The session fixes the initial PID/port/project/version/startedAt, in-memory token and adapter generation. External IDs, redirects, proxies, POST retries and backend fallback are rejected. Responses require strict parsing/redaction and separate job envelope and run business validation. `jobState=completed` can yield `status=failed`. A bare job has no execution duration, so `executionTimeMs` remains unknown rather than 0.
+
+After the original CLI wait expires, the Editor continues serial observations every 500 ms. Late results update the journal without replacing an already delivered receipt. `code status` returns the latest observation/journal; `job_list` lists local registrations only (at most4096 files scanned, no remote enumeration). `job_wait` observes the original record for a bounded interval and sends no execution or cancellation. `code cancel` still releases local waiting after pending IO completes; unknown snapshot locks remain, and automatic polling for that released job stops.
+
+`job_cancel` requires a new explicit confirmation and controls only an active registered request in the current Editor generation. Its receipt separates `requestAccepted`, `executionEnded`, `notStarted` and `sideEffectsUnknown`. HTTP200 or cancellationRequested does not establish termination. Cooperative cancellation can become canceled after all side effects occurred; it is not rollback, and child tasks can continue. Terminal records do not trigger another cancellation POST.
+
+404/401, transport failure, identity changes and malformed responses retain unknown/single-flight without replay. State-write failures retain the lock without repeating POSTs. Upstream jobs live in memory only (last100 terminal jobs/one hour); reload/restart never reconstructs the session. The original ID remains an audit reference; recovery stays unknown until explicit local cancel. An unchanged token does not prove job continuity. Ordinary eval/run unknowns without a jobId cannot be recovered through job queries. Snapshot locks retain the reload/process-exit boundary described above.
 
 ## Capability detection
 
@@ -77,7 +128,7 @@ When an assistant integration is selected, the installer also synchronizes the p
 
 ## Current scope and future capabilities
 
-This iteration prioritizes read-only diagnostics/discovery and an isolated optional Editor Pipeline adapter. Its assembly uses the `AIBRIDGE_HAS_UNITY_PIPELINE` macro through `versionDefines` and `defineConstraints`; the adapter is not compiled when the package is absent. Runtime detection still checks package version, Editor support, descriptor and service state separately. The macro does not establish service availability or future Pipeline API compatibility. It does not imply automatic official routing for `compile unity`, `code execute`, `test run` or Runtime commands.
+This iteration prioritizes read-only diagnostics/discovery and an isolated optional Editor Pipeline adapter. Its assembly uses the `AIBRIDGE_HAS_UNITY_PIPELINE` macro through `versionDefines` and `defineConstraints`; the adapter is not compiled when the package is absent. Runtime detection checks package version, Editor support and descriptor identity (PID, project path and Unity version). `serverReady` becomes true only after a background bearer-auth `/api/status` probe reports `ready`; this Editor's identity is separately checked against the descriptor PID, project path and Unity version. The probe does not block the Editor main thread or expose the token. Neither the macro nor descriptor proves arbitrary Pipeline API compatibility. It does not imply automatic official routing for `compile unity`, `code execute`, `test run` or Runtime commands.
 
 Script execution, compilation, PlayMode tests, builds, Method Reload and generic forwarding require separate validation before release. Native AIBridge `test run` must still start in Edit Mode. Official PlayMode test support does not automatically extend that entry point. The official local Player channel does not replace AIBridge's mobile/LAN Runtime Bridge.
 

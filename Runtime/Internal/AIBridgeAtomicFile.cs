@@ -8,6 +8,11 @@ namespace AIBridge.Runtime.Internal
     {
         public static void WriteTextAtomic(string path, string text, Encoding encoding, bool ensureDirectory = true)
         {
+            WriteTextAtomic(path, text, encoding, ensureDirectory, false);
+        }
+
+        public static void WriteTextAtomic(string path, string text, Encoding encoding, bool ensureDirectory, bool requireAtomicReplace)
+        {
             if (string.IsNullOrEmpty(path))
             {
                 throw new ArgumentException("Path is required.", nameof(path));
@@ -29,7 +34,7 @@ namespace AIBridge.Runtime.Internal
             try
             {
                 File.WriteAllText(tempPath, text ?? string.Empty, encoding);
-                ReplaceOrMove(tempPath, path);
+                ReplaceOrMove(tempPath, path, requireAtomicReplace);
             }
             finally
             {
@@ -43,8 +48,13 @@ namespace AIBridge.Runtime.Internal
             return File.ReadAllText(path, encoding);
         }
 
-        private static void ReplaceOrMove(string tempPath, string finalPath)
+        private static void ReplaceOrMove(string tempPath, string finalPath, bool requireAtomicReplace)
         {
+            if (requireAtomicReplace)
+            {
+                ReplacePreservingPrevious(tempPath, finalPath);
+                return;
+            }
             try
             {
                 if (File.Exists(finalPath))
@@ -58,12 +68,36 @@ namespace AIBridge.Runtime.Internal
             }
             catch
             {
+                // 安全日志要求失败时保留旧版本；禁止先删后移造成状态暂时消失。
+                if (requireAtomicReplace) throw;
                 if (File.Exists(finalPath))
                 {
                     File.Delete(finalPath);
                 }
 
                 File.Move(tempPath, finalPath);
+            }
+        }
+
+        private static void ReplacePreservingPrevious(string tempPath, string finalPath)
+        {
+            const int maxAttempts = 3;
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    if (File.Exists(finalPath)) File.Replace(tempPath, finalPath, null);
+                    else File.Move(tempPath, finalPath);
+                    return;
+                }
+                catch (IOException exception)
+                {
+                    // Windows ReplaceFile 偶发 1175/1176（扫描器占用）；只重试本地原子替换。
+                    // 不扩大为网络/任意IO重试，不删旧状态，最后仍失败关闭。
+                    var nativeCode = exception.HResult & 0xffff;
+                    if (attempt >= maxAttempts || (nativeCode != 1175 && nativeCode != 1176) || !File.Exists(tempPath)) throw;
+                    System.Threading.Thread.Sleep(15 * attempt);
+                }
             }
         }
 
