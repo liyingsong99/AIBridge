@@ -99,13 +99,6 @@ namespace AIBridge.Editor
         }
 
         [Serializable]
-        internal sealed class AssistantWorkflowPromptEntry
-        {
-            public string TargetId;
-            public string PromptPrefix = string.Empty;
-        }
-
-        [Serializable]
         internal sealed class WorkflowUiSettingsData
         {
             public bool EnableImplementationBranch = DefaultWorkflowImplementationBranchEnabled;
@@ -117,7 +110,6 @@ namespace AIBridge.Editor
             public bool PreferRuntimeEvidence = DefaultWorkflowPreferRuntimeEvidence;
             public bool PreferCodeIndexGuidance = DefaultWorkflowPreferCodeIndexGuidance;
             public string SharedPromptPrefix = DefaultWorkflowSharedPromptPrefix;
-            public List<AssistantWorkflowPromptEntry> AssistantPromptPrefixes = new List<AssistantWorkflowPromptEntry>();
         }
 
         [Serializable]
@@ -522,11 +514,6 @@ namespace AIBridge.Editor
                     workflowUi.SharedPromptPrefix = DefaultWorkflowSharedPromptPrefix;
                 }
 
-                if (workflowUi.AssistantPromptPrefixes == null)
-                {
-                    workflowUi.AssistantPromptPrefixes = new List<AssistantWorkflowPromptEntry>();
-                }
-
                 return workflowUi;
             }
         }
@@ -752,28 +739,6 @@ namespace AIBridge.Editor
             return false;
         }
 
-        public bool TryGetWorkflowAssistantPromptPrefix(string targetId, out string promptPrefix)
-        {
-            promptPrefix = string.Empty;
-            if (string.IsNullOrEmpty(targetId))
-            {
-                return false;
-            }
-
-            var entries = WorkflowUi.AssistantPromptPrefixes;
-            for (var i = 0; i < entries.Count; i++)
-            {
-                var entry = entries[i];
-                if (entry != null && entry.TargetId == targetId)
-                {
-                    promptPrefix = entry.PromptPrefix ?? string.Empty;
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
         private static string NormalizeSkillRootDirectory(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -956,11 +921,6 @@ namespace AIBridge.Editor
             if (workflowUi.SharedPromptPrefix == null)
             {
                 workflowUi.SharedPromptPrefix = DefaultWorkflowSharedPromptPrefix;
-            }
-
-            if (workflowUi.AssistantPromptPrefixes == null)
-            {
-                workflowUi.AssistantPromptPrefixes = new List<AssistantWorkflowPromptEntry>();
             }
 
             cacheCleanup.RetentionDays = AIBridgeCacheCleanup.ClampRetentionDays(cacheCleanup.RetentionDays);

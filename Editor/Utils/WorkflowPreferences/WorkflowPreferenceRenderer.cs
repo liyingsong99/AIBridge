@@ -67,8 +67,6 @@ namespace AIBridge.Editor
             builder.AppendLine("## 附加提示词");
             builder.AppendLine();
             AppendPrompt(builder, "通用提示词前缀", workflowUi.SharedPromptPrefix);
-            settings.TryGetWorkflowAssistantPromptPrefix(target.Id, out var assistantPromptPrefix);
-            AppendPrompt(builder, target.DisplayName + " 专属提示词前缀", assistantPromptPrefix);
             builder.AppendLine();
 
             builder.AppendLine("## 执行规则");
@@ -194,11 +192,6 @@ namespace AIBridge.Editor
             builder.AppendLine(workflowUi.PreferRuntimeEvidence.ToString());
             builder.AppendLine(workflowUi.PreferCodeIndexGuidance.ToString());
             builder.AppendLine(workflowUi.SharedPromptPrefix ?? string.Empty);
-            if (target != null)
-            {
-                AIBridgeProjectSettings.Instance.TryGetWorkflowAssistantPromptPrefix(target.Id, out var assistantPromptPrefix);
-                builder.AppendLine(assistantPromptPrefix ?? string.Empty);
-            }
 
             using (var sha = SHA256.Create())
             {
