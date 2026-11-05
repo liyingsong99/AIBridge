@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
@@ -13,7 +13,7 @@ using Newtonsoft.Json.Linq;
 
 namespace AIBridgeCLI.Tests
 {
-    internal static class Program
+    internal static partial class Program
     {
         private static int Main(string[] args)
         {
@@ -29,6 +29,7 @@ namespace AIBridgeCLI.Tests
                     return 0;
                 }
 
+                BuildCommands_ValidateParametersAndReadJournalWithoutEditor();
                 WorkflowReport_IncludesRuntimePerformanceEvidence();
                 WorkflowReport_IncludesFailedRuntimePerformanceEvidence();
                 ArtifactRequiredGate_MatchesSemanticKind();

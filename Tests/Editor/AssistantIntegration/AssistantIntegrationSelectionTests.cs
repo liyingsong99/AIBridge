@@ -100,5 +100,44 @@ namespace AIBridge.Editor.Tests
             Assert.IsFalse(AssistantIntegrationDetector.Detect(ProjectRoot, targets.First(target => target.Id == "claude")).IsDetected);
             Assert.IsFalse(AssistantIntegrationDetector.Detect(ProjectRoot, targets.First(target => target.Id == "codex")).IsDetected);
         }
+
+        [Test]
+        public void ZCodeDirectoryDefaultsToSingleZCodeSelection()
+        {
+            Directory.CreateDirectory(Path.Combine(ProjectRoot, ".zcode"));
+            var targets = AssistantIntegrationRegistry.GetTargets();
+
+            var selections = AssistantIntegrationSelectionSettings.LoadSelections(ProjectRoot, targets);
+
+            Assert.AreEqual(1, CountSelectedTargets(selections));
+            Assert.IsTrue(selections["zcode"]);
+            Assert.IsFalse(selections["codex"]);
+        }
+
+        [Test]
+        public void DeepSeekHarnessDirectoryDefaultsToSingleHarnessSelection()
+        {
+            Directory.CreateDirectory(Path.Combine(ProjectRoot, ".dsh"));
+            var targets = AssistantIntegrationRegistry.GetTargets();
+
+            var selections = AssistantIntegrationSelectionSettings.LoadSelections(ProjectRoot, targets);
+
+            Assert.AreEqual(1, CountSelectedTargets(selections));
+            Assert.IsTrue(selections["deepseek-harness"]);
+            Assert.IsFalse(selections["codex"]);
+        }
+
+        [Test]
+        public void WorkBuddyRootRuleDefaultsToSingleWorkBuddySelection()
+        {
+            File.WriteAllText(Path.Combine(ProjectRoot, "CODEBUDDY.md"), "# WorkBuddy");
+            var targets = AssistantIntegrationRegistry.GetTargets();
+
+            var selections = AssistantIntegrationSelectionSettings.LoadSelections(ProjectRoot, targets);
+
+            Assert.AreEqual(1, CountSelectedTargets(selections));
+            Assert.IsTrue(selections["workbuddy"]);
+            Assert.IsFalse(selections["codex"]);
+        }
     }
 }

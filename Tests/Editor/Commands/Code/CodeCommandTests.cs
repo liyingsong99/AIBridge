@@ -116,6 +116,43 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
+        public void Execute_DryRun_CompilesWithoutExecutingSource()
+        {
+            var settings = AIBridgeProjectSettings.Instance;
+            var previousEnabled = settings.EnableCodeExecution;
+            var previousAccepted = settings.CodeExecutionRiskAccepted;
+            settings.EnableCodeExecution = true;
+            settings.CodeExecutionRiskAccepted = true;
+
+            try
+            {
+                var result = new CodeCommand().Execute(new CommandRequest
+                {
+                    id = "code-dry-run-test",
+                    type = "code",
+                    @params = new Dictionary<string, object>
+                    {
+                        { "action", "execute" },
+                        { "code", "throw new Exception(\"dry-run executed\");" },
+                        { "dry-run", true }
+                    }
+                });
+
+                Assert.That(result, Is.Not.Null);
+                Assert.That(result.success, Is.True);
+                var json = AIBridgeJson.Serialize(result.data, true);
+                StringAssert.Contains("\"status\": \"validated\"", json);
+                StringAssert.DoesNotContain("\"returnValue\"", json);
+                StringAssert.DoesNotContain("dry-run executed", json);
+            }
+            finally
+            {
+                settings.EnableCodeExecution = previousEnabled;
+                settings.CodeExecutionRiskAccepted = previousAccepted;
+            }
+        }
+
+        [Test]
         public void Execute_WhenRiskNotAccepted_ReturnsSettingsFailureEvenWithCliAllow()
         {
             var settings = AIBridgeProjectSettings.Instance;

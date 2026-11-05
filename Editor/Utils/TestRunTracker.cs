@@ -244,6 +244,7 @@ namespace AIBridge.Editor
         /// </summary>
         public static StartRunResult StartRun(string runId, TestMode mode, string testName, string groupName, string assemblyName, int timeoutMs)
         {
+            if ((PipelineTestTracker.HasBusy || PipelineCompileTracker.HasBusy)) throw new InvalidOperationException("A Pipeline test is active or unknown; resolve its original request first.");
             Initialize();
 
             var state = CreateState(runId, mode, testName, groupName, assemblyName, timeoutMs);
@@ -398,6 +399,8 @@ namespace AIBridge.Editor
 
         private static void OnQueueUpdate()
         {
+            // Pipeline unknown 不能被旧 native 队列绕过；不得调用全局取消或覆盖 Pipeline 的测试结果。
+            if ((PipelineTestTracker.HasBusy || PipelineCompileTracker.HasBusy)) return;
             if (IsNativeRunActive())
             {
                 return;
@@ -428,6 +431,11 @@ namespace AIBridge.Editor
 
             EditorApplication.update -= OnQueueUpdate;
             PersistState();
+        }
+
+        internal static bool HasTrackedOrQueuedRun
+        {
+            get { Initialize(); return IsNativeRunActive() || PendingRuns.Count > 0; }
         }
 
         private static bool IsNativeRunActive()

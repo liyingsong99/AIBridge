@@ -24,9 +24,10 @@ namespace AIBridge.Editor
     /// <summary>
     /// 受控版临时代码执行命令。由项目设置统一控制是否允许执行。
     /// </summary>
-    public class CodeCommand : ICommand
+    public partial class CodeCommand : ICommand
     {
         private const string ExecuteAction = "execute";
+        private const string RunAction = "run";
         private const string RuntimeExecuteAction = "runtime_execute";
         private const string StatusAction = "status";
         private const string CancelAction = "cancel";
@@ -52,17 +53,21 @@ namespace AIBridge.Editor
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         private static ICodeOperation _activeOperation;
+        internal static bool HasActiveCodeOperation => _activeOperation != null;
 
         public string Type => "code";
         public bool RequiresRefresh => false;
 
         public string SkillDescription => @"### `code execute` - Controlled Temporary C# Execution
 
+Use `--dry-run true` for compile-only validation. Default backend is native; explicit `--backend pipeline` uses the optional verified Pipeline adapter. Every Pipeline execution requires `--dry-run false --confirm true`. Query `code status --requestId <id>` after timeout; do not replay or switch backends.
+
 Experimental and enabled by default in project settings. Disable **AIBridge/Settings -> Basic -> Enable Code Execution** for untrusted projects or callers.
 
 ```bash
 $CLI code execute --file "".aibridge/code/check.csx"" --timeout 5000
 $CLI code execute --code ""Debug.Log(\""hello\""); return 123;""
+$CLI code run --file "".aibridge/code/task.cs"" --entry Tools.Task.Run --args '[42]' --dry-run false --confirm true
 $CLI code runtime_execute --file "".aibridge/code/player_probe.csx"" --transport http --url http://127.0.0.1:27182 --timeout 10000
 $CLI code status
 $CLI code cancel
@@ -78,7 +83,10 @@ $CLI code cancel
 - For existing Prefab structure changes prefer `prefab patch --dryRun true`; for single properties prefer `inspector`; for simple scene object edits prefer `gameobject`/`transform`.
 - Snippets are wrapped as `object Execute()` or `Task<object> ExecuteAsync()` when `await` is present.
 - Result data includes `enabled`, `status`, `source`, `elapsedMs`, `returnValue`, `logs`, `compileErrors`, `diagnostics`, and `exception` when applicable.
-- `code execute` is single-flight. Use `code status` after a timeout and `code cancel` only to release AIBridge waiting state; user code may still finish on Unity's side.
+- `code run` uses fixed Pipeline ephemeral mode, explicit static entry and JSON array args; .cs only, default compile-only (does not validate entry/args signature). No hotpatch/defines/references. Execution requires --dry-run false --confirm true.
+- `code run --job true --confirm true` explicitly detaches; upstream has no execution timeout, `timeout` limits local waiting. Default job=false is unchanged. `code execute` rejects job.
+- `code status --requestId`, `code job_list --limit 20`, `code job_wait --requestId --timeout 5000` inspect registered jobs. `code job_cancel --requestId --confirm true` requests cooperative remote cancellation; accepted/ended/sideEffectsUnknown are separate. No external jobId control; reload becomes unknown.
+- `code execute` and `code run` share single-flight. Use `code status` after a timeout and `code cancel` only to release AIBridge waiting state; user code may still finish on Unity's side.
 - Use this only for trusted projects/callers; it is not a replacement for `compile unity` or `test run`.";
 
         public CommandResult Execute(CommandRequest request)
@@ -92,6 +100,9 @@ $CLI code cancel
                     return ExecuteCode(request);
                 }
 
+                if (string.Equals(action, RunAction, StringComparison.OrdinalIgnoreCase))
+                    return ExecutePipelineRun(request);
+
                 if (string.Equals(action, RuntimeExecuteAction, StringComparison.OrdinalIgnoreCase))
                 {
                     return ExecuteRuntimeCode(request);
@@ -99,15 +110,20 @@ $CLI code cancel
 
                 if (string.Equals(action, StatusAction, StringComparison.OrdinalIgnoreCase))
                 {
-                    return CommandResult.Success(request.id, BuildStatusData());
+                    return GetCodeStatus(request);
                 }
+
+                if (string.Equals(action, "job_list", StringComparison.OrdinalIgnoreCase)) return ListPipelineJobs(request);
+                if (string.Equals(action, "job_wait", StringComparison.OrdinalIgnoreCase)) return WaitPipelineJob(request);
+                if (string.Equals(action, "job_cancel", StringComparison.OrdinalIgnoreCase))
+                    return CancelRemotePipelineJob(request);
 
                 if (string.Equals(action, CancelAction, StringComparison.OrdinalIgnoreCase))
                 {
                     return CancelActiveOperation(request);
                 }
 
-                return CommandResult.Failure(request.id, $"Unknown action: {action}. Supported: execute, runtime_execute, status, cancel");
+                return CommandResult.Failure(request.id, $"Unknown action: {action}. Supported: execute, run, runtime_execute, status, cancel, job_list, job_wait, job_cancel");
             }
             catch (Exception ex)
             {
@@ -117,6 +133,8 @@ $CLI code cancel
 
         private CommandResult ExecuteCode(CommandRequest request)
         {
+            if (request.HasParam("job"))
+                return CommandResult.Failure(request.id, "The explicit job flag is supported only by code run.");
             var settings = AIBridgeProjectSettings.Instance;
             if (!settings.EnableCodeExecution || !settings.CodeExecutionRiskAccepted)
             {
@@ -134,6 +152,8 @@ $CLI code cancel
                     BuildBusyData());
             }
 
+            if (AIBridgeBuildTracker.Busy || ProfilerNativeGate.Busy || (PipelineTestTracker.HasBusy || PipelineCompileTracker.HasBusy))
+                return CommandResult.Failure(request.id, "An AIBridge build, native capture or Pipeline test is active or unknown; resolve its original request before code execution.");
             SourceText sourceText;
             string sourceError;
             if (!TryResolveSource(request, CodeCompilationTarget.Editor, out sourceText, out sourceError))
@@ -147,6 +167,14 @@ $CLI code cancel
                         source = "invalid"
                     });
             }
+
+            var backend = request.GetParam<string>("backend", "native");
+            if (string.Equals(backend, "pipeline", StringComparison.OrdinalIgnoreCase))
+                return StartPipelineDryRun(request, sourceText);
+            if (!string.Equals(backend, "native", StringComparison.OrdinalIgnoreCase))
+                return CommandResult.Failure(request.id, "backend must be native or pipeline.");
+            if (request.GetParam("confirm", false))
+                return CommandResult.Failure(request.id, "--confirm is only valid for an explicit Pipeline execution.");
 
             var timeoutMs = Mathf.Clamp(request.GetParam("timeout", DefaultTimeoutMs), MinTimeoutMs, MaxTimeoutMs);
             var stopwatch = Stopwatch.StartNew();
@@ -166,6 +194,14 @@ $CLI code cancel
                 }
 
                 session.CompiledAssemblyPath = assemblyPath;
+                if (request.GetParam("dry-run", false))
+                {
+                    // Dry-run 只编译并返回诊断，不加载程序集、不挂日志监听，也不执行用户代码。
+                    stopwatch.Stop();
+                    return CommandResult.Success(request.id, BuildResultData(
+                        session, null, new List<string>(), null, false, "validated"));
+                }
+
                 Application.logMessageReceived += session.OnLogMessageReceived;
 
                 var invocation = InvokeCompiledCode(assemblyPath, sourceText.ClassName);
@@ -199,6 +235,10 @@ $CLI code cancel
 
         private CommandResult ExecuteRuntimeCode(CommandRequest request)
         {
+            // Runtime 暂未实现 dry-run 或 Pipeline，必须显式拒绝，不能忽略安全参数后实际执行。
+            if (request.GetParam("dry-run", false)
+                || !string.Equals(request.GetParam<string>("backend", "native"), "native", StringComparison.OrdinalIgnoreCase))
+                return CommandResult.Failure(request.id, "code runtime_execute does not support dry-run or a non-native backend.");
             var settings = AIBridgeProjectSettings.Instance;
             if (!settings.EnableCodeExecution || !settings.CodeExecutionRiskAccepted)
             {
@@ -343,6 +383,29 @@ $CLI code cancel
                     });
             }
 
+            if (_activeOperation is PipelineJobOperation jobOperation)
+            {
+                var original = jobOperation.CancelForOriginalRequest();
+                if (original != null) WriteResultFile(original);
+                return CommandResult.Success(request.id, new
+                {
+                    waitCanceled = true, remoteCancellationConfirmed = false,
+                    warning = "Only local job waiting is released after pending observation completes; remote execution may continue."
+                });
+            }
+            if (_activeOperation is PipelineDryRunAsyncOperation pipelineOperation)
+                return CancelPipelineWait(request, pipelineOperation);
+            if (_activeOperation is PipelineUnknownOperation unknownOperation)
+            {
+                unknownOperation.CancelForOriginalRequest();
+                _activeOperation = null;
+                return CommandResult.Success(request.id, new
+                {
+                    canceled = false, waitCanceled = true, remoteCancellationConfirmed = false,
+                    status = "unknown", warning = "Only the local unknown-operation lock was released; do not replay the original request."
+                });
+            }
+
             var canceledRequestId = _activeOperation.RequestId;
             var originalResult = _activeOperation.CancelForOriginalRequest();
             var originalResultWritten = originalResult != null;
@@ -434,6 +497,7 @@ $CLI code cancel
 
         private static SourceText BuildSourceText(string code, string sourceKind, string sourcePath, CodeCompilationTarget target)
         {
+            var originalCode = code;
             var className = "AIBridgeCode_" + Guid.NewGuid().ToString("N");
             var containsAwait = code.IndexOf("await", StringComparison.Ordinal) >= 0;
             var leadingUsings = ExtractLeadingUsings(ref code);
@@ -442,6 +506,7 @@ $CLI code cancel
             {
                 Kind = sourceKind,
                 Path = sourcePath,
+                OriginalCode = originalCode,
                 Code = code,
                 WrappedCode = wrappedSource,
                 ClassName = className,
@@ -2302,6 +2367,7 @@ $CLI code cancel
         {
             public string Kind;
             public string Path;
+            public string OriginalCode;
             public string Code;
             public string WrappedCode;
             public string ClassName;

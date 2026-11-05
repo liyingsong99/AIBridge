@@ -5,38 +5,49 @@ using AIBridge.Internal.Json;
 
 namespace AIBridge.Editor
 {
-    /// <summary>
-    /// 为已选 plugin 工具写项目根 plugin.json。实测不可靠，工具无法稳定识别，保留仅作备用。
-    /// </summary>
     internal static class SkillPluginAdapter
     {
         private const string AIBridgePluginName = "aibridge-skills";
         private const string PluginJsonFileName = "plugin.json";
         private const string SkillsFieldName = "skills";
+        private const string ClaudePluginDirectoryName = ".claude-plugin";
+        private const string CodexPluginDirectoryName = ".codex-plugin";
+        private const string CursorPluginDirectoryName = ".cursor-plugin";
+        private const string ZCodePluginDirectoryName = ".zcode-plugin";
         private const string LegacyCodexPluginContainerDirectoryName = "plugins";
 
         public static void GenerateAll(string projectRoot)
         {
-            GenerateForTargets(projectRoot, AssistantIntegrationRegistry.GetTargets());
+            GenerateClaudePlugin(projectRoot);
+            GenerateCodexPlugin(projectRoot);
+            GenerateCursorPlugin(projectRoot);
+            GenerateZCodePlugin(projectRoot);
         }
 
         public static void GenerateForTargets(string projectRoot, IEnumerable<AssistantIntegrationTarget> targets)
         {
             foreach (var target in targets)
             {
-                if (target == null || !target.SupportsPluginManifest || string.IsNullOrEmpty(target.PluginManifestDirectoryName))
+                if (target == null)
                 {
                     continue;
                 }
 
-                GeneratePluginManifest(
-                    projectRoot,
-                    target.PluginManifestDirectoryName,
-                    "Expose project-root skills for " + target.DisplayName + " plugin discovery.",
-                    target.UsesCursorPluginPayload);
-                if (string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(target.Id, "claude", StringComparison.OrdinalIgnoreCase))
                 {
-                    CleanupLegacyCodexPlugin(projectRoot);
+                    GenerateClaudePlugin(projectRoot);
+                }
+                else if (string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase))
+                {
+                    GenerateCodexPlugin(projectRoot);
+                }
+                else if (string.Equals(target.Id, "cursor", StringComparison.OrdinalIgnoreCase))
+                {
+                    GenerateCursorPlugin(projectRoot);
+                }
+                else if (string.Equals(target.Id, "zcode", StringComparison.OrdinalIgnoreCase))
+                {
+                    GenerateZCodePlugin(projectRoot);
                 }
             }
         }
@@ -55,15 +66,22 @@ namespace AIBridge.Editor
                     continue;
                 }
 
-                if (!target.SupportsPluginManifest || string.IsNullOrEmpty(target.PluginManifestDirectoryName))
+                if (string.Equals(target.Id, "claude", StringComparison.OrdinalIgnoreCase))
                 {
-                    continue;
+                    CleanupPluginManifest(projectRoot, ClaudePluginDirectoryName);
                 }
-
-                CleanupPluginManifest(projectRoot, target.PluginManifestDirectoryName);
-                if (string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase))
                 {
+                    CleanupPluginManifest(projectRoot, CodexPluginDirectoryName);
                     CleanupLegacyCodexPlugin(projectRoot);
+                }
+                else if (string.Equals(target.Id, "cursor", StringComparison.OrdinalIgnoreCase))
+                {
+                    CleanupPluginManifest(projectRoot, CursorPluginDirectoryName);
+                }
+                else if (string.Equals(target.Id, "zcode", StringComparison.OrdinalIgnoreCase))
+                {
+                    CleanupPluginManifest(projectRoot, ZCodePluginDirectoryName);
                 }
             }
         }
@@ -83,21 +101,71 @@ namespace AIBridge.Editor
                     continue;
                 }
 
-                if (!target.SupportsPluginManifest || string.IsNullOrEmpty(target.PluginManifestDirectoryName))
+                if (string.Equals(target.Id, "claude", StringComparison.OrdinalIgnoreCase))
                 {
-                    continue;
+                    CleanupPluginManifest(projectRoot, ClaudePluginDirectoryName, skillPluginPath);
                 }
-
-                CleanupPluginManifest(projectRoot, target.PluginManifestDirectoryName, skillPluginPath);
-                if (string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(target.Id, "codex", StringComparison.OrdinalIgnoreCase))
                 {
+                    CleanupPluginManifest(projectRoot, CodexPluginDirectoryName, skillPluginPath);
                     CleanupLegacyCodexPlugin(projectRoot);
+                }
+                else if (string.Equals(target.Id, "cursor", StringComparison.OrdinalIgnoreCase))
+                {
+                    CleanupPluginManifest(projectRoot, CursorPluginDirectoryName, skillPluginPath);
+                }
+                else if (string.Equals(target.Id, "zcode", StringComparison.OrdinalIgnoreCase))
+                {
+                    CleanupPluginManifest(projectRoot, ZCodePluginDirectoryName, skillPluginPath);
                 }
             }
         }
 
+        private static void GenerateClaudePlugin(string projectRoot)
+        {
+            GeneratePluginManifest(
+                projectRoot,
+                ClaudePluginDirectoryName,
+                "Expose project-root skills for Claude-compatible plugin discovery.",
+                false);
+        }
+
+        private static void GenerateCodexPlugin(string projectRoot)
+        {
+            GeneratePluginManifest(
+                projectRoot,
+                CodexPluginDirectoryName,
+                "Expose project-root skills for Codex plugin discovery.",
+                false);
+            CleanupLegacyCodexPlugin(projectRoot);
+        }
+
+        private static void GenerateCursorPlugin(string projectRoot)
+        {
+            GeneratePluginManifest(
+                projectRoot,
+                CursorPluginDirectoryName,
+                "Expose project-root skills for Cursor plugin discovery.",
+                true);
+        }
+
+        private static void GenerateZCodePlugin(string projectRoot)
+        {
+            GeneratePluginManifest(
+                projectRoot,
+                ZCodePluginDirectoryName,
+                "Expose project-root skills for ZCode plugin discovery.",
+                false);
+        }
+
         private static void GeneratePluginManifest(string projectRoot, string pluginDirectoryName, string description, bool cursorManifest)
         {
+            if (!UsesCustomSkillRoot())
+            {
+                CleanupPluginManifest(projectRoot, pluginDirectoryName);
+                return;
+            }
+
             var pluginRoot = Path.Combine(projectRoot, pluginDirectoryName);
             Directory.CreateDirectory(pluginRoot);
             var pluginJsonPath = Path.Combine(pluginRoot, PluginJsonFileName);
@@ -405,23 +473,28 @@ namespace AIBridge.Editor
 
         private static string GetCustomSkillPluginPath()
         {
-            return GetSkillPluginPath(AIBridgeProjectSettings.ResolveSharedSkillRootDirectory());
+            return GetSkillPluginPath(AIBridgeProjectSettings.Instance.SkillRootDirectory);
         }
 
         private static string GetSkillPluginPath(string skillRootDirectory)
         {
             if (string.IsNullOrEmpty(skillRootDirectory))
             {
-                skillRootDirectory = AIBridgeProjectSettings.CanonicalSharedSkillRootDirectory;
+                skillRootDirectory = AIBridgeProjectSettings.LegacySharedSkillRootDirectory;
             }
 
             skillRootDirectory = skillRootDirectory.Replace('\\', '/').Trim('/');
             if (string.IsNullOrEmpty(skillRootDirectory))
             {
-                skillRootDirectory = AIBridgeProjectSettings.CanonicalSharedSkillRootDirectory.Trim('/');
+                skillRootDirectory = AIBridgeProjectSettings.LegacySharedSkillRootDirectory.Trim('/');
             }
 
             return "./" + skillRootDirectory + "/";
+        }
+
+        private static bool UsesCustomSkillRoot()
+        {
+            return !string.IsNullOrEmpty(AIBridgeProjectSettings.Instance.SkillRootDirectory);
         }
 
         private static string GetString(Dictionary<string, object> payload, string key, string defaultValue)

@@ -22,7 +22,10 @@ namespace AIBridgeCLI.Commands
             "get_rendering_stats",
             "get_script_stats",
             "save_data",
-            "load_data"
+            "load_data",
+            "native_capabilities",
+            "save_profile",
+            "load_profile"
         };
 
         protected override Dictionary<string, List<ParameterInfo>> ActionParameters => new Dictionary<string, List<ParameterInfo>>
@@ -44,6 +47,17 @@ namespace AIBridgeCLI.Commands
             ["save_data"] = new List<ParameterInfo>
             {
                 new ParameterInfo("path", "Output path for AIBridge profiler JSON snapshot", false, ".aibridge/profiler/<timestamp>.json")
+            },
+            ["native_capabilities"] = new List<ParameterInfo>(),
+            ["save_profile"] = new List<ParameterInfo>
+            {
+                new ParameterInfo("path", "New .aibridge/profiler/native/*.data file; no overwrite", false),
+                new ParameterInfo("confirm", "Required per native save; saves existing stopped history only", true)
+            },
+            ["load_profile"] = new List<ParameterInfo>
+            {
+                new ParameterInfo("path", "Existing .aibridge/profiler/native/*.data file; replaces Editor history", true),
+                new ParameterInfo("confirm", "Required per native load; may change shared Profiler history", true)
             },
             ["load_data"] = new List<ParameterInfo>
             {
@@ -72,6 +86,16 @@ namespace AIBridgeCLI.Commands
 
             var request = base.Build(normalizedAction, options);
             request.@params["action"] = normalizedAction;
+            if (normalizedAction == "native_capabilities" || normalizedAction == "save_profile" || normalizedAction == "load_profile")
+            {
+                if (options.ContainsKey("json")) throw new ArgumentException("Native profiler actions require explicit parameters.");
+                foreach (var key in request.@params.Keys)
+                    if (key != "action" && (normalizedAction == "native_capabilities" || (key != "path" && key != "confirm")))
+                        throw new ArgumentException("Unsupported native profiler parameter: " + key);
+                if (normalizedAction != "native_capabilities"
+                    && (!request.@params.TryGetValue("confirm", out var confirmed) || !(confirmed is bool flag) || !flag))
+                    throw new ArgumentException("Native Profiler save/load requires --confirm true.");
+            }
             return request;
         }
 

@@ -34,29 +34,16 @@ namespace AIBridge.Editor
                 }
             }
 
-            var detectionDirectories = target.DetectionDirectoryRelativePaths;
-            if (detectionDirectories != null)
+            var detectionDirectory = GetFirstDetectedDirectory(projectRoot, target);
+            if (!string.IsNullOrEmpty(detectionDirectory))
             {
-                for (var i = 0; i < detectionDirectories.Length; i++)
+                return new AssistantIntegrationDetection
                 {
-                    var relativeDirectory = detectionDirectories[i];
-                    if (string.IsNullOrEmpty(relativeDirectory))
-                    {
-                        continue;
-                    }
-
-                    var directoryPath = Path.Combine(projectRoot, relativeDirectory.Replace('/', Path.DirectorySeparatorChar));
-                    if (Directory.Exists(directoryPath))
-                    {
-                        return new AssistantIntegrationDetection
-                        {
-                            TargetId = target.Id,
-                            IsDetected = true,
-                            Detail = relativeDirectory,
-                            Priority = DirectorySignalPriority
-                        };
-                    }
-                }
+                    TargetId = target.Id,
+                    IsDetected = true,
+                    Detail = detectionDirectory,
+                    Priority = DirectorySignalPriority
+                };
             }
 
             // 历史共享 .skills 目录只表示 AIBridge Skill 已存在，不能作为具体工具的默认勾选依据。
@@ -67,6 +54,35 @@ namespace AIBridge.Editor
                 Detail = BuildExpectedSignal(target),
                 Priority = NoSignalPriority
             };
+        }
+
+        /// <summary>
+        /// 返回命中的工具专属检测目录；共享的 AGENTS.md / .agents 不算专属信号。
+        /// </summary>
+        public static string GetFirstDetectedDirectory(string projectRoot, AssistantIntegrationTarget target)
+        {
+            var detectionDirectories = target == null ? null : target.DetectionDirectoryRelativePaths;
+            if (detectionDirectories == null)
+            {
+                return null;
+            }
+
+            for (var i = 0; i < detectionDirectories.Length; i++)
+            {
+                var relativeDirectory = detectionDirectories[i];
+                if (string.IsNullOrEmpty(relativeDirectory))
+                {
+                    continue;
+                }
+
+                var directoryPath = Path.Combine(projectRoot, relativeDirectory.Replace('/', Path.DirectorySeparatorChar));
+                if (Directory.Exists(directoryPath))
+                {
+                    return relativeDirectory;
+                }
+            }
+
+            return null;
         }
 
         private static string BuildExpectedSignal(AssistantIntegrationTarget target)

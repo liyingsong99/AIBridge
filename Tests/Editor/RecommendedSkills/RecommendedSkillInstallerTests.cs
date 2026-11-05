@@ -32,7 +32,7 @@ namespace AIBridge.Editor.Tests
         }
 
         [Test]
-        public void InstallerUsesSharedAndNativeSkillRootsForSelectedTools()
+        public void InstallerUsesSelectedToolSkillRoots()
         {
             AssistantIntegrationSelectionSettings.SetSelected("codex", true);
             AssistantIntegrationSelectionSettings.SetSelected("cursor", true);
@@ -62,25 +62,13 @@ namespace AIBridge.Editor.Tests
             var result = RecommendedSkillInstaller.Install(ProjectRoot, repository, skill, true);
 
             Assert.IsTrue(result.Success);
-            Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".aibridge", "skills", "tdd", "SKILL.md")));
-            Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".codex", "skills", "tdd", "SKILL.md")));
+            Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".agents", "skills", "tdd", "SKILL.md")));
             Assert.IsTrue(File.Exists(Path.Combine(ProjectRoot, ".cursor", "skills", "tdd", "SKILL.md")));
             Assert.IsFalse(Directory.Exists(Path.Combine(ProjectRoot, ".skills", "tdd")));
         }
 
         [Test]
-        public void InstallerMirrorsSharedRootToSelectedNativeDirectories()
-        {
-            AssistantIntegrationSelectionSettings.SetSelected("codex", true);
-            AssistantIntegrationSelectionSettings.SetSelected("cline", true);
-
-            var roots = RecommendedSkillInstaller.GetSelectedInstallRootDirectories(ProjectRoot);
-
-            CollectionAssert.AreEqual(new[] { ".aibridge/skills", ".codex/skills", ".clinerules/skills" }, roots);
-        }
-
-        [Test]
-        public void InstallerFallsBackToSharedSkillRootWhenNoToolIsSelected()
+        public void InstallerFallsBackToCodexSkillRootWhenNoToolIsSelected()
         {
             foreach (var target in AssistantIntegrationRegistry.GetTargets())
             {
@@ -89,7 +77,7 @@ namespace AIBridge.Editor.Tests
 
             var roots = RecommendedSkillInstaller.GetSelectedInstallRootDirectories(ProjectRoot);
 
-            CollectionAssert.AreEqual(new[] { ".aibridge/skills" }, roots);
+            CollectionAssert.AreEqual(new[] { ".agents/skills" }, roots);
         }
 
         [Test]

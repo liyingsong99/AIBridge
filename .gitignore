@@ -37,6 +37,11 @@ Thumbs.db
 [Tt]emp.meta
 [Bb]uild/
 [Bb]uilds/
+# Build is also a source subsystem; do not hide its contracts or fixtures.
+!Runtime/Internal/Build/
+!Runtime/Internal/Build/**
+!Tests/Editor/Commands/Build/
+!Tests/Editor/Commands/Build/**
 [Ss]tamp[Aa]ssembly[Vv]ersions/
 [Mm]emory[Cc]aptures/
 *.pidb.meta

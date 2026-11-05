@@ -89,6 +89,17 @@ namespace AIBridge.Editor
                 false);
         }
 
+        internal static bool AreRuntimeBootstrapDefinesSynchronized(BuildTargetGroup group)
+        {
+            var settings = AIBridgeProjectSettings.Instance.RuntimeBridge;
+            if (group == BuildTargetGroup.Unknown || settings == null) return true;
+            var defines = ParseDefines(PlayerSettings.GetScriptingDefineSymbolsForGroup(group));
+            // 与既有同步策略同源；受控build先只读检查，不在构建中改宏并触发重编译。
+            return defines.Contains(AutoInjectDisabledDefine) == (!settings.EnableRuntimeBridge || !settings.AutoInjectRuntimeBridgeInDevelopmentBuild)
+                && defines.Contains(ReleaseBuildAllowedDefine) == (settings.EnableRuntimeBridge && settings.AllowRuntimeBridgeInReleaseBuild)
+                && defines.Contains(AIBridgeHybridClrUtility.HybridClrAvailableDefine) == AIBridgeHybridClrUtility.IsHybridClrInstalled();
+        }
+
         private static bool SyncRuntimeBootstrapDefines(
             BuildTargetGroup buildTargetGroup,
             AIBridgeProjectSettings.RuntimeBridgeSettingsData settings,

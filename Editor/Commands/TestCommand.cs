@@ -33,13 +33,37 @@ namespace AIBridge.Editor
 $CLI test run --mode EditMode
 $CLI test run --test-name ""MyNamespace.MyFixture.MyTest""
 $CLI test status
+$CLI test list --backend pipeline --mode EditMode --timeout 10000
+$CLI test run --backend pipeline --pipeline-filter ""MyFixture"" --filter-type testName --timeout 120000
+$CLI test status --backend pipeline --requestId <original-request-id>
+$CLI test release --backend pipeline --requestId <unknown-request-id> --confirm true
 ```
+
+Pipeline `list` is enumeration, not execution. Pipeline run is synchronous EditMode only, persisted once, with strict counts: zero tests, all skipped, failed or inconclusive are not passing. `pipeline-filter` uses case-insensitive substrings for testName/assembly or exact category; native exact/regex/group flags are rejected. Pipeline status reads only the local original request journal; timeout/reload stays unknown and cannot replay. release frees local unknown state only; remote tests may still run. No async/job/remote cancel/native fallback.
 
 `test run` must start while the Editor is in Edit Mode. If Unity is already in Play Mode, the command fails immediately and tells the agent to stop Play Mode before retrying.";
 
         public CommandResult Execute(CommandRequest request)
         {
-            var action = request.GetParam("action", "status");
+            if (request == null || request.@params == null) return CommandResult.Failure(request == null ? null : request.id, "Test parameters are required.");
+            request.@params.TryGetValue("backend", out var rawBackend);
+            request.@params.TryGetValue("action", out var rawAction);
+            if ((request.HasParam("backend") && !(rawBackend is string)) || (request.HasParam("action") && !(rawAction is string)))
+                return CommandResult.Failure(request.id, "Test backend/action must be literal strings.");
+            var action = rawAction as string ?? "status";
+            var backend = rawBackend as string ?? "native";
+            if (backend == "pipeline")
+            {
+                switch (action)
+                {
+                    case "list": return PipelineDiagnosticsCommand.Execute(request, "test_list");
+                    case "run": return PipelineTestTracker.Start(request);
+                    case "status": return PipelineTestTracker.Query(request);
+                    case "release": return PipelineTestTracker.Release(request);
+                    default: return CommandResult.Failure(request.id, "Unsupported Pipeline test action; no native fallback or remote cancel.");
+                }
+            }
+            if (backend != "native") return CommandResult.Failure(request.id, "Unsupported test backend.");
 
             try
             {

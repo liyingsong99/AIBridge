@@ -189,9 +189,24 @@ namespace AIBridge.Editor
                 return 2;
             }
 
-            if (string.Equals(targetId, "cline", System.StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(targetId, "deepseek-harness", System.StringComparison.OrdinalIgnoreCase))
             {
                 return 3;
+            }
+
+            if (string.Equals(targetId, "zcode", System.StringComparison.OrdinalIgnoreCase))
+            {
+                return 4;
+            }
+
+            if (string.Equals(targetId, "workbuddy", System.StringComparison.OrdinalIgnoreCase))
+            {
+                return 5;
+            }
+
+            if (string.Equals(targetId, "cline", System.StringComparison.OrdinalIgnoreCase))
+            {
+                return 6;
             }
 
             return 100;

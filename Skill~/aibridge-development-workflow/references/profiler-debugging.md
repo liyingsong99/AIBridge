@@ -33,5 +33,6 @@ $CLI profiler stop
 
 - 报告中区分 Editor Profiler 证据和 Runtime perf 证据
 - `unsupported` 表示当前目标或 Unity API 不稳定/不可用，不等同命令失败
-- `save_data` / `load_data` 使用 AIBridge JSON 快照，不承诺兼容 Unity 原生 `.data` Profiler 文件
+- `save_data` / `load_data` 使用 AIBridge JSON；原生 `.data` 另用 `native_capabilities` / `save_profile` / `load_profile --confirm true`，须已停录且不覆盖
+- 内置Editor `.snap`：`memory capture_snapshot --confirm true --timeout 30000`；按原requestId查 `snapshot_status`，unknown不重放，`release_snapshot --confirm true`仅本地；`load_snapshot`当前unsupported
 - Runtime 不支持打开 Profiler 窗口、切换 Unity Profiler 模块、清除 Editor Profiler 帧历史或读取 Editor Profiler 数据

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -239,7 +239,7 @@ namespace AIBridge.Editor.Tests
             SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target });
             var workflowSkillPath = Path.Combine(
                 ProjectRoot,
-                ".codex",
+                ".agents",
                 "skills",
                 "aibridge-development-workflow",
                 "SKILL.md");

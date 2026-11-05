@@ -18,6 +18,7 @@ namespace AIBridge.Editor
 
     internal sealed class AssistantIntegrationResult
     {
+        public string TargetId { get; set; }
         public string AssistantId { get; set; }
         public string RootRuleFilePath { get; set; }
         public string SkillFilePath { get; set; }
