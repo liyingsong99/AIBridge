@@ -1,5 +1,7 @@
 # 原生 Profiler 文件与 Memory 快照
 
+[English](NativeProfiling.en.md)
+
 这两组命令直接使用当前 Unity Editor 的原生 API，不依赖官方 Unity CLI、Pipeline 或 Memory Profiler 包。它们用于保存已有 Profiler history 和捕获本地 Editor 内存证据，不提供自动性能分析、Player 捕获或跨版本文件转换。
 
 ## 选择正确的文件格式
@@ -59,10 +61,20 @@ $CLI = './.aibridge/cli/AIBridgeCLI.exe'
 ### 捕获范围与开销
 
 - 捕获逐次要求字面布尔值 `--confirm true`；只支持 `--target editor`，且当前原生连接必须为本地 Editor（guid=-1），不自动切目标。Player 目标明确 unsupported。
-- 同样要求原生 Profiler 停止录制；当前实现还会阻止 Play Mode/切换、编译、资源更新、build/code 活动或 unknown、其他原生 Profiler/Memory 操作。Unity 原生 API 在部分版本的 Play Mode 实际可捕获，但 AIBridge 当前没有 `--allow-playmode` 开关；需要 Play Mode 样本时必须先修改实现并补跨版本验证，不能把 AIBridge 的拒绝当作引擎能力限制。
+- 默认支持 Edit Mode 和 Play Mode 捕获，不需要额外开关；仍要求原生 Profiler 停止录制并连接本地 Editor（guid=-1）。仅移除 Memory 的 Play Mode/切换独立检查，编译、资源更新、build/code 活动或 unknown、Pipeline test/compile、其他原生 Profiler/Memory 操作照旧阻止捕获。切换过程仍可能触发这些门禁或域重载，不保证捕获成功；Profiler `.data` save/load 的既有 Play Mode 限制不变。
 - 精确探测内置 `TakeSnapshot(string, Action<string,bool>, CaptureFlags)`，兼容已知新旧命名空间。固定 flags 为 `ManagedObjects | NativeObjects`；不开放任意 flags，不主动 GC 或截图，不自动安装包。
 - 当前捕获前没有快照体积估算或目标盘剩余空间预检；输出可能达到 GB 级，调用方必须自行确认目标盘空间。空间不足时可能产生部分写入或失败，不能把捕获回执当作磁盘容量保证。
 - “不主动 GC”不表示 Unity 原生捕获无内部整理、额外内存或暂停。捕获可能长时间阻塞 Editor，文件也可能很大；不要把回调式接口理解为无卡顿或可强停。
+
+### Play Mode 捕获与域重载风险
+
+`memory capture_snapshot` 默认允许 Play Mode，不增加开关；调用前仍检查原生 Profiler 是否已停录、当前连接是否为本地 Editor（`CurrentTargetGuid == -1`）。`--target editor` 只是请求约束，不会切换 Profiler 连接，也不会请求远程 Player/真机快照。不能仅凭处于 Play Mode 推断 Profiler 的实际目标；必须核查当前连接，不能放宽为任意 GUID。Play Mode 快照可能包含运行时对象、账号令牌、字符串及业务堆数据，保存与分享前应评估敏感信息。
+
+捕获是异步操作，回调属于发起请求的托管域。捕获期间发生域重载或 Editor 重启后，新引擎不会重建原回调或再次捕获，日志中的活动记录恢复为 `unknown`，保留 `busy` 和共用的 `ProfilerNativeGate` 占位。进出 Play Mode 若触发域重载，同样存在此恢复边界；这并不表示每次切换都会重载，也不证明原生捕获已停止。
+
+调用前先等待进入 Play Mode 与相关编译/导入完成，在 Unity Profiler 中停止录制并确认连接本地 Editor；从排队到完成尽量保持运行状态和连接不变，不在捕获中途主动进出 Play Mode 或触发脚本重编译。若被其他门禁拒绝，先按实际回执处理，不通过 `code execute` 绕过门禁后当作受管请求；Edit Mode 快照不能冒充 Play Mode 样本。
+
+若已有请求因 reload 变成 `unknown`，先使用 `snapshot_status --requestId '<original-requestId>'` 核查原记录及保留文件，再按精确原 ID 执行 `release_snapshot --requestId '<original-requestId>' --confirm true`。release 只释放该请求的本地占位，不取消原生操作、不保证捕获结束；其他 busy/unknown 或损坏日志仍可能阻止新操作。不要自动重提 capture，也不要删除日志来绕过门禁。
 
 ### 产物与异步状态
 
@@ -106,6 +118,10 @@ $CLI = './.aibridge/cli/AIBridgeCLI.exe'
 
 同日 Memory 原始请求 `cmd_1793856449783_9a2a866c78bf4c` 已观察到 `completed/result=true/busy=false`，产物大小 1,559,242,224 bytes。这只是当前工程的实际大小，不是体积或耗时上限。
 
-真实 `.data` save/load 和 `.snap` capture 证据仅覆盖上述 Unity 6000.0 Editor。Unity 2019.4.40f1c1、当前 6000.0.51f1 与 6000.6.0a7 已完成含P3同步测试核心的编译复验；不能据此宣称三版本原生文件实测、跨版本文件互读或其他平台验收通过。null 投影、部分写入恢复与日志容量修复已纳入当前工程回归；6000.6空工程仍有依赖saved scene的fixture跳过，2019.4隔离工程未发现测试程序集（0项不计通过）。此文不宣称整份增强方案完成。
+2026-11-06，Unity 6000.6.0a7 真实 Play Mode 捕获成功：前后均确认 `isPlaying=true`，原生 Profiler 为 `currentTargetGuid=-1/currentTargetName=Editor/recording=false`，因此未放宽本地 Editor 目标校验。原请求 `cmd_1793951476374_10e18a6dac8243`、operationId `fa6717c6aea84d468f9c21e077bf8d31` 返回 `completed/result=true/busy=false/released=false`，发布 `.aibridge/memory/d3bfd2b094c3464595f43fa0b956f682.snap`，文件大小 992,468,501 bytes，与状态中的 sizeBytes 一致；暂存文件已移除。证据在该测试工程 `Logs/memory-playmode-20261106-153422/` 的 capture-receipt.json、capture-status.json、capture-file-verification.json 与前后状态回执。此时包元数据仍为1.6.0加当前补丁，随后同步主仓1.6.1元数据；不伪造为已发布1.6.1原包实测。
+
+同轮新Play Mode测试在旧实现上因playing检查失败，删除该检查后通过，分别保存red-test.xml与green-test.xml。Memory/Profiler关联115项，113通过、0失败、2项因宿主无符号链接API跳过，见fixtures.xml；AIBridge测试状态查询跨域重载丢失，CLI回执不作为通过依据，最终采用Unity原生XML。Unity实际编译errorCount=0、warningCount=0。
+
+真实 `.data` save/load 证据仍仅覆盖上述 Unity 6000.0 Editor；`.snap`另有上述6000.6 Play Mode实测，未验证2019.4原生捕获。Unity 2019.4.40f1c1、当前 6000.0.51f1 与 6000.6.0a7 已完成含P3同步测试核心的编译复验；不能据此宣称三版本原生文件实测、跨版本文件互读或其他平台验收通过。null 投影、部分写入恢复与日志容量修复已纳入当前工程回归；6000.6空工程仍有依赖saved scene的fixture跳过，2019.4隔离工程未发现测试程序集（0项不计通过）。此文不宣称整份增强方案完成。
 
 最新测试、最终编译与剩余 gate 以项目实施底稿 `.aibridge/plan/native-profiler-memory-implementation.md` 及 `.aibridge/plan/pipeline-api-enhancement-analysis.md` 的最终证据为准；不以本文固化一个会随后续修复变化的测试总数。

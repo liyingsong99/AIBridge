@@ -49,7 +49,7 @@
 - [命令示例与进阶用法](CommandExamples.md) / [English](CommandExamples.en.md)：从 README 迁出的完整操作示例；精确参数以 CLI help 和已安装 Skill references 为准
 - `KnowledgeBaseIndex.md`：AIBridge 功能总索引，汇总 CLI、Editor 菜单、Runtime、workflow、Skills、模板、生成产物和文档映射，作为后续迭代的统一校验入口
 - [原生 Player 构建](NativeBuild.md)：`build run/status/report/release`，确认/路径/纯 DTO、主线程阻塞期间 CLI 查询与 unknown 不重放；含本机真实失败报告及未验证范围
-- [原生 Profiler 文件与 Memory 快照](NativeProfiling.md)：新增 `profiler native_capabilities/save_profile/load_profile` 与 `memory capture_snapshot/snapshot_status/release_snapshot`；保留旧 JSON 命令，区分共享 history 替换、异步捕获、unknown/迟到回调、本地 release，以及 `load_snapshot` unsupported；真实文件验收仅覆盖 Unity 6000.0.51f1
+- [原生 Profiler 文件与 Memory 快照](NativeProfiling.md) / [English](NativeProfiling.en.md)：`profiler native_capabilities/save_profile/load_profile` 与 `memory capture_snapshot/snapshot_status/release_snapshot`；说明Memory默认Edit/Play Mode、本地Editor guid=-1/停录、域重载unknown/busy与精确requestId本地release；保留旧JSON命令及`load_snapshot` unsupported边界，Profiler `.data`实测为Unity6000.0，Memory另有6000.6 Play Mode真实捕获证据
 - [Unity CLI 可选增强](UnityCliIntegration.md) / [English](UnityCliIntegration.en.md)：只读官方 CLI 诊断、配置、能力检测，以及显式 Pipeline eval/run 的授权、源码快照、detached作业查询/合作取消和 unknown 不重放边界；[测试覆盖](UnityCliTesting.md) 区分契约测试与真实 Editor 验证，包含 CLI beta.16 / Pipeline 0.10 在 Unity 6000.0.51f1 的安装实测
 - `SetupWizard.md`：`AIBridge/Setup` 首次设置向导的产品定义、首启行为、工具路径与跳过/重开规则
 - `EditorWindowScreenshot.md`：Edit Mode 下 Unity 主窗口、内置窗口和自定义 `EditorWindow` 的窗口级截图边界、参数与平台要求

@@ -118,6 +118,15 @@ $CLI = "./.aibridge/cli/AIBridgeCLI.exe"
 
 点击需要 Play Mode 和可用的 UGUI/EventSystem。也可用 **F12** 截图、**F11** 录制 GIF。
 
+### Edit/Play Mode 编辑器内存快照
+
+```powershell
+& $CLI memory capture_snapshot --confirm true --timeout 30000
+& $CLI memory snapshot_status --requestId '<original-requestId>'
+```
+
+默认支持 Play Mode；须停止 Profiler 录制并连接本地 Editor（guid=-1），不支持 Player/真机捕获。快照可能暂停编辑器并包含敏感运行时堆数据；捕获期间保持模式和连接稳定，域重载可能留下 `unknown/busy`，精确请求的 `release_snapshot` 仅释放本地状态，不停止原生捕获。详见[捕获条件与风险](./Doc~/NativeProfiling.md)。
+
 ### 运行中的 Player
 
 ```powershell

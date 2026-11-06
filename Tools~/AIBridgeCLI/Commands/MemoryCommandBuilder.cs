@@ -7,16 +7,16 @@ namespace AIBridgeCLI.Commands
     public sealed class MemoryCommandBuilder : BaseCommandBuilder
     {
         public override string Type => "memory";
-        public override string Description => "Native Editor memory snapshot with explicit confirmation and no replay";
+        public override string Description => "Native Editor memory snapshot in Edit/Play Mode; explicit confirmation, no replay";
         public override string[] Actions => new[] { "capture_snapshot", "snapshot_status", "release_snapshot", "load_snapshot" };
         protected override Dictionary<string, List<ParameterInfo>> ActionParameters => new Dictionary<string, List<ParameterInfo>>
         {
             ["capture_snapshot"] = new List<ParameterInfo>
             {
                 new ParameterInfo("path", "New direct .aibridge/memory/*.snap path; no overwrite", false),
-                new ParameterInfo("target", "Only editor supported; no target switching", false, "editor"),
+                new ParameterInfo("target", "Edit/Play Mode; only local Editor guid=-1 with Profiler stopped; no target switching", false, "editor"),
                 new ParameterInfo("timeout", "Local wait limit 1000-60000ms; does not cancel capture", false, "30000"),
-                new ParameterInfo("confirm", "Required; capture may stall Editor and expose heap data", true)
+                new ParameterInfo("confirm", "Required; may stall Editor/expose runtime heap; reload leaves unknown/busy, exact requestId release is local only", true)
             },
             ["snapshot_status"] = new List<ParameterInfo> { new ParameterInfo("requestId", "Original request; default latest", false) },
             ["release_snapshot"] = new List<ParameterInfo>

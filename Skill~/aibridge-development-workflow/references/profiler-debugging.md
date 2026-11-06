@@ -34,5 +34,6 @@ $CLI profiler stop
 - 报告中区分 Editor Profiler 证据和 Runtime perf 证据
 - `unsupported` 表示当前目标或 Unity API 不稳定/不可用，不等同命令失败
 - `save_data` / `load_data` 使用 AIBridge JSON；原生 `.data` 另用 `native_capabilities` / `save_profile` / `load_profile --confirm true`，须已停录且不覆盖
-- 内置Editor `.snap`：`memory capture_snapshot --confirm true --timeout 30000`；按原requestId查 `snapshot_status`，unknown不重放，`release_snapshot --confirm true`仅本地；`load_snapshot`当前unsupported
+- 内置Editor `.snap`：`memory capture_snapshot --confirm true --timeout 30000` 默认支持Edit/Play Mode，无需开关；须停录并连接本地Editor（guid=-1），`--target editor`不切连接；等待模式切换/编译/导入结束，捕获中保持模式和连接稳定，build/code/Pipeline及共用门禁照旧，Play Mode快照可含敏感运行时堆数据
+- 域重载/重启后活动捕获恢复unknown/busy并保留Profiler/Memory共用门；按原requestId查`snapshot_status`并核查文件，只有unknown才用`release_snapshot --requestId <original-request-id> --confirm true`显式释放本地占位；不取消原生捕获、不证明已停止、不自动重放、不删日志或用`code execute`绕过门禁；`load_snapshot`当前unsupported，人工分析用Unity Memory Profiler窗口
 - Runtime 不支持打开 Profiler 窗口、切换 Unity Profiler 模块、清除 Editor Profiler 帧历史或读取 Editor Profiler 数据

@@ -118,6 +118,15 @@ Start tests from Edit Mode; use `compile unity` for Unity compilation.
 
 Clicks require Play Mode and a working UGUI/EventSystem setup. You can also press **F12** for a screenshot or **F11** to record a GIF.
 
+### Capture Editor memory in Edit or Play Mode
+
+```powershell
+& $CLI memory capture_snapshot --confirm true --timeout 30000
+& $CLI memory snapshot_status --requestId '<original-requestId>'
+```
+
+Play Mode is supported by default. Stop Profiler recording and select the local Editor (guid=-1); Player/device capture is unsupported. Capture may pause the Editor and include sensitive runtime heap data. Keep the mode/connection stable: domain reload can leave `unknown/busy`, and exact-request `release_snapshot` only frees local state, without stopping native capture. See [capture conditions and risks](./Doc~/NativeProfiling.en.md).
+
 ### Inspect a running Player
 
 ```powershell

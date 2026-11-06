@@ -67,7 +67,6 @@ namespace AIBridge.Editor
         {
             if (EditorApplication.isCompiling) return "Editor is compiling.";
             if (EditorApplication.isUpdating) return "Editor is importing/updating assets.";
-            if (EditorApplication.isPlayingOrWillChangePlaymode) return "Editor is playing or changing Play Mode.";
             if (BuildPipeline.isBuildingPlayer || AIBridgeBuildTracker.Busy) return "An Editor build is active or unknown.";
             if (CodeCommand.HasActiveCodeOperation) return "An AIBridge code operation is active or unknown.";
             if ((PipelineTestTracker.HasBusy || PipelineCompileTracker.HasBusy)) return "A Pipeline test is active or unknown.";

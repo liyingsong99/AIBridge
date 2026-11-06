@@ -1,10 +1,13 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading;
 using AIBridge.Internal.Json;
 using NUnit.Framework;
+using UnityEditor;
+using UnityEngine.TestTools;
 
 namespace AIBridge.Editor.Tests
 {
@@ -313,13 +316,61 @@ namespace AIBridge.Editor.Tests
 
         [TestCase("compiling")]
         [TestCase("importing")]
-        [TestCase("play")]
         [TestCase("build")]
         [TestCase("code")]
         public void BusyContextRejectsBeforeCapture(string busy)
         {
             _context.BusyReason = () => busy;
             Assert.That(_engine.Execute(Request(), "capture_snapshot").success, Is.False); Assert.That(_api.Calls, Is.Zero);
+        }
+
+        [UnityTest]
+        public IEnumerator PlayModeAllowsCaptureWithLocalEditorAndStoppedProfiler()
+        {
+            TearDown();
+            yield return new EnterPlayMode();
+            // 域重载后重建隔离样本；使用真实 Editor 门禁，仅替换原生文件 API，避免每轮测试生成 GB 级快照。
+            TearDown();
+            SetUp();
+            CommandResult queued = null;
+            NativeMemoryRecord record = null;
+            bool published = false;
+            string failure = null;
+            try
+            {
+                if (!EditorApplication.isPlaying) throw new InvalidOperationException("Test did not enter Play Mode.");
+                var busyMethod = typeof(NativeMemoryCapture).GetMethod("EditorBusyReason",
+                    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+                if (busyMethod == null) throw new MissingMethodException("EditorBusyReason");
+                _context.BusyReason = () => (string)busyMethod.Invoke(null, null);
+                queued = _engine.Execute(Request(), "capture_snapshot");
+                if (queued.success)
+                {
+                    record = LiveRecord(_engine, "capture-one");
+                    _engine.Tick();
+                    if (_api.Calls == 1)
+                    {
+                        File.WriteAllBytes(_api.Path, new byte[] { 1, 2, 3, 4 });
+                        _api.Callback(_api.Path, true);
+                        _engine.Tick();
+                        published = record.status == "completed" && record.result == true && !record.busy
+                            && File.Exists(record.outputPath) && new FileInfo(record.outputPath).Length == 4;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                failure = ex.ToString();
+            }
+            finally
+            {
+                // 断言放在退出 Play Mode 后；即使捕获验证异常，也先清理样本并退出运行态。
+                TearDown();
+            }
+            var succeeded = failure == null && queued != null && queued.success && published;
+            var receipt = failure ?? (queued == null ? "No receipt." : AIBridgeJson.Serialize(queued, true));
+            yield return new ExitPlayMode();
+            Assert.That(succeeded, Is.True, receipt);
         }
 
         [Test]
