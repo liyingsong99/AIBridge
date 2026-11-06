@@ -65,11 +65,18 @@ namespace AIBridge.Editor.Tests
             var sourcePath = Path.Combine(packageInfo.resolvedPath, "Skill~", "references", "unity-cli-reference.md");
             File.SetLastWriteTimeUtc(referencePath, File.GetLastWriteTimeUtc(sourcePath).AddDays(1));
             var expectedTimestamp = File.GetLastWriteTimeUtc(referencePath);
+            var commandPath = Path.Combine(Path.GetDirectoryName(referencePath), "command-reference.md");
+            var commandTimestamp = expectedTimestamp.AddDays(1);
+            File.SetLastWriteTimeUtc(commandPath, commandTimestamp);
+            commandTimestamp = File.GetLastWriteTimeUtc(commandPath);
+            var commandBytes = File.ReadAllBytes(commandPath);
 
             var result = SkillInstaller.InstallAssistantIntegrations(ProjectRoot, new[] { target }).Single();
 
             Assert.AreEqual(IntegrationAction.AlreadyUpToDate, result.SkillFileAction);
             Assert.AreEqual(expectedTimestamp, File.GetLastWriteTimeUtc(referencePath));
+            Assert.AreEqual(commandTimestamp, File.GetLastWriteTimeUtc(commandPath));
+            CollectionAssert.AreEqual(commandBytes, File.ReadAllBytes(commandPath));
         }
 
         private static string Normalize(string text)

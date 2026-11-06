@@ -961,15 +961,31 @@ $CLI code cancel
 
         internal static string[] GetCompilerCandidatePaths(string contentsPath)
         {
-            return new[]
+            var candidates = new List<string>
             {
-                // Unity 2019 的完整 Roslyn 工具链在 Tools/Roslyn；优先使用它，避免 mono/4.5/csc.exe 缺少 facade 依赖。
+                // 保留 Unity 2019 与旧 Unity 6 的优先路径。
                 Path.Combine(contentsPath, "Tools", "Roslyn", "csc.exe"),
-                // Unity 6000 的 MonoBleedingEdge Roslyn exe 可能缺运行时依赖；优先使用随 Editor 提供的 .NET Roslyn。
-                Path.Combine(contentsPath, "DotNetSdkRoslyn", "csc.dll"),
-                Path.Combine(contentsPath, "MonoBleedingEdge", "lib", "mono", "msbuild", "Current", "bin", "Roslyn", "csc.exe"),
-                Path.Combine(contentsPath, "MonoBleedingEdge", "lib", "mono", "4.5", "csc.exe")
+                Path.Combine(contentsPath, "DotNetSdkRoslyn", "csc.dll")
             };
+            var sdkRoot = Path.Combine(contentsPath, "DotNetSdk", "sdk");
+            try
+            {
+                // 新 Editor 随 SDK 分发 Roslyn；只查 SDK 直属版本目录，不递归探测任意程序。
+                if (Directory.Exists(sdkRoot))
+                {
+                    candidates.AddRange(Directory.GetDirectories(sdkRoot)
+                        .Select(path => new { Path = path, Version = Version.TryParse(Path.GetFileName(path), out var version) ? version : new Version(0, 0) })
+                        .OrderByDescending(item => item.Version)
+                        .ThenBy(item => item.Path, StringComparer.Ordinal)
+                        .Select(item => Path.Combine(item.Path, "Roslyn", "bincore", "csc.dll"))
+                        .Where(File.Exists));
+                }
+            }
+            catch (IOException) { /* SDK 不可读时仍保留旧版本编译器候选。 */ }
+            catch (UnauthorizedAccessException) { }
+            candidates.Add(Path.Combine(contentsPath, "MonoBleedingEdge", "lib", "mono", "msbuild", "Current", "bin", "Roslyn", "csc.exe"));
+            candidates.Add(Path.Combine(contentsPath, "MonoBleedingEdge", "lib", "mono", "4.5", "csc.exe"));
+            return candidates.ToArray();
         }
 
         private static CompilerInvocation CreateCompilerInvocation(string contentsPath, string candidate)

@@ -59,8 +59,9 @@ $CLI = './.aibridge/cli/AIBridgeCLI.exe'
 ### 捕获范围与开销
 
 - 捕获逐次要求字面布尔值 `--confirm true`；只支持 `--target editor`，且当前原生连接必须为本地 Editor（guid=-1），不自动切目标。Player 目标明确 unsupported。
-- 同样要求原生 Profiler 停止录制；Play Mode/切换、编译、资源更新、build/code 活动或 unknown、其他原生 Profiler/Memory 操作均会阻止捕获。
+- 同样要求原生 Profiler 停止录制；当前实现还会阻止 Play Mode/切换、编译、资源更新、build/code 活动或 unknown、其他原生 Profiler/Memory 操作。Unity 原生 API 在部分版本的 Play Mode 实际可捕获，但 AIBridge 当前没有 `--allow-playmode` 开关；需要 Play Mode 样本时必须先修改实现并补跨版本验证，不能把 AIBridge 的拒绝当作引擎能力限制。
 - 精确探测内置 `TakeSnapshot(string, Action<string,bool>, CaptureFlags)`，兼容已知新旧命名空间。固定 flags 为 `ManagedObjects | NativeObjects`；不开放任意 flags，不主动 GC 或截图，不自动安装包。
+- 当前捕获前没有快照体积估算或目标盘剩余空间预检；输出可能达到 GB 级，调用方必须自行确认目标盘空间。空间不足时可能产生部分写入或失败，不能把捕获回执当作磁盘容量保证。
 - “不主动 GC”不表示 Unity 原生捕获无内部整理、额外内存或暂停。捕获可能长时间阻塞 Editor，文件也可能很大；不要把回调式接口理解为无卡顿或可强停。
 
 ### 产物与异步状态
@@ -87,13 +88,17 @@ $CLI = './.aibridge/cli/AIBridgeCLI.exe'
 
 `release_snapshot` 只接受精确登记的 unknown requestId 和 `--confirm true`，不释放 queued/capturing 或已完成记录。它只将本地占位标记为 released；`nativeCancellationConfirmed=false`，不停止原生操作、不删除或回滚副作用，也不把 unknown 改成成功。release 后的迟到回调不再发布为该请求的完成结果。仍须核实原生工作和保留文件，不能把本地可再次排队当作远端安全保证。
 
+### `code execute` 与引擎程序集引用
+
+`code execute` 的原生编译引用来自当前 AppDomain 中已加载且存在文件路径的程序集，不会凭命名空间自动补齐任意 `UnityEngine.*Module`，也不保证业务项目中尚未加载的模块可直接通过 `using` 编译。调用引擎 API 前应先确认对应程序集已加载；必要时使用类型名反射，且应以实际程序集中的完整类型名为准。该限制属于临时编译单元的引用收集策略，不等于 Unity API 只能反射调用。
+
 ### 快照分析不等于捕获
 
 ```powershell
 & $CLI memory load_snapshot --path '.aibridge/memory/<snapshot-guid>.snap' --confirm true
 ```
 
-该入口当前返回结构化 unsupported：没有已核实的 Memory Profiler 包/版本分析加载 API。它不自动安装依赖、不猜测 OpenSnapshot、不打开任意 UI，也不解析 `.snap` 文件内容。没有 Memory Profiler 包不影响内置捕获能力；已生成 `.snap` 也不等于 AIBridge 已分析其内容。
+该入口当前返回结构化 unsupported：没有已核实的 Memory Profiler 包/版本分析加载 API。即使项目安装 `com.unity.memoryprofiler`，包内分析类型在当前验证版本仍主要是 internal，AIBridge 未实现 internal 反射加载，因此不会把包存在误报为可分析。它不自动安装依赖、不猜测 OpenSnapshot、不打开任意 UI，也不解析 `.snap` 文件内容。没有 Memory Profiler 包不影响内置捕获能力；已生成 `.snap` 也不等于 AIBridge 已分析其内容。当前可行的人工路径是使用 Unity Memory Profiler 窗口打开快照。
 
 ## 本机验收与未验证范围
 

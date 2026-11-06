@@ -309,6 +309,8 @@ The following capabilities were intentionally removed from the public `code_inde
 
 ### Roslyn Temporary C# Execution
 
+Native compilation uses Unity's bundled Roslyn: legacy `Tools/Roslyn` and `DotNetSdkRoslyn` layouts remain supported, and newer `DotNetSdk/sdk/<version>/Roslyn/bincore/csc.dll` layouts are discovered in SDK version order. No separate system SDK installation is required. Failed probes return compilation diagnostics without executing source or switching backends.
+
 `code execute` runs temporary Editor C# for one-off tasks that declarative CLI commands cannot express cleanly, such as generated asset sets, structured diagnostics, reports, Runtime/Public API calls, or multi-step UnityEditor API orchestration. It is not a replacement for `compile unity` or `test run`.
 
 `Enable Code Execution` in `AIBridge/Settings > Basic` applies to both `code execute` and `code runtime_execute`. Disable it for untrusted projects or callers. File mode is limited to `.aibridge/code/*.cs` or `.aibridge/code/*.csx`, and complex scripts should use file mode. Code execution is single-flight; after a timeout, use `code status` first and only use `code cancel` when you need to release AIBridge's waiting state.

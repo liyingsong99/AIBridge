@@ -188,19 +188,34 @@ namespace AIBridge.Editor.Tests
         public void MissingLatestIndex_RecoversBusyPerRequestRecordWithoutReplay()
         {
             var record = CreateRecord(5000);
-            var path = RecordPath(_requestId);
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            var directory = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(RecordPath(null)), "..", "tmp", _requestId));
+            Directory.CreateDirectory(directory);
+            var path = Path.Combine(directory, Path.GetFileName(RecordPath(_requestId)));
+            BackupFile(path);
             File.WriteAllText(path, AIBridgeJson.Serialize(record));
-            var latestPath = RecordPath(null);
-            // latest 已登记备份；仅移除该精确索引文件以模拟崩溃窗口，TearDown 原样还原。
-            if (File.Exists(latestPath)) File.Delete(latestPath);
-            Method("RecoverPipelineOperation").Invoke(null, null);
+            // 独立目录没有 latest；真实工程的损坏/历史日志不能污染本用例。
+            var arguments = new object[] { directory, false };
+            var loaded = Method("FindUnindexedPipelineRecord").Invoke(null, arguments);
+            Assert.That(arguments[1], Is.EqualTo(false));
+            Assert.That(loaded, Is.Not.Null);
+            Assert.That(Value<string>(loaded, "requestId"), Is.EqualTo(_requestId));
+            Method("ApplyRecoveredPipelineRecord").Invoke(null, new[] { loaded, arguments[1] });
             Assert.That(_activeField.GetValue(null), Is.Not.Null);
             Assert.That(_activeField.GetValue(null).GetType().Name, Is.EqualTo("PipelineUnknownOperation"));
             var active = _activeField.GetValue(null);
             var recovered = Invoke(active, "BuildStatusData");
             AssertRecord(recovered, "unknown", false, true, true);
-            Assert.That(File.Exists(_resultPath), Is.False, "Recovery must not replay the original task.");
+            // 恢复可向原调用方写失败回执；文件存在不代表重放任务。
+            if (File.Exists(_resultPath))
+            {
+                var failure = AIBridgeJson.DeserializeObject(File.ReadAllText(_resultPath));
+                Assert.That(failure["success"], Is.EqualTo(false));
+                Assert.That(failure["id"], Is.EqualTo(_requestId));
+            }
+            Assert.That(Value<string>(recovered, "errorCode"), Is.EqualTo("pipelineStateLost"));
+            Assert.That(Step(active, out var replayResult, out var release), Is.False);
+            Assert.That(replayResult, Is.Null);
+            Assert.That(release, Is.False);
         }
 
         [TestCase(true)]

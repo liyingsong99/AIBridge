@@ -3,7 +3,7 @@
 ## 状态
 
 - 状态：当前索引
-- 更新时间：2026-11-05
+- 更新时间：2026-11-06
 - 对象 ID 展示：CLI help / Skill 按 Unity 版本只暴露主键参数名（6000.4+ 为 `entityId`，更旧为 `instanceId`）；兼容策略只在 RootRule 写一行，不在每个 Skill reference / CLI action help 重复；线协议仍双接受
 - 维护范围：`Packages/cn.lys.aibridge`（知识库维护规则仅写在包内 `AGENTS.md` / 本文，不得写入 RootRule 或用户项目 `AGENTS` 模板）
 
@@ -35,7 +35,7 @@
 | Skills | `Skill~/aibridge-development-workflow`、`Skill~/aibridge-workflow-orchestration`、`Skill~/aibridge-code-index`、`Skill~/aibridge-prefab-patch`、`Skill~/aibridge-batch-script`、`Skill~/unity-yaml-editing` | 分别覆盖 workflow 短入口/分支路由、编排、轻量声明名检索、Prefab patch、批处理和 YAML 兜底 |
 | 文档 | `Doc~/README.md`、`Doc~/SetupWizard.md`、`Doc~/NativeBuild.md`、`Doc~/NativeProfiling.md`、`Doc~/EditorWindowScreenshot.md`、`Doc~/WorkflowsPanel.md`、`Doc~/workflow-guide/README.md`、`Doc~/workflow-guide/ContextCompression.md`、`Doc~/workflow-guide/AIBridgeLoopsAnalysis.md` | 功能目录、首次设置向导、原生构建与诊断产物、Editor 窗口截图、面板定位、workflow 说明、上下文压缩策略和 FSM 分析 |
 | 模板 | `Templates~/Rules/AIBridge.RootRule.md`、`Templates~/ProjectRules/AGENTS*.md`、`Templates~/Workflows/*.json` | RootRule、项目规则模板和内置 workflow recipes |
-| 生成与缓存 | `.aibridge/harness/capabilities.json`、`.aibridge/test-runs/`、`.aibridge/pipeline-test-runs/`、`.aibridge/pipeline-compile-requests/`、`.aibridge/workflows/active-run.json`、`.aibridge/workflows/runs/`、`.aibridge/code-index/snapshot/`、`.aibridge/code/`、`.aibridge/profiler/native/`、`.aibridge/memory/`、`.aibridge/memory-operations/`、`.aibridge/tmp/`、`.aibridge/plan/` | 当前项目的能力快照、测试队列状态、运行产物、代码索引、临时代码、原生诊断文件与捕获日志、Agent/脚本短生命周期输出和方案底稿 |
+| 生成与缓存 | `.aibridge/harness/capabilities.json`、`.aibridge/test-runs/`、`.aibridge/pipeline-test-runs/`、`.aibridge/pipeline-compile-requests/`、`.aibridge/workflows/active-run.json`、`.aibridge/workflows/runs/`、`.aibridge/code-index/snapshot/`、`.aibridge/code/`、`.aibridge/profiler/native/`、`.aibridge/memory/`、`.aibridge/memory-operations/`、`.aibridge/tmp/`、`.aibridge/plan/`、`.aibridge/local-test-projects.md` | 当前项目的能力快照、测试队列状态、运行产物、代码索引、临时代码、原生诊断文件与捕获日志、Agent/脚本短生命周期输出、方案底稿及本机 Unity 测试工程路径/同步状态说明 |
 | Editor 实例状态 | `%LOCALAPPDATA%/AIBridge/instances/<projectKey>/editor-instance.json`（可用 `AIBRIDGE_STATE_DIR` 覆盖根目录） | Editor 心跳与 `focus` 多实例解析；高频状态写在项目外，避免触发 Git 工作区监听；CLI 仍兼容读取遗留 `.aibridge/editor-instance.json` |
 
 ## CLI 功能目录
@@ -59,7 +59,7 @@
 - `screenshot`
 - `input`
 - `profiler`：旧 `save_data/load_data` 保持 AIBridge JSON；新 `native_capabilities/save_profile/load_profile` 保存/加载原生 `.data`，逐次确认、停录、专用路径、不覆盖；load 固定替换共享 history，见 [原生诊断产物](NativeProfiling.md)
-- `memory capture_snapshot/snapshot_status/release_snapshot/load_snapshot`：本地 Editor 内置 `.snap` 捕获，原子意图/异步回调、unknown 不重放；release 仅本地，分析 load 当前结构化 unsupported，见 [原生诊断产物](NativeProfiling.md)
+- `memory capture_snapshot/snapshot_status/release_snapshot/load_snapshot`：本地 Editor 内置 `.snap` 捕获，原子意图/异步回调、unknown 不重放；当前实现阻止 Play Mode，且没有体积估算/磁盘空间预检；release 仅本地，分析 load 当前结构化 unsupported（可人工用 Unity Memory Profiler 窗口打开），见 [原生诊断产物](NativeProfiling.md)
 
 ### 搜索、分析和临时代码
 
@@ -168,6 +168,9 @@
 - `AIBridge/Workflows` 仍然是用户配置面板，不是 recipe/run/debug 控制台。
 - `Doc~/WorkflowsPanel.md` 只定义默认 `Workflows` 面板的产品边界。
 - `compile dotnet` 只是额外检查，不是 Unity 编译替代品。
+- `editor` 的状态查询 action 是 `get_state`（不是 `status`）；CLI builder 已列出该 action，调用方应以 `$CLI editor --help` 的 action 列表为准。
+- `code execute` 的临时编译引用来自当前 AppDomain 已加载程序集，不会凭命名空间自动补齐任意 Unity 模块；涉及引擎类型时先确认程序集已加载，必要时按完整类型名反射。原生编译器兼容旧 Roslyn 布局，并探测新版 `DotNetSdk/sdk/<version>/Roslyn/bincore/csc.dll`，按 SDK 版本降序选择，保留 Unity 2019 的优先路径。
+- Skill 安装不把带生成标记的包内命令参考快照覆盖到目标，命令参考由当前 Editor 按版本重建；无变化时不写文件，避免 Unity 6000.4+ 对象 ID 参数名导致重装误报更新。Pipeline 先核验持久状态再探测可选 adapter，缺包不能掩盖损坏日志/busy 占位；恢复的失败回执不等于重放任务。本批修复以 1.6.1 发布；补丁后三版本编译/定向复验及6000.0全量基线比较见 `UnityCliTesting.md`，保留实测时 1.6.0 的版本记录；missing-latest测试使用隔离输入，生产恢复保守校验不变。2019.4首次导入曾出现CSharpNameParser异常，后续未复现，按用户决定暂不单独排查，保留记录且不视为根因已关闭。
 - `test run` 必须在 Editor 处于 Edit Mode 时启动；若当前处于 Play Mode，会直接失败并明确提示先退出 Play Mode。
 - `test run` 在并发请求下会持久化队列到 `.aibridge/test-runs/state.json`；已确认的 run 若后续变成 `unknown`，CLI 会快速失败并提示状态丢失，而不是一直等完整 timeout。
 - `screenshot editor_window` 可在 Edit Mode 截取 Unity 主窗口或按活动窗口、类型、标题、对象 ID 定位的 `EditorWindow`；Unity 6000.4+ 对象标识走 `GetEntityId`/`EntityId`（`instanceId` 为兼容别名）；Windows 主路径使用 WGC，被 WGC 拒绝的 Unity 浮动容器仅回退到带非空校验的窗口级 PrintWindow，macOS 使用 ScreenCaptureKit，不回退到桌面截图，默认成功数据仅返回 `path`、`width`、`height`。

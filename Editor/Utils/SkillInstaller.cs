@@ -1376,7 +1376,8 @@ namespace AIBridge.Editor
                 }
 
                 var fileName = Path.GetFileName(filePath);
-                if (ShouldSkipSyncFile(sourceRoot, filePath, skippedRelativePaths))
+                // 生成参考由当前 Editor 的命令与版本重建，不能先用包内旧快照覆盖。
+                if (ShouldSkipSyncFile(sourceRoot, filePath, skippedRelativePaths) || IsGeneratedFile(filePath))
                 {
                     expectedEntries.Add(fileName);
                     continue;

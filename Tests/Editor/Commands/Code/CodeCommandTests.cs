@@ -139,7 +139,7 @@ namespace AIBridge.Editor.Tests
                 });
 
                 Assert.That(result, Is.Not.Null);
-                Assert.That(result.success, Is.True);
+                Assert.That(result.success, Is.True, AIBridgeJson.Serialize(result, true));
                 var json = AIBridgeJson.Serialize(result.data, true);
                 StringAssert.Contains("\"status\": \"validated\"", json);
                 StringAssert.DoesNotContain("\"returnValue\"", json);
@@ -335,6 +335,31 @@ namespace AIBridge.Editor.Tests
             CollectionAssert.Contains(
                 candidates,
                 Path.Combine(contentsPath, "MonoBleedingEdge", "lib", "mono", "msbuild", "Current", "bin", "Roslyn", "csc.exe"));
+        }
+
+        [Test]
+        public void GetCompilerCandidatePaths_FindsSdkRoslynInDescendingVersionOrder()
+        {
+            var contentsPath = Path.Combine(Path.GetTempPath(), "AIBridgeCodeCommandTests", Guid.NewGuid().ToString("N"));
+            var sdkRoot = Path.Combine(contentsPath, "DotNetSdk", "sdk");
+            var older = Path.Combine(sdkRoot, "8.0.9", "Roslyn", "bincore", "csc.dll");
+            var newer = Path.Combine(sdkRoot, "8.0.10", "Roslyn", "bincore", "csc.dll");
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(older));
+                Directory.CreateDirectory(Path.GetDirectoryName(newer));
+                Directory.CreateDirectory(Path.Combine(sdkRoot, "9.0.0"));
+                File.WriteAllText(older, string.Empty);
+                File.WriteAllText(newer, string.Empty);
+                var candidates = CodeCommand.GetCompilerCandidatePaths(contentsPath);
+                Assert.That(candidates[2], Is.EqualTo(newer));
+                Assert.That(candidates[3], Is.EqualTo(older));
+                Assert.That(candidates.Length, Is.EqualTo(6));
+            }
+            finally
+            {
+                if (Directory.Exists(contentsPath)) Directory.Delete(contentsPath, true);
+            }
         }
 
         [Test]

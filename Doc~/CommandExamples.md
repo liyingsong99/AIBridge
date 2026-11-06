@@ -309,6 +309,8 @@ Runtime Bridge 不内置游戏内 LLM，也不提供无约束的项目方法反�
 
 ### Roslyn 临时 C# 执行
 
+原生编译器优先使用 Unity 随附的 Roslyn：兼容旧版 `Tools/Roslyn`、`DotNetSdkRoslyn`，并按 SDK 版本探测新版 `DotNetSdk/sdk/<version>/Roslyn/bincore/csc.dll`；无需另装系统 SDK。探测/启动失败仍返回编译诊断，不自动执行源码或切换后端。
+
 `code execute` 用于执行临时 Editor C#。它适合声明式 CLI 命令难以表达的复杂一次性任务，例如生成组合资源、批量诊断、结构化报告、调用项目 Runtime/Public API 或编排多步 UnityEditor API。它不是 `compile unity` 或 `test run` 的替代品。
 
 `AIBridge/Settings > Basic` 中的 `Enable Code Execution` 同时约束 `code execute` 和 `code runtime_execute`。不可信项目或调用方环境中可在设置里关闭。文件模式只允许 `.aibridge/code/*.cs` 或 `.aibridge/code/*.csx`，复杂脚本优先使用文件模式。代码执行同一时间只允许一个任务；超时后先用 `code status` 查看状态，必要时再用 `code cancel` 释放 AIBridge 等待状态。

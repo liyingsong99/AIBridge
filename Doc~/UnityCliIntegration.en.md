@@ -114,7 +114,9 @@ Read relevant diagnostics and command schemas only when the task needs them. Avo
 
 The standalone CLI command list differs from the connected Editor command list. Discovery proves existence, not complete AIBridge support. Load only schemas needed for the current task; do not expand the RootRule with the entire official catalog.
 
-When an assistant integration is selected, the installer also synchronizes the primary Skill's `references/unity-cli-reference.md` into the target Skill root. It skips `.meta` files and preserves generated command references and user files when updating the reference.
+When an assistant integration is selected, the installer also synchronizes the primary Skill's `references/unity-cli-reference.md` into the target Skill root. It skips `.meta` files and preserves generated command references and user files when updating the reference. Package snapshots bearing the generated marker are excluded from template copying and regenerated for the current Editor version. Reinstallation preserves timestamps when content is unchanged instead of repeatedly overwriting object-ID parameter names.
+
+Pipeline submission checks persisted local state before probing the optional adapter. A missing Pipeline package must not hide corrupt records or unresolved busy placeholders. Restart recovery may write a failure receipt to the original request without resubmitting its task; an existing result file alone does not prove replay.
 
 ## Fallback and result boundaries
 

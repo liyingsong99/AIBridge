@@ -94,6 +94,27 @@ P2真实证据：当前Editor Profiler `.data` 3,343,124bytes保存/加载成功
 
 P3真实证据：Pipeline受控测试1/1通过，零匹配返回no_tests/非零退出，1000ms超时unknown保持busy，阻止新测试/native编译，原ID本地release不声称停止。编译触发 `cmd_1793863036566_f7fb6886374449` 收到compiling应答后reload恢复unknown/busy，互斥与本地release通过；后续共享传输测试1/1通过。所有compile acknowledgement仅确认Refresh应答，compilationSuccess/counts/duration保持null，不能认证本次编译结果。完整边界见 `PipelineDiagnostics.md`、`NativeBuild.md`、`NativeProfiling.md` 和项目实施底稿。
 
+## Unity 6000.6 五项失败复验（2026-11-06）
+
+实测环境为 Unity 6000.6.0a7、AIBridge 1.6.0、HEAD 39681c8 加本轮修复；本次补丁发布版本为 1.6.1，以下保留验收时的实际版本与结果。manifest 原写 Test Framework 1.1.31，但原 lock 和 Editor 日志均实际解析为内置 1.8.0；尝试改写为 1.5.1 后仍使用 1.8.0，五项仍失败。因此不能把 manifest 文本当作实际运行版本，也不能声称完成了 1.1.31/1.5.1 的有效对照。该实验 manifest 已恢复，不恢复因自身编译失败而移除的 ai.assistant。
+
+已确认并修正的原因：
+
+- 两项 Skill 重装测试：源 command-reference 快照先复制、再被当前版本生成器重写，导致内容无变化仍报告 UpdatedBlock。跳过带生成标记的源快照，增加生成参考的时间戳/字节不变断言。
+- 原生 code dry-run：6000.6 实际编译器位于 DotNetSdk/sdk/8.0.318/Roslyn/bincore/csc.dll，旧探测路径遗漏；Mono 候选缺 System.Text.Encoding.CodePages 依赖而启动失败。新增 SDK 直属版本目录探测，保留旧版优先顺序，增加版本排序/缺文件回归测试。
+- 缺 latest 恢复测试：实现写失败回执被误当作执行重放。6000.0追加复验还发现真实工程历史矛盾日志会使全目录扫描正确返回pipelineStateInvalid。测试改用独立临时目录读回样本，再调用提取出的同一恢复记录应用逻辑；核验unknown占位、失败回执和Step不执行任务。生产恢复行为与严格校验保持不变，不清理或改写历史日志以让测试通过。
+- 损坏请求记录测试：缺可选 Pipeline adapter 时提前返回，掩盖损坏日志。改为先核验持久状态并保留 busy 占位，再探测 adapter。这是依赖条件暴露的通用顺序问题，不是 6000.6 独有 API 问题。
+
+四个关联 fixture 最终89/89通过、0失败/0跳过，Unity退出码0，证据为测试工程 Logs/aibridge-regression-final.xml；此前首轮 Logs/aibridge-regression-fix1.xml 同为89/89通过。全量 EditMode 从1082项（1022通过/23失败/37跳过）变为1083项（1028通过/18失败/37跳过），原五项及新增 SDK 用例全部通过，失败差集无新增；仍存在原有18项失败，全量退出码2，不宣称全量通过。证据为 Logs/aibridge-full-regression-final.xml 与同名.log。Unity真实重编无error CS；首轮日志有三处既有 PlayerSettings define API 的CS0618（重复打印），最终增量日志无error/warning CS。CLI dotnet build --no-restore 为0错误/0警告。
+
+### 补丁后三版本追加复验
+
+追加复验时，同批14份改动已按授权同步至6000.0与2019.4测试工程，主仓仍在dev分支，当时尚未提交或push。6000.0实际存在DotNetSdkRoslyn/csc.dll和NetCoreRuntime/dotnet.exe，Tools/Roslyn/csc.exe不存在；2019.4实测Tools/Roslyn旧路径仍有效。
+
+- Unity6000.0.51f1：实际重编退出0、error CS=0。首次全量1083项1059通过/19失败/5跳过，新增失败来自missing-latest测试扫描真实历史日志；隔离后最终1083项1060通过/18失败/5跳过，与原1082项1059通过/18失败/5跳过的失败集合完全一致、无新增。原五项和新增SDK探测全通过。全量仍退出2，不声称全量通过。证据为AIBridgeDev工程Logs/patch-regression-20261106-125138-565/compile.log、editmode-isolated.xml及.log；补丁同步文件及哈希见同目录sync-manifest.json（追加隔离修复以最终文件哈希为准）。编译日志有六处既有CS0618：包内三处define API及测试工程Assets/Editor中三处scripting backend API，日志重复打印为12条。
+- Unity6000.6.0a7：隔离修复后的四fixture再次89/89通过、0跳过，退出0；证据为Logs/aibridge-regression-isolated-final.xml及.log。此前全量1083项1028通过/18失败/37跳过为隔离修复前结果，不冒充最新代码全量重测。
+- Unity2019.4.40f1c1：代码审查员同步最终两文件后重编error CS=0、C# warning=0；恢复逻辑整组39项加真实dry-run/旧编译器优先顺序/SDK排序三项，共42/42通过、0跳过。结果XML已复核，证据为AIBridgeTest工程Logs/aibridge-2019-recovery-final-20261106-125816-375.xml及.log。未做2019.4全量测试。首次导入曾出现CSharpNameParser NullReferenceException/IllegalNamespaceParsing，后续未复现，按用户决定暂不单独排查，保留记录；不视为根因已关闭。
+
 ## 其它既有验证记录
 
 AIBridgeCLI `dotnet build --no-restore` 通过（0 警告、0 错误）。`unity_cli help` 成功；用 `dotnet.exe` 作为显式 CLI 路径验证返回 `NOT_UNITY_CLI`，`--format text` 返回摘要而非 JSON。Unity `$CLI compile unity` 通过（0 errors / 0 warnings），`get_logs --logType Error` 为空。Editor NUnit 启动 174 项后发生 reload，AIBridge 丢失 run 状态，未取得可确认结果，不能记为测试通过。2026-11-04 后续实装验证：CLI 1.0.0-beta.16 / Pipeline 0.10.0-exp.1 / Windows Unity 6000.0.51f1。官方当前工程 editor status 曾返回 ready；旧版适配器曾把 descriptor 存在误报为 `serverReady=true`，该历史结果不代表 authenticated connectivity，已修正语义。当前适配器校验 PID/项目路径/Unity 版本，并以后台 bearer-auth `/api/status` 探测后才置 `serverReady`。修正帮助别名 pipeline|pipe、asmdef versionDefines 使用包存在检测、descriptor evalToken 字段。UnityCliSkillInstallationTests 限定组运行 5/5 通过，已验证主 Skill reference 同步、跨助手目标、更新保留用户/生成文件和无变化时间戳稳定；异常场景和其他版本兼容矩阵仍未验证。

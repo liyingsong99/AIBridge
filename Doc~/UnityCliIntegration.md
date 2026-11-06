@@ -114,7 +114,9 @@ Pipeline 缺省 `dry-run=true`，native 缺省 `dry-run=false`。Pipeline 执行
 
 CLI 命令清单与运行中 Editor 的命令清单不同。发现某个命令仅说明它存在，不代表 AIBridge 已支持其全部参数或完成结果归一化。仅加载当前任务所需命令的 schema，不将完整官方目录写入 RootRule。
 
-主 Skill 的 `references/unity-cli-reference.md` 会在选择助手集成时同步到目标 Skill 根目录；安装器跳过 `.meta`，更新参考文件时保留生成的命令参考和用户文件。
+主 Skill 的 `references/unity-cli-reference.md` 会在选择助手集成时同步到目标 Skill 根目录；安装器跳过 `.meta`，更新参考文件时保留生成的命令参考和用户文件。带生成标记的包内命令参考快照不参与模板复制，由当前 Editor 按版本生成；内容不变时重装保持文件时间戳，不因对象 ID 参数名差异反复覆写。
+
+Pipeline 提交前先校验本地持久状态，再探测可选 adapter；缺少 Pipeline 包不能掩盖损坏日志或未解决的 busy 占位。重启恢复允许向原请求写入失败回执，但不重新提交原任务；不能把 result 文件存在当作任务已重放。
 
 ## 回退与结果边界
 

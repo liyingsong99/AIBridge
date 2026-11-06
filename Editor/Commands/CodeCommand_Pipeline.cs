@@ -37,6 +37,12 @@ namespace AIBridge.Editor
         private static void RecoverPipelineOperation()
         {
             var record = LoadPipelineRecoveryRecord(out var unreadable);
+            ApplyRecoveredPipelineRecord(record, unreadable);
+        }
+
+        // 读取与应用分开，使恢复测试只扫描自己的样本，不依赖真实工程历史日志。
+        private static void ApplyRecoveredPipelineRecord(PipelineOperationRecord record, bool unreadable)
+        {
             if (record == null)
             {
                 if (!unreadable) return;
@@ -84,16 +90,6 @@ namespace AIBridge.Editor
                 return CommandResult.Failure(request.id, "Pipeline dry-run and confirm must be boolean values.");
             if (!dryRun && !confirmed)
                 return CommandResult.Failure(request.id, "Pipeline code execution requires a per-request --confirm true.");
-            var type = System.Type.GetType(PipelineAdapterTypeName);
-            var signature = run
-                ? new[] { typeof(string), typeof(string), typeof(string), typeof(string), typeof(int), typeof(bool), typeof(bool) }
-                : new[] { typeof(string), typeof(int), typeof(bool), typeof(bool) };
-            var methodName = job ? "PrepareRunJob" : (run ? "RunAsync" : "EvaluateAsync");
-            var method = type == null ? null : type.GetMethod(methodName, BindingFlags.Static | BindingFlags.NonPublic,
-                null, signature, null);
-            if (method == null)
-                return FailureWithData(request.id, "Pipeline eval adapter is unavailable.",
-                    new { backend = "pipeline", status = "unavailable", errorCode = "pipelineAdapterUnavailable" });
             var timeoutMs = Mathf.Clamp(request.GetParam("timeout", DefaultTimeoutMs), MinTimeoutMs, MaxTimeoutMs);
             var existing = LoadPipelineRecordWithStatus(request.id, out var requestStateInvalid);
             if (existing != null)
@@ -115,6 +111,17 @@ namespace AIBridge.Editor
                 return FailureWithData(request.id, "Pipeline operation state is unavailable or busy; refusing to overwrite or replay the operation id.",
                     new { status = "unknown", errorCode = "pipelineStateInvalid", requestId = request.id, busy = true, mayStillBeRunning = true });
             }
+            // 持久操作状态必须先核验；缺可选包也不能掩盖损坏日志或丢失 busy 占位。
+            var type = System.Type.GetType(PipelineAdapterTypeName);
+            var signature = run
+                ? new[] { typeof(string), typeof(string), typeof(string), typeof(string), typeof(int), typeof(bool), typeof(bool) }
+                : new[] { typeof(string), typeof(int), typeof(bool), typeof(bool) };
+            var methodName = job ? "PrepareRunJob" : (run ? "RunAsync" : "EvaluateAsync");
+            var method = type == null ? null : type.GetMethod(methodName, BindingFlags.Static | BindingFlags.NonPublic,
+                null, signature, null);
+            if (method == null)
+                return FailureWithData(request.id, "Pipeline eval adapter is unavailable.",
+                    new { backend = "pipeline", status = "unavailable", errorCode = "pipelineAdapterUnavailable" });
             var record = CreatePipelineRecord(request.id, source, timeoutMs);
             record.operationKind = dryRun ? "compile_only" : "execute";
             record.dryRun = dryRun;

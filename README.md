@@ -7,7 +7,7 @@
 English | [中文](./README_CN.md)
 
 ![Unity 2019.4+ ~ 6000.x](https://img.shields.io/badge/Unity-2019.4%2B%20~%206000.x-black?style=flat-square&logo=unity)
-![Package 1.6.0](https://img.shields.io/badge/Package-1.6.0-5b6cff?style=flat-square)
+![Package 1.6.1](https://img.shields.io/badge/Package-1.6.1-5b6cff?style=flat-square)
 ![MIT License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 
 **Let your AI assistant work directly in Unity to develop, test, and debug your project.**
